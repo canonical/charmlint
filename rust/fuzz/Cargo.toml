@@ -1,0 +1,29 @@
+[package]
+name = "charmlint-rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_yaml = "0.9"
+
+[dependencies.charmlint-rs]
+path = ".."
+
+[[bin]]
+name = "fuzz_lint_config_yaml"
+path = "fuzz_targets/fuzz_lint_config_yaml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_severity_from_str"
+path = "fuzz_targets/fuzz_severity_from_str.rs"
+test = false
+doc = false
+bench = false

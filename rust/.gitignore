@@ -1,0 +1,5 @@
+/target
+# cargo-fuzz: target is built per-target, corpus/artifacts are regenerated.
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
