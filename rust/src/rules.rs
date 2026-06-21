@@ -71,6 +71,37 @@ fn get_str(m: &serde_yaml::Mapping, key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Best-effort: extract the body of `def <name>(...):` from a Python source
+/// by indent-following.  Returns `(body_text, def_line_1_based)`.  Used to
+/// avoid a heavy Python AST dependency in Rust — accurate enough for the
+/// keyword sweeps the per-function rules need.
+fn extract_function_body(source: &str, name: &str) -> Option<(String, usize)> {
+    let def_re = Regex::new(&format!(r"(?m)^([ \t]*)(?:async\s+)?def\s+{}\b", regex::escape(name)))
+        .ok()?;
+    let lines: Vec<&str> = source.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        if def_re.is_match(line) {
+            let def_indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+            let mut body = String::new();
+            for next in lines.iter().skip(i + 1) {
+                if next.trim().is_empty() {
+                    body.push_str(next);
+                    body.push('\n');
+                    continue;
+                }
+                let indent = next.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+                if indent <= def_indent {
+                    break;
+                }
+                body.push_str(next);
+                body.push('\n');
+            }
+            return Some((body, i + 1));
+        }
+    }
+    None
+}
+
 // ── Rule runner ──────────────────────────────────────────────────────
 
 /// Run all rules and return all diagnostics.
@@ -101,30 +132,294 @@ pub fn run_all(ctx: &CharmContext) -> Vec<Diagnostic> {
     results.extend(check_charmcraft_compat(ctx));
     // STS rules.
     results.extend(check_status(ctx));
+    // REL rules.
+    results.extend(check_relation_data(ctx));
+    // PEB rules.
+    results.extend(check_pebble(ctx));
 
     results
+}
+
+// ── REL (Relation Data) ──────────────────────────────────────────────
+
+fn check_relation_data(ctx: &CharmContext) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let read_app = Regex::new(r"\.relation\.data\[\s*event\.app\s*\]").unwrap();
+    let read_unit = Regex::new(r"\.relation\.data\[\s*event\.unit\s*\]").unwrap();
+    let app_guard = Regex::new(
+        r"event\.app\s+is(?:\s+not)?\s+None|if\s+(?:not\s+)?event\.app\b|\.data\.get\(\s*event\.app",
+    )
+    .unwrap();
+    let unit_guard = Regex::new(
+        r"event\.unit\s+is(?:\s+not)?\s+None|if\s+(?:not\s+)?event\.unit\b|\.data\.get\(\s*event\.unit",
+    )
+    .unwrap();
+    let write_self_app = Regex::new(r"\.relation\.data\[\s*self\.app\s*\]\s*\[").unwrap();
+    let leader_guard = Regex::new(r"is_leader\s*\(").unwrap();
+    let def_re = Regex::new(r"(?m)^([ \t]*)(?:async\s+)?def\s+(\w+)").unwrap();
+
+    for (path, content) in &ctx.python_sources {
+        if path_has_lib(path) {
+            continue;
+        }
+        for cap in def_re.captures_iter(content) {
+            let func = cap.get(2).unwrap().as_str();
+            let lineno = content[..cap.get(0).unwrap().start()].lines().count() + 1;
+            let body = match extract_function_body(content, func) {
+                Some((b, _)) => b,
+                None => continue,
+            };
+            if read_app.is_match(&body) && !app_guard.is_match(&body) {
+                diagnostics.push(diag(
+                    "REL001",
+                    Severity::Warning,
+                    &format!(
+                        "Handler '{func}' reads event.relation.data[event.app] without guarding event.app — Juju may set event.app to None on some event shapes"
+                    ),
+                    Some(&path.to_string_lossy()),
+                    Some(lineno),
+                    Some("Guard with `if event.app is None: return` or use `event.relation.data.get(event.app, {})`"),
+                ));
+            }
+            if read_unit.is_match(&body) && !unit_guard.is_match(&body) {
+                diagnostics.push(diag(
+                    "REL001",
+                    Severity::Warning,
+                    &format!(
+                        "Handler '{func}' reads event.relation.data[event.unit] without guarding event.unit"
+                    ),
+                    Some(&path.to_string_lossy()),
+                    Some(lineno),
+                    Some("Guard with `if event.unit is None: return` or use `event.relation.data.get(event.unit, {})`"),
+                ));
+            }
+            if write_self_app.is_match(&body) && !leader_guard.is_match(&body) {
+                diagnostics.push(diag(
+                    "REL002",
+                    Severity::Warning,
+                    &format!(
+                        "Handler '{func}' writes to event.relation.data[self.app] without an is_leader() guard — non-leader writes raise at runtime"
+                    ),
+                    Some(&path.to_string_lossy()),
+                    Some(lineno),
+                    Some("Add `if not self.unit.is_leader(): return` before the write"),
+                ));
+            }
+        }
+    }
+    diagnostics
+}
+
+// ── PEB (Pebble) ─────────────────────────────────────────────────────
+
+fn check_pebble(ctx: &CharmContext) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+
+    // PEB001: add_layer(...) without combine=True.
+    let add_layer_re = Regex::new(r"\.add_layer\s*\(([^)]*)\)").unwrap();
+    for (path, content) in &ctx.python_sources {
+        if path_has_lib(path) {
+            continue;
+        }
+        for cap in add_layer_re.captures_iter(content) {
+            let args = cap.get(1).unwrap().as_str();
+            if !args.contains("combine") {
+                let lineno = content[..cap.get(0).unwrap().start()].lines().count() + 1;
+                diagnostics.push(diag(
+                    "PEB001",
+                    Severity::Warning,
+                    "add_layer() called without combine=True — repeated calls stack duplicate layers instead of merging",
+                    Some(&path.to_string_lossy()),
+                    Some(lineno),
+                    Some("Pass `combine=True` so calls merge into the existing layer"),
+                ));
+            }
+        }
+    }
+
+    // PEB002: pebble methods called in a function with no can_connect guard.
+    // Resolve transitive guarding via the self.<method> call graph — a helper
+    // counts as guarded iff every caller of it is guarded.
+    let pebble_methods = ["add_layer", "replan", "restart", "start", "stop", "autostart", "exec"];
+    let pebble_call_re = Regex::new(
+        r"\.(add_layer|replan|restart|start|stop|autostart|exec)\s*\(",
+    )
+    .unwrap();
+    let self_call_re = Regex::new(r"\bself\.(\w+)\s*\(").unwrap();
+    let def_re = Regex::new(r"(?m)^([ \t]*)(?:async\s+)?def\s+(\w+)").unwrap();
+
+    // (path, func_name, body, def_line)
+    let mut funcs: Vec<(std::path::PathBuf, String, String, usize)> = Vec::new();
+    for (path, content) in &ctx.python_sources {
+        if path_has_lib(path) {
+            continue;
+        }
+        for cap in def_re.captures_iter(content) {
+            let func = cap.get(2).unwrap().as_str().to_string();
+            let lineno = content[..cap.get(0).unwrap().start()].lines().count() + 1;
+            if let Some((body, _)) = extract_function_body(content, &func) {
+                funcs.push((path.clone(), func, body, lineno));
+            }
+        }
+    }
+
+    let mut guarded: BTreeMap<String, bool> = BTreeMap::new();
+    for (_p, name, body, _ln) in &funcs {
+        let g = body.contains("can_connect")
+            || name.contains("pebble_ready")
+            || body.contains("PebbleReady");
+        guarded.entry(name.clone()).and_modify(|v| *v = *v || g).or_insert(g);
+    }
+    let mut callers: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (_p, name, body, _ln) in &funcs {
+        for cap in self_call_re.captures_iter(body) {
+            let callee = cap.get(1).unwrap().as_str().to_string();
+            callers.entry(callee).or_default().push(name.clone());
+        }
+    }
+    loop {
+        let mut changed = false;
+        for (fname, is_g) in guarded.clone().iter() {
+            if *is_g {
+                continue;
+            }
+            if let Some(cs) = callers.get(fname) {
+                if !cs.is_empty() && cs.iter().all(|c| *guarded.get(c).unwrap_or(&false)) {
+                    guarded.insert(fname.clone(), true);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    for (path, func, body, lineno) in &funcs {
+        if *guarded.get(func).unwrap_or(&false) {
+            continue;
+        }
+        if let Some(cap) = pebble_call_re.captures(body) {
+            let method = cap.get(1).unwrap().as_str();
+            // Only flag if this method name is in the pebble set (it is, by
+            // construction of the regex — kept for clarity).
+            if pebble_methods.contains(&method) {
+                diagnostics.push(diag(
+                    "PEB002",
+                    Severity::Warning,
+                    &format!(
+                        "Function '{func}' calls .{method}() with no can_connect() guard — early hooks may raise ConnectionError"
+                    ),
+                    Some(&path.to_string_lossy()),
+                    Some(*lineno),
+                    Some("Add `if not container.can_connect(): event.defer(); return` or hoist the call into the pebble_ready handler"),
+                ));
+            }
+        }
+    }
+
+    // PEB003: Pebble layer service dicts missing override/command/startup.
+    // Scan dict literals containing a `services` key.  Best-effort regex:
+    // matches `'<svc>': { ... }` within a `services:` dict.
+    let services_re = Regex::new(
+        r#"['"]services['"]\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}"#,
+    )
+    .unwrap();
+    let svc_entry_re = Regex::new(r#"['"]([\w\-]+)['"]\s*:\s*\{([^{}]*)\}"#).unwrap();
+    let required = ["override", "command", "startup"];
+    for (path, content) in &ctx.python_sources {
+        if path_has_lib(path) {
+            continue;
+        }
+        for services_cap in services_re.captures_iter(content) {
+            let inner = services_cap.get(1).unwrap().as_str();
+            for svc_cap in svc_entry_re.captures_iter(inner) {
+                let svc_name = svc_cap.get(1).unwrap().as_str();
+                let body = svc_cap.get(2).unwrap().as_str();
+                let missing: Vec<&str> = required
+                    .iter()
+                    .filter(|k| {
+                        !Regex::new(&format!(r#"['"]{k}['"]\s*:"#))
+                            .unwrap()
+                            .is_match(body)
+                    })
+                    .copied()
+                    .collect();
+                if missing.is_empty() {
+                    continue;
+                }
+                let abs_start = svc_cap.get(0).unwrap().start() + services_cap.get(1).unwrap().start();
+                let lineno = content[..abs_start].lines().count() + 1;
+                diagnostics.push(diag(
+                    "PEB003",
+                    Severity::Warning,
+                    &format!(
+                        "Pebble service '{svc_name}' is missing required key(s): {}",
+                        missing.join(", ")
+                    ),
+                    Some(&path.to_string_lossy()),
+                    Some(lineno),
+                    Some("Pebble services need `override` (replace/merge), `command`, and `startup` (enabled/disabled) at minimum"),
+                ));
+            }
+        }
+    }
+
+    diagnostics
 }
 
 // ── META (Metadata Fields) ───────────────────────────────────────────
 
 fn check_metadata(ctx: &CharmContext) -> Vec<Diagnostic> {
-    let checks: &[(&str, &str, &str, Severity)] = &[
-        ("name", "META001", "Missing 'name' field in charm metadata", Severity::Error),
-        ("display-name", "META002", "Missing 'display-name' field", Severity::Warning),
-        ("summary", "META003", "Missing 'summary' field", Severity::Warning),
-        ("description", "META004", "Missing 'description' field", Severity::Warning),
-        ("docs", "META005", "Missing 'docs' URL", Severity::Info),
-        ("issues", "META006", "Missing 'issues' URL", Severity::Info),
-        ("source", "META007", "Missing 'source' URL", Severity::Info),
+    // Each entry: (rule_id, message, severity, accepted dotted paths).
+    // A rule passes if any of its paths resolves to a non-null value, so a
+    // modern unified `charmcraft.yaml` (`title`, `links.documentation`,
+    // `links.issues`, `links.source`) and a legacy `metadata.yaml`
+    // (`display-name`, `docs`, `issues`, `source`) both satisfy the check.
+    let checks: &[(&str, &str, Severity, &[&str])] = &[
+        ("META001", "Missing 'name' field in charm metadata", Severity::Error, &["name"]),
+        (
+            "META002",
+            "Missing 'display-name'/'title' field",
+            Severity::Warning,
+            &["title", "display-name"],
+        ),
+        ("META003", "Missing 'summary' field", Severity::Warning, &["summary"]),
+        ("META004", "Missing 'description' field", Severity::Warning, &["description"]),
+        ("META005", "Missing 'docs' URL", Severity::Info, &["links.documentation", "docs"]),
+        ("META006", "Missing 'issues' URL", Severity::Info, &["links.issues", "issues"]),
+        ("META007", "Missing 'source' URL", Severity::Info, &["links.source", "source"]),
     ];
 
     let mut diagnostics = Vec::new();
-    for &(field, rule_id, msg, severity) in checks {
-        if ctx.metadata.get(field).is_none() {
+    for &(rule_id, msg, severity, paths) in checks {
+        if !paths.iter().any(|p| resolve_path(&ctx.metadata, p)) {
             diagnostics.push(diag(rule_id, severity, msg, Some("charmcraft.yaml"), None, None));
         }
     }
     diagnostics
+}
+
+fn resolve_path(metadata: &std::collections::BTreeMap<String, Value>, dotted: &str) -> bool {
+    let mut parts = dotted.split('.');
+    let first = match parts.next() {
+        Some(p) => p,
+        None => return false,
+    };
+    let mut cur = match metadata.get(first) {
+        Some(v) => v,
+        None => return false,
+    };
+    for part in parts {
+        match cur {
+            Value::Mapping(m) => match m.get(Value::String(part.into())) {
+                Some(v) => cur = v,
+                None => return false,
+            },
+            _ => return false,
+        }
+    }
+    !matches!(cur, Value::Null)
 }
 
 // ── COS (Observability) ──────────────────────────────────────────────
@@ -278,6 +573,12 @@ fn check_deprecated(ctx: &CharmContext) -> Vec<Diagnostic> {
             "Uses removed framework.breakpoint()",
             "Use standard Python breakpoint() or debugger",
         ),
+        (
+            r"from\s+charms\.reactive\b|@(?:when|when_not|when_any|when_all|hook)\(",
+            "DEP004",
+            "Uses legacy reactive framework (charms.reactive / @when / @hook decorators)",
+            "Rewrite as an ops.CharmBase subclass with framework.observe() event handlers",
+        ),
     ];
 
     let mut diagnostics = Vec::new();
@@ -365,6 +666,82 @@ fn check_actions(ctx: &CharmContext) -> Vec<Diagnostic> {
         }
     }
 
+    // ACT006/ACT007: walk the charm sources for `*.observe(*.on.<event>_action,
+    // self.<handler>)` registrations.  The regex matches the canonical
+    // shape ops charms use; dynamic/subscript observers are intentionally
+    // missed (better than risking a false positive).
+    let observe_re = Regex::new(
+        r"\.observe\(\s*[\w\.]*on\.(\w+)_action\s*,\s*self\.(\w+)",
+    )
+    .unwrap();
+    let mut observers: BTreeMap<String, (String, std::path::PathBuf)> = BTreeMap::new();
+    for (path, content) in &ctx.python_sources {
+        if path_has_lib(path) {
+            continue;
+        }
+        for cap in observe_re.captures_iter(content) {
+            let action = cap.get(1).unwrap().as_str().to_string();
+            let handler = cap.get(2).unwrap().as_str().to_string();
+            observers
+                .entry(action)
+                .or_insert_with(|| (handler, path.clone()));
+        }
+    }
+
+    if !ctx.actions.is_empty() {
+        for action_name in ctx.actions.keys() {
+            let normalised = action_name.replace('-', "_");
+            if observers.contains_key(&normalised) {
+                continue;
+            }
+            diagnostics.push(diag(
+                "ACT006",
+                Severity::Warning,
+                &format!(
+                    "Action '{action_name}' has no observer (expected `self.framework.observe(self.on.{normalised}_action, ...)`)"
+                ),
+                None,
+                None,
+                Some(&format!(
+                    "Add `self.framework.observe(self.on.{normalised}_action, self._on_{normalised})` in __init__ and a matching handler"
+                )),
+            ));
+        }
+
+        // ACT007: an observed action whose handler body never calls
+        // `set_results()` or `fail()` will hang until timeout.  We grep
+        // for the handler `def` and scan its body until the next `def`
+        // at the same or shallower indent.
+        for action_name in ctx.actions.keys() {
+            let normalised = action_name.replace('-', "_");
+            let (handler, hpath) = match observers.get(&normalised) {
+                Some(v) => v,
+                None => continue, // ACT006 will flag the missing-observer case.
+            };
+            let content = match ctx.python_sources.get(hpath) {
+                Some(c) => c,
+                None => continue,
+            };
+            if let Some((body, lineno)) = extract_function_body(content, handler) {
+                let terminates = Regex::new(r"\.(?:set_results|fail)\s*\(")
+                    .unwrap()
+                    .is_match(&body);
+                if !terminates {
+                    diagnostics.push(diag(
+                        "ACT007",
+                        Severity::Warning,
+                        &format!(
+                            "Action handler '{handler}' for action '{action_name}' never calls set_results() or fail() — the action will hang until it times out"
+                        ),
+                        Some(&hpath.to_string_lossy()),
+                        Some(lineno),
+                        Some("Call `event.set_results(...)` on success or `event.fail('reason')` to report failure"),
+                    ));
+                }
+            }
+        }
+    }
+
     // ACT005: action param missing description.
     for (action_name, action_def) in &ctx.actions {
         if let Some(m) = value_as_map(action_def) {
@@ -441,6 +818,67 @@ fn check_config_quality(ctx: &CharmContext) -> Vec<Diagnostic> {
             }
         }
     }
+
+    // CFG004: declared but never read in src/.  Matches `config["X"]` or
+    // `config.get("X"`, the canonical access shapes; dynamic access via
+    // getattr/iteration is intentionally missed.
+    if !ctx.config_options.is_empty() {
+        for opt_name in ctx.config_options.keys() {
+            let pat = format!(
+                r#"\bconfig(?:\[|\.get\()\s*['"]{}['"]"#,
+                regex::escape(opt_name)
+            );
+            let re = Regex::new(&pat).unwrap();
+            let mut read = false;
+            for (path, content) in &ctx.python_sources {
+                if path_has_lib(path) {
+                    continue;
+                }
+                if re.is_match(content) {
+                    read = true;
+                    break;
+                }
+            }
+            if !read {
+                diagnostics.push(diag(
+                    "CFG004",
+                    Severity::Warning,
+                    &format!(
+                        "Config option '{opt_name}' is declared but never read in src/ — operators can set it but the charm ignores it"
+                    ),
+                    Some("charmcraft.yaml"),
+                    None,
+                    Some(&format!(
+                        "Read it via `self.config[\"{opt_name}\"]` or `self.config.get(\"{opt_name}\", <default>)`"
+                    )),
+                ));
+            }
+        }
+
+        // CFG005: charm has config options but never sets BlockedStatus.
+        let re = Regex::new(r"\bBlockedStatus\b").unwrap();
+        let mut has_blocked = false;
+        for (path, content) in &ctx.python_sources {
+            if path_has_lib(path) {
+                continue;
+            }
+            if re.is_match(content) {
+                has_blocked = true;
+                break;
+            }
+        }
+        if !has_blocked {
+            diagnostics.push(diag(
+                "CFG005",
+                Severity::Info,
+                "Charm declares config options but never references BlockedStatus — invalid config has no visible status",
+                None,
+                None,
+                Some("Validate config and set `self.unit.status = ops.BlockedStatus('reason')` for invalid values"),
+            ));
+        }
+    }
+
     diagnostics
 }
 
@@ -451,13 +889,32 @@ fn check_security(ctx: &CharmContext) -> Vec<Diagnostic> {
 
     // SEC001: secret in plain config.
     let all_source = src_content(ctx);
-    let has_juju_secrets = Regex::new(r"juju.*secret|Secret(?:Changed|Rotate)")
-        .unwrap()
-        .is_match(&all_source);
+    // Recognise both legacy spellings and the ops secrets API:
+    // self.app.add_secret(), self.model.get_secret(), Secret.get_content(),
+    // SecretChanged / SecretRotate / SecretRemove / SecretExpired events,
+    // ops.Secret.
+    let has_juju_secrets = Regex::new(
+        r"juju.*secret|\b(?:add_secret|get_secret)\b|\bSecret(?:Changed|Rotate|Remove|Expired)\b|\bops\.Secret\b",
+    )
+    .unwrap()
+    .is_match(&all_source);
 
+    // Skip any config option already declared `type: secret` — its value is
+    // a secret URI, not plain text.
     let secret_opts: Vec<&str> = ctx
         .config_options
-        .keys()
+        .iter()
+        .filter(|(_, spec)| {
+            if let Value::Mapping(m) = spec {
+                if let Some(Value::String(t)) = m.get(Value::String("type".into())) {
+                    if t == "secret" {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+        .map(|(name, _)| name)
         .filter(|name| {
             let lower = name.to_lowercase();
             secret_keywords.iter().any(|kw| lower.contains(kw))
@@ -622,21 +1079,32 @@ fn check_doc_topic(ctx: &CharmContext, keyword: &str) -> bool {
     if ctx.readme_content.to_lowercase().contains(keyword) {
         return true;
     }
-    let docs_dir = ctx.charm_dir.join("docs");
-    if docs_dir.is_dir() {
-        for entry in WalkDir::new(&docs_dir).follow_links(true) {
-            if let Ok(e) = entry {
-                if e.file_type().is_file()
-                    && e.path().extension().map_or(false, |ext| ext == "md")
-                {
-                    if let Ok(content) = std::fs::read_to_string(e.path()) {
-                        if content.to_lowercase().contains(keyword) {
-                            return true;
+    // Look in the charm's own docs/, then walk up to a repo root (looking
+    // for .git) so monorepo charms that share a top-level docs/ tree don't
+    // get flagged for every topic.
+    let start = ctx.charm_dir.canonicalize().unwrap_or_else(|_| ctx.charm_dir.clone());
+    let mut current: Option<&std::path::Path> = Some(start.as_path());
+    while let Some(dir) = current {
+        let docs_dir = dir.join("docs");
+        if docs_dir.is_dir() {
+            for entry in WalkDir::new(&docs_dir).follow_links(true) {
+                if let Ok(e) = entry {
+                    if e.file_type().is_file()
+                        && e.path().extension().map_or(false, |ext| ext == "md")
+                    {
+                        if let Ok(content) = std::fs::read_to_string(e.path()) {
+                            if content.to_lowercase().contains(keyword) {
+                                return true;
+                            }
                         }
                     }
                 }
             }
         }
+        if dir.join(".git").exists() {
+            break;
+        }
+        current = dir.parent();
     }
     false
 }
@@ -731,6 +1199,188 @@ fn check_libraries(ctx: &CharmContext) -> Vec<Diagnostic> {
                     None,
                 ));
             }
+        }
+    }
+
+    // LIB003/LIB004 — library metadata shape + breaking-change check over
+    // any `lib/charms/<charm>/v<N>/<name>.py` files.  Uses regex over the
+    // module-level `LIBID = "..."`, `LIBAPI = <int>`, `LIBPATCH = <int>`
+    // assignments rather than a full Python AST.
+    let lib_path_re = Regex::new(r"lib/charms/([^/]+)/v(\d+)/([^/]+)\.py$").unwrap();
+    let libid_re = Regex::new(r#"(?m)^\s*LIBID\s*(?::\s*[^=]+)?=\s*['"]([^'"]*)['"]"#).unwrap();
+    let libid_other_re = Regex::new(r#"(?m)^\s*LIBID\s*(?::\s*[^=]+)?=\s*(.+)$"#).unwrap();
+    let libapi_re = Regex::new(r#"(?m)^\s*LIBAPI\s*(?::\s*[^=]+)?=\s*(\S.*)$"#).unwrap();
+    let libpatch_re = Regex::new(r#"(?m)^\s*LIBPATCH\s*(?::\s*[^=]+)?=\s*(\S.*)$"#).unwrap();
+    let libid_hex_re = Regex::new(r"^[0-9a-fA-F]{16,}$").unwrap();
+
+    // Group files by (charm, lib_name) to compare versions.
+    let mut by_lib: BTreeMap<(String, String), Vec<(u32, std::path::PathBuf)>> = BTreeMap::new();
+    for (path, _content) in &ctx.python_sources {
+        let rel = path
+            .strip_prefix(&ctx.charm_dir)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| path.to_string_lossy().to_string());
+        let cap = match lib_path_re.captures(&rel) {
+            Some(c) => c,
+            None => continue,
+        };
+        let charm = cap.get(1).unwrap().as_str().to_string();
+        let dir_api: u32 = cap.get(2).unwrap().as_str().parse().unwrap_or(0);
+        let lib_name = cap.get(3).unwrap().as_str().to_string();
+        by_lib
+            .entry((charm, lib_name))
+            .or_default()
+            .push((dir_api, path.clone()));
+
+        // LIB003 per-file checks.
+        let content = ctx.python_sources.get(path).cloned().unwrap_or_default();
+        let path_str = path.to_string_lossy().to_string();
+
+        if let Some(c) = libid_re.captures(&content) {
+            let value = c.get(1).unwrap().as_str();
+            if !libid_hex_re.is_match(value) {
+                diagnostics.push(diag(
+                    "LIB003",
+                    Severity::Error,
+                    &format!("LIBID does not look like a hex identifier (got {value:?})"),
+                    Some(&path_str),
+                    None,
+                    None,
+                ));
+            }
+        } else if libid_other_re.is_match(&content) {
+            diagnostics.push(diag(
+                "LIB003",
+                Severity::Error,
+                "LIBID must be a string literal",
+                Some(&path_str),
+                None,
+                None,
+            ));
+        } else {
+            diagnostics.push(diag(
+                "LIB003",
+                Severity::Error,
+                "Library is missing LIBID — `charmcraft register-lib` assigns one on first publish",
+                Some(&path_str),
+                None,
+                None,
+            ));
+        }
+
+        match libapi_re.captures(&content) {
+            Some(c) => {
+                let raw = c.get(1).unwrap().as_str().trim();
+                match raw.parse::<u32>() {
+                    Ok(value) if value != dir_api => diagnostics.push(diag(
+                        "LIB003",
+                        Severity::Error,
+                        &format!(
+                            "LIBAPI={value} does not match directory v{dir_api} — breaking-change libraries live in a new v<N+1>/ folder"
+                        ),
+                        Some(&path_str),
+                        None,
+                        Some(&format!("Set LIBAPI = {dir_api} or move the file to v{value}/")),
+                    )),
+                    Ok(_) => {}
+                    Err(_) => diagnostics.push(diag(
+                        "LIB003",
+                        Severity::Error,
+                        "LIBAPI must be an integer literal",
+                        Some(&path_str),
+                        None,
+                        None,
+                    )),
+                }
+            }
+            None => diagnostics.push(diag(
+                "LIB003",
+                Severity::Error,
+                "Library is missing LIBAPI",
+                Some(&path_str),
+                None,
+                None,
+            )),
+        }
+
+        match libpatch_re.captures(&content) {
+            Some(c) => {
+                let raw = c.get(1).unwrap().as_str().trim();
+                if raw.parse::<u32>().is_err() {
+                    // Accept any non-negative integer; signed parse failure
+                    // (e.g. a string or expression) is the same error.
+                    if raw.parse::<i64>().is_ok() {
+                        // Negative — flag.
+                        diagnostics.push(diag(
+                            "LIB003",
+                            Severity::Error,
+                            &format!("LIBPATCH={raw} must be non-negative"),
+                            Some(&path_str),
+                            None,
+                            None,
+                        ));
+                    } else {
+                        diagnostics.push(diag(
+                            "LIB003",
+                            Severity::Error,
+                            "LIBPATCH must be an integer literal",
+                            Some(&path_str),
+                            None,
+                            None,
+                        ));
+                    }
+                }
+            }
+            None => diagnostics.push(diag(
+                "LIB003",
+                Severity::Error,
+                "Library is missing LIBPATCH — bump on every change",
+                Some(&path_str),
+                None,
+                None,
+            )),
+        }
+    }
+
+    // LIB004: public names removed between v<N> and v<N+1>.
+    let public_re = Regex::new(r"(?m)^(?:class|def|async\s+def)\s+([A-Za-z][\w]*)|^([A-Z][\w]*)\s*[:=]").unwrap();
+    for ((_charm, lib_name), versions_raw) in &by_lib {
+        let mut versions = versions_raw.clone();
+        if versions.len() < 2 {
+            continue;
+        }
+        versions.sort_by_key(|(api, _)| *api);
+        for w in versions.windows(2) {
+            let (older_api, older_path) = &w[0];
+            let (newer_api, newer_path) = &w[1];
+            let older = ctx.python_sources.get(older_path).cloned().unwrap_or_default();
+            let newer = ctx.python_sources.get(newer_path).cloned().unwrap_or_default();
+            let older_names: BTreeSet<String> = public_re
+                .captures_iter(&older)
+                .filter_map(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()))
+                .filter(|n| !n.starts_with('_'))
+                .collect();
+            let newer_names: BTreeSet<String> = public_re
+                .captures_iter(&newer)
+                .filter_map(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()))
+                .filter(|n| !n.starts_with('_'))
+                .collect();
+            let removed: Vec<&String> = older_names.difference(&newer_names).collect();
+            if removed.is_empty() {
+                continue;
+            }
+            let mut removed_list: Vec<String> = removed.iter().map(|s| (*s).clone()).collect();
+            removed_list.sort();
+            diagnostics.push(diag(
+                "LIB004",
+                Severity::Warning,
+                &format!(
+                    "Library '{lib_name}' v{newer_api} drops public name(s) {removed_list:?} present in v{older_api} — keep the old file on disk so existing consumers continue to fetch v{older_api}"
+                ),
+                Some(&newer_path.to_string_lossy()),
+                None,
+                Some("Verify the older v<N>/ file still exists; do not rename or remove public names within a major version"),
+            ));
         }
     }
 
@@ -1124,6 +1774,24 @@ mod tests {
         assert!(metas.is_empty(), "got: {metas:?}");
     }
 
+    #[test]
+    fn modern_charmcraft_title_and_links_satisfy_meta() {
+        let dir = charm_with_yaml(
+            "name: test-charm\n\
+             title: Test Charm\n\
+             summary: x\n\
+             description: x\n\
+             links:\n  \
+               documentation: https://example.com/docs\n  \
+               issues: https://example.com/issues\n  \
+               source: https://example.com/source\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        for rid in ["META002", "META005", "META006", "META007"] {
+            assert!(!ids.contains(rid), "{rid} should not fire for modern charmcraft.yaml");
+        }
+    }
+
     // ── COS rules ───────────────────────────────────────────────
 
     #[test]
@@ -1335,6 +2003,45 @@ mod tests {
         assert!(!ids.contains("SEC001"));
     }
 
+    #[test]
+    fn ops_add_secret_api_suppresses_sec001() {
+        let dir = charm_with_yaml(
+            "name: test\nconfig:\n  options:\n    smtp-password:\n      type: string\n      description: smtp creds\n",
+        );
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def x(self):\n        self.app.add_secret({'k':'v'})\n        self.model.get_secret(label='x')\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(!ids.contains("SEC001"));
+    }
+
+    #[test]
+    fn type_secret_config_option_not_flagged_sec001() {
+        let dir = charm_with_yaml(
+            "name: test\nconfig:\n  options:\n    smtp-password:\n      type: secret\n      description: smtp creds\n",
+        );
+        write(&dir.path().join("src/charm.py"), "import ops\n");
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(!ids.contains("SEC001"));
+    }
+
+    #[test]
+    fn monorepo_shared_docs_suppress_doc_topics() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(repo.join("docs")).unwrap();
+        write(&repo.join("docs/install.md"), "# Installation\n");
+        write(&repo.join("docs/trouble.md"), "# Troubleshooting\n");
+        let charm = repo.join("charms/alpha");
+        std::fs::create_dir_all(charm.join("src")).unwrap();
+        write(&charm.join("charmcraft.yaml"), "name: alpha\n");
+        let ids = rule_ids(&run_rules(&charm));
+        assert!(!ids.contains("DOC002"));
+        assert!(!ids.contains("DOC005"));
+    }
+
     // ── STR rules ───────────────────────────────────────────────
 
     #[test]
@@ -1407,5 +2114,194 @@ mod tests {
     fn suggest_closest_returns_none_for_far_match() {
         let set: HashSet<&str> = ["summary"].into_iter().collect();
         assert!(suggest_closest("completely-different", &set).is_none());
+    }
+
+    // ── Ported-from-Python rule tests ───────────────────────────
+
+    #[test]
+    fn cfg004_unread_config_option_flagged() {
+        let dir = charm_with_yaml(
+            "name: test\nconfig:\n  options:\n    log-level:\n      type: string\n      default: info\n      description: log level\n",
+        );
+        write(&dir.path().join("src/charm.py"), "import ops\n");
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("CFG004"));
+    }
+
+    #[test]
+    fn cfg004_read_config_option_passes() {
+        let dir = charm_with_yaml(
+            "name: test\nconfig:\n  options:\n    log-level:\n      type: string\n      default: info\n      description: log level\n",
+        );
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def x(self):\n        return self.config['log-level']\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(!ids.contains("CFG004"));
+    }
+
+    #[test]
+    fn cfg005_no_blocked_status_flagged() {
+        let dir = charm_with_yaml(
+            "name: test\nconfig:\n  options:\n    port:\n      type: int\n      default: 80\n      description: port\n",
+        );
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def x(self):\n        return self.config.get('port')\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("CFG005"));
+    }
+
+    #[test]
+    fn dep004_reactive_decorator_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("src/charm.py"),
+            "from charms.reactive import when\n@when('db.connected')\ndef f():\n    pass\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("DEP004"));
+    }
+
+    #[test]
+    fn act006_missing_observer_flagged() {
+        let dir = charm_with_yaml(
+            "name: test\nactions:\n  pause:\n    description: pause\n  resume:\n    description: resume\n  get-health:\n    description: health\n",
+        );
+        write(&dir.path().join("src/charm.py"), "import ops\nclass C(ops.CharmBase):\n    pass\n");
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("ACT006"));
+    }
+
+    #[test]
+    fn act007_handler_without_set_results_flagged() {
+        let dir = charm_with_yaml(
+            "name: test\nactions:\n  get-health:\n    description: health\n  pause:\n    description: pause\n  resume:\n    description: resume\n",
+        );
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def __init__(self, *a):\n        self.framework.observe(self.on.get_health_action, self._on_get_health)\n        self.framework.observe(self.on.pause_action, self._on_pause)\n        self.framework.observe(self.on.resume_action, self._on_resume)\n    def _on_get_health(self, event):\n        x = 1\n    def _on_pause(self, event):\n        event.set_results({'ok': True})\n    def _on_resume(self, event):\n        event.set_results({'ok': True})\n",
+        );
+        let diags = run_rules(dir.path());
+        let act007: Vec<&Diagnostic> = diags.iter().filter(|d| d.rule_id == "ACT007").collect();
+        assert_eq!(act007.len(), 1);
+        assert!(act007[0].message.contains("_on_get_health"));
+    }
+
+    #[test]
+    fn lib003_missing_libid_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("lib/charms/foo/v0/bar.py"),
+            "LIBAPI = 0\nLIBPATCH = 1\n",
+        );
+        let diags = run_rules(dir.path());
+        let lib003: Vec<&Diagnostic> = diags.iter().filter(|d| d.rule_id == "LIB003").collect();
+        assert!(lib003.iter().any(|d| d.message.contains("LIBID")));
+    }
+
+    #[test]
+    fn lib003_mismatched_libapi_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("lib/charms/foo/v0/bar.py"),
+            "LIBID = \"abcdef0123456789\"\nLIBAPI = 1\nLIBPATCH = 0\n",
+        );
+        let diags = run_rules(dir.path());
+        assert!(diags.iter().any(|d| d.rule_id == "LIB003" && d.message.contains("LIBAPI=1")));
+    }
+
+    #[test]
+    fn lib004_dropped_public_name_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("lib/charms/foo/v0/bar.py"),
+            "LIBID = \"abcdef0123456789\"\nLIBAPI = 0\nLIBPATCH = 0\nclass Old:\n    pass\nclass Shared:\n    pass\n",
+        );
+        write(
+            &dir.path().join("lib/charms/foo/v1/bar.py"),
+            "LIBID = \"abcdef0123456789\"\nLIBAPI = 1\nLIBPATCH = 0\nclass Shared:\n    pass\n",
+        );
+        let diags = run_rules(dir.path());
+        assert!(diags.iter().any(|d| d.rule_id == "LIB004" && d.message.contains("Old")));
+    }
+
+    #[test]
+    fn peb001_add_layer_without_combine_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def x(self):\n        self._container.add_layer('app', {})\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("PEB001"));
+    }
+
+    #[test]
+    fn peb001_add_layer_with_combine_passes() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def x(self):\n        self._container.add_layer('app', {}, combine=True)\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(!ids.contains("PEB001"));
+    }
+
+    #[test]
+    fn peb002_unguarded_pebble_call_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def _on_config_changed(self, event):\n        self._container.replan()\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("PEB002"));
+    }
+
+    #[test]
+    fn peb002_caller_guarded_helper_passes() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def _reconcile(self, _):\n        if not self._container.can_connect():\n            return\n        self._migrate()\n    def _migrate(self):\n        self._container.exec(['true'])\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(!ids.contains("PEB002"));
+    }
+
+    #[test]
+    fn peb003_service_missing_keys_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def _layer(self):\n        return {'services': {'app': {'command': '/bin/app'}}}\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("PEB003"));
+    }
+
+    #[test]
+    fn rel001_unguarded_event_app_read_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def _on_changed(self, event):\n        data = event.relation.data[event.app]\n        return data\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("REL001"));
+    }
+
+    #[test]
+    fn rel002_app_write_without_leader_flagged() {
+        let dir = charm_with_yaml("name: test\n");
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def _on_changed(self, event):\n        event.relation.data[self.app]['k'] = 'v'\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(ids.contains("REL002"));
     }
 }

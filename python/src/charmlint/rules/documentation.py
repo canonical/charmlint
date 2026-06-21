@@ -77,9 +77,12 @@ def _check_doc_topic(
     if keyword in context.readme_content.lower():
         return []
 
-    # Check docs/ directory.
-    docs_dir = context.charm_dir / "docs"
-    if docs_dir.is_dir():
+    # Check the charm's own docs/, then walk up to a repo root (looking for
+    # .git) so monorepo charms that share a top-level docs/ tree aren't
+    # flagged for every topic.
+    for docs_dir in _candidate_docs_dirs(context.charm_dir):
+        if not docs_dir.is_dir():
+            continue
         for doc_file in docs_dir.rglob("*.md"):
             try:
                 content = doc_file.read_text(errors="replace").lower()
@@ -89,3 +92,19 @@ def _check_doc_topic(
                 continue
 
     return [rule.diagnostic(f"No {label} documentation found")]
+
+
+def _candidate_docs_dirs(charm_dir):
+    """Yield docs/ candidates: the charm dir, then ancestor dirs up to a repo root."""
+    seen = set()
+    current = charm_dir.resolve()
+    yield current / "docs"
+    seen.add(current)
+    # Walk up until we hit the filesystem root or a .git marker (inclusive).
+    for parent in current.parents:
+        if parent in seen:
+            break
+        seen.add(parent)
+        yield parent / "docs"
+        if (parent / ".git").exists():
+            break

@@ -28,6 +28,30 @@ class TestMetadataRules:
         meta_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("META")}
         assert not meta_ids
 
+    def test_modern_charmcraft_title_and_links_satisfy_meta(
+        self, tmp_charm: pathlib.Path
+    ):
+        # Modern charmcraft.yaml uses `title` and a `links:` block instead of
+        # the legacy top-level `display-name`/`docs`/`issues`/`source`.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test-charm",
+                "title": "Test Charm",
+                "summary": "x",
+                "description": "x",
+                "links": {
+                    "documentation": "https://example.com/docs",
+                    "issues": "https://example.com/issues",
+                    "source": "https://example.com/source",
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in report.diagnostics}
+        for rid in ("META002", "META005", "META006", "META007"):
+            assert rid not in ids, f"{rid} should not fire for modern charmcraft.yaml"
+
 
 class TestObservabilityRules:
     """Tests for COS and ops-tracing checks."""
@@ -372,6 +396,22 @@ class TestPebbleRules:
             "            event.defer()\n"
             "            return\n"
             "        self._container.replan()\n",
+        )
+        report = lint(tmp_charm)
+        assert "PEB002" not in {d.rule_id for d in report.diagnostics}
+
+    def test_pebble_call_guarded_by_caller_passes(self, tmp_charm: pathlib.Path):
+        """A helper called only from a guarded caller is itself treated as guarded."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _reconcile(self, _):\n"
+            "        if not self._container.can_connect():\n"
+            "            return\n"
+            "        self._migrate()\n"
+            "    def _migrate(self):\n"
+            "        self._container.exec(['true'])\n",
         )
         report = lint(tmp_charm)
         assert "PEB002" not in {d.rule_id for d in report.diagnostics}
@@ -742,6 +782,65 @@ class TestSecurityRules:
         write_charm_source(tmp_charm, "import ops\n# Uses juju secret API\nSecretChanged\n")
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
+
+
+    def test_secret_with_ops_add_secret_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "smtp-password": {"type": "string", "description": "smtp password"},
+                    },
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def _on(self, _):\n"
+            "        self.app.add_secret({'k': 'v'})\n"
+            "        self.model.get_secret(label='x')\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC001" not in {d.rule_id for d in report.diagnostics}
+
+    def test_secret_typed_config_option_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "smtp-password": {"type": "secret", "description": "smtp creds"},
+                    },
+                },
+            },
+        )
+        write_charm_source(tmp_charm, "import ops\n")
+        report = lint(tmp_charm)
+        assert "SEC001" not in {d.rule_id for d in report.diagnostics}
+
+
+class TestDocumentationRules:
+    """Tests for DOC* rules (README and docs/ presence)."""
+
+    def test_monorepo_shared_docs_satisfy_doc_topics(self, tmp_path: pathlib.Path):
+        # Monorepo layout: <repo>/.git, <repo>/docs/, <repo>/charms/<name>/.
+        repo = tmp_path / "repo"
+        (repo / ".git").mkdir(parents=True)
+        (repo / "docs").mkdir()
+        (repo / "docs" / "install.md").write_text("# Installation\n\nrun foo")
+        (repo / "docs" / "troubleshoot.md").write_text("# Troubleshooting\n")
+        charm_dir = repo / "charms" / "alpha"
+        (charm_dir / "src").mkdir(parents=True)
+        write_charmcraft_yaml(charm_dir, {"name": "alpha"})
+        report = lint(charm_dir)
+        ids = {d.rule_id for d in report.diagnostics}
+        assert "DOC002" not in ids
+        assert "DOC005" not in ids
 
 
 class TestStructureRules:

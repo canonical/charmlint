@@ -21,11 +21,26 @@ class SecretInPlainConfig(Rule):
         all_source = "\n".join(
             content for path, content in context.python_sources.items() if "lib" not in path.parts
         )
-        has_juju_secrets = bool(re.search(r"juju.*secret|Secret(?:Changed|Rotate)", all_source))
+        # Recognise both legacy spellings and the ops secrets API:
+        # self.app.add_secret(), self.model.get_secret(), Secret.get_content(),
+        # SecretChanged / SecretRotate events, ops.Secret, secret.grant(...).
+        has_juju_secrets = bool(
+            re.search(
+                r"juju.*secret"
+                r"|\b(?:add_secret|get_secret)\b"
+                r"|\bSecret(?:Changed|Rotate|Remove|Expired)\b"
+                r"|\bops\.Secret\b",
+                all_source,
+            )
+        )
 
-        # Look for config options with secret-looking names.
+        # Look for config options with secret-looking names — but skip any
+        # option that's already declared `type: secret`, since its value is
+        # a secret URI rather than plain text.
         secret_opts: list[str] = []
-        for opt_name in context.config_options:
+        for opt_name, opt_spec in context.config_options.items():
+            if isinstance(opt_spec, dict) and opt_spec.get("type") == "secret":
+                continue
             if any(kw in opt_name.lower() for kw in _SECRET_CONFIG_KEYWORDS):
                 secret_opts.append(opt_name)
 
