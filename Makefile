@@ -17,11 +17,11 @@ lint-python:  ## Lint the Python implementation
 lint-rust:  ## Lint the Rust implementation
 	$(MAKE) -C rust lint
 
-fmt-python:  ## Format the Python implementation
-	$(MAKE) -C python fmt
+format-python:  ## Format the Python implementation
+	$(MAKE) -C python format
 
-fmt-rust:  ## Format the Rust implementation
-	$(MAKE) -C rust fmt
+format-rust:  ## Format the Rust implementation
+	$(MAKE) -C rust format
 
 test-python:  ## Run Python unit tests
 	$(MAKE) -C python test
