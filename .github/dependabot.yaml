@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"  # Hard-coded to the 1st of the month.
+    cooldown:
+      default-days: 7  # Don't adopt a release until it's 7 days old.
+    labels:
+      - "dependencies"
+  - package-ecosystem: "uv"
+    directory: "/python"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 0  # Security updates only.
+    labels:
+      - "dependencies"
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 0  # Security updates only.
+    labels:
+      - "dependencies"

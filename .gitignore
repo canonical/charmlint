@@ -37,4 +37,4 @@ rust/fuzz/corpus/
 rust/fuzz/artifacts/
 
 # uv lock (committed per package, not here at root)
-uv.lock
+/uv.lock
