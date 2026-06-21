@@ -1,0 +1,80 @@
+[project]
+name = "charmlint"
+version = "0.1.0"
+description = "A charm-aware, model-agnostic linter for Juju charms"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12"
+authors = [
+    { name = "Tony Meyer", email = "tony.meyer@canonical.com" },
+]
+keywords = ["juju", "charm", "linter", "charmlint"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "hypothesis>=6.152.4",
+    "coverage[toml]>=7.13.5",
+    "ruff>=0.15.12",
+]
+
+[project.scripts]
+charmlint = "charmlint.cli:cli_entry"
+
+[project.urls]
+Homepage = "https://github.com/tonyandrewmeyer/charmlint"
+Repository = "https://github.com/tonyandrewmeyer/charmlint"
+Issues = "https://github.com/tonyandrewmeyer/charmlint/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/charmlint", "src/pypi_attest"]
+
+[tool.ruff]
+line-length = 99
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ARG002"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["charmlint", "pypi_attest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["charmlint"]

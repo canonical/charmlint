@@ -1,0 +1,166 @@
+"""Tests for CC005/CC006 — unknown field detection in charmcraft.yaml."""
+
+import pathlib
+
+from charmlint.linter import lint
+from tests.conftest import write_charmcraft_yaml
+
+
+class TestUnknownTopLevelFields:
+    """Tests for CC005 — unrecognised top-level keys."""
+
+    def test_known_fields_clean(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "type": "charm",
+                "summary": "A test charm",
+                "description": "Longer description.",
+                "base": "ubuntu@24.04",
+                "platforms": {"amd64": None},
+                "parts": {"charm": {"plugin": "uv"}},
+                "requires": {"db": {"interface": "postgresql"}},
+                "provides": {"metrics": {"interface": "prometheus_scrape"}},
+                "peers": {"cluster": {"interface": "cluster"}},
+                "config": {"options": {"port": {"type": "int"}}},
+                "actions": {"backup": {"description": "Run backup"}},
+                "containers": {"app": {"resource": "app-image"}},
+                "resources": {"app-image": {"type": "oci-image"}},
+                "storage": {"data": {"type": "filesystem"}},
+                "assumes": ["juju >= 3.1"],
+                "subordinate": False,
+                "charm-libs": [],
+                "links": {"documentation": "https://example.com"},
+                "extra-bindings": {"admin": {}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert "CC005" not in {d.rule_id for d in report.diagnostics}
+
+    def test_typo_detected(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "sumary": "oops"})
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert len(cc005) == 1
+        assert "sumary" in cc005[0].message
+
+    def test_typo_fix_hint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "sumary": "oops"})
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert cc005[0].fix_hint is not None
+        assert "summary" in cc005[0].fix_hint
+
+    def test_multiple_unknown(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "sumary": "oops",
+                "descrption": "also oops",
+            },
+        )
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert len(cc005) == 2
+        messages = " ".join(d.message for d in cc005)
+        assert "sumary" in messages
+        assert "descrption" in messages
+
+    def test_completely_unknown_no_hint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "zzz-nonsense": "value"})
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert len(cc005) == 1
+        assert cc005[0].fix_hint is None
+
+    def test_legacy_fields_accepted(self, tmp_charm: pathlib.Path):
+        """Legacy fields like 'series' and 'min-juju-version' should not trigger CC005."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "series": ["focal"],
+                "min-juju-version": "2.9",
+            },
+        )
+        report = lint(tmp_charm)
+        # CC001 may fire for deprecated series, but CC005 should not.
+        assert "CC005" not in {d.rule_id for d in report.diagnostics}
+
+
+class TestUnknownResourceFields:
+    """Tests for CC006 — unrecognised keys in resource definitions."""
+
+    def test_valid_resource_fields(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "resources": {
+                    "app-image": {
+                        "type": "oci-image",
+                        "description": "App image",
+                    },
+                    "tarball": {
+                        "type": "file",
+                        "filename": "app.tar.gz",
+                        "description": "Source tarball",
+                        "upstream-source": "https://example.com/app.tar.gz",
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert "CC006" not in {d.rule_id for d in report.diagnostics}
+
+    def test_typo_in_resource(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "resources": {
+                    "app-image": {
+                        "type": "oci-image",
+                        "descrption": "App image",
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        cc006 = [d for d in report.diagnostics if d.rule_id == "CC006"]
+        assert len(cc006) == 1
+        assert "descrption" in cc006[0].message
+        assert "app-image" in cc006[0].message
+
+    def test_resource_fix_hint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "resources": {
+                    "img": {"type": "oci-image", "descrption": "typo"},
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        cc006 = [d for d in report.diagnostics if d.rule_id == "CC006"]
+        assert cc006[0].fix_hint is not None
+        assert "description" in cc006[0].fix_hint
+
+    def test_no_resources_section(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "CC006" not in {d.rule_id for d in report.diagnostics}
+
+    def test_non_dict_resource_ignored(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "resources": {"img": "not-a-dict"},
+            },
+        )
+        report = lint(tmp_charm)
+        assert "CC006" not in {d.rule_id for d in report.diagnostics}
