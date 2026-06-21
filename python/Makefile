@@ -10,7 +10,7 @@ lint:  ## Lint with ruff and type-check with ty
 	uv run --group dev ruff format --check src tests
 	uv run --group dev ty check src tests
 
-fmt:  ## Format code with ruff
+format:  ## Format code with ruff
 	uv run --group dev ruff format src tests
 	uv run --group dev ruff check --fix src tests
 
