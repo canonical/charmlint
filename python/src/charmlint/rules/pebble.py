@@ -94,6 +94,20 @@ class PebbleAddLayerNoCombine(Rule):
         return diagnostics
 
 
+def _called_self_methods(func: ast.FunctionDef) -> set[str]:
+    """Return the set of ``self.<name>(...)`` methods invoked in ``func``."""
+    called: set[str] = set()
+    for node in ast.walk(func):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+        ):
+            called.add(node.func.attr)
+    return called
+
+
 class PebbleCallWithoutCanConnect(Rule):
     """Flag Pebble methods called in a function without can_connect guard."""
 
@@ -103,13 +117,42 @@ class PebbleCallWithoutCanConnect(Rule):
     default_severity = models.Severity.WARNING
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        segments = _function_segments(context.python_sources)
+
+        # Build a map of helper-method name -> guarded? (any same-named
+        # `self.<name>()` definition that has a can_connect guard counts).
+        # Then mark a helper as transitively guarded if every caller that
+        # invokes it (via `self.<name>()`) either guards or is itself
+        # guarded. Iterate to a fixed point so chains of helpers resolve.
+        guarded: dict[str, bool] = {}
+        for _path, func, source in segments:
+            if "can_connect" in source or "pebble_ready" in func.name or "PebbleReady" in source:
+                guarded[func.name] = True
+            else:
+                guarded.setdefault(func.name, False)
+
+        callers: dict[str, list[str]] = {}
+        for _path, func, _source in segments:
+            for callee in _called_self_methods(func):
+                callers.setdefault(callee, []).append(func.name)
+
+        # Fixed-point: a function is guarded if every caller of it is guarded.
+        changed = True
+        while changed:
+            changed = False
+            for fname, is_guarded in list(guarded.items()):
+                if is_guarded:
+                    continue
+                call_sites = callers.get(fname)
+                if not call_sites:
+                    continue
+                if all(guarded.get(c, False) for c in call_sites):
+                    guarded[fname] = True
+                    changed = True
+
         diagnostics: list[models.Diagnostic] = []
-        for path, func, source in _function_segments(context.python_sources):
-            if "can_connect" in source:
-                continue
-            # The pebble_ready handler is called *because* connect succeeded —
-            # the framework has done the guard for us.
-            if "pebble_ready" in func.name or "PebbleReady" in source:
+        for path, func, source in segments:
+            if guarded.get(func.name):
                 continue
             tree = ast.parse(source)
             for node in ast.walk(tree):

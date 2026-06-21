@@ -108,23 +108,55 @@ pub fn run_all(ctx: &CharmContext) -> Vec<Diagnostic> {
 // ── META (Metadata Fields) ───────────────────────────────────────────
 
 fn check_metadata(ctx: &CharmContext) -> Vec<Diagnostic> {
-    let checks: &[(&str, &str, &str, Severity)] = &[
-        ("name", "META001", "Missing 'name' field in charm metadata", Severity::Error),
-        ("display-name", "META002", "Missing 'display-name' field", Severity::Warning),
-        ("summary", "META003", "Missing 'summary' field", Severity::Warning),
-        ("description", "META004", "Missing 'description' field", Severity::Warning),
-        ("docs", "META005", "Missing 'docs' URL", Severity::Info),
-        ("issues", "META006", "Missing 'issues' URL", Severity::Info),
-        ("source", "META007", "Missing 'source' URL", Severity::Info),
+    // Each entry: (rule_id, message, severity, accepted dotted paths).
+    // A rule passes if any of its paths resolves to a non-null value, so a
+    // modern unified `charmcraft.yaml` (`title`, `links.documentation`,
+    // `links.issues`, `links.source`) and a legacy `metadata.yaml`
+    // (`display-name`, `docs`, `issues`, `source`) both satisfy the check.
+    let checks: &[(&str, &str, Severity, &[&str])] = &[
+        ("META001", "Missing 'name' field in charm metadata", Severity::Error, &["name"]),
+        (
+            "META002",
+            "Missing 'display-name'/'title' field",
+            Severity::Warning,
+            &["title", "display-name"],
+        ),
+        ("META003", "Missing 'summary' field", Severity::Warning, &["summary"]),
+        ("META004", "Missing 'description' field", Severity::Warning, &["description"]),
+        ("META005", "Missing 'docs' URL", Severity::Info, &["links.documentation", "docs"]),
+        ("META006", "Missing 'issues' URL", Severity::Info, &["links.issues", "issues"]),
+        ("META007", "Missing 'source' URL", Severity::Info, &["links.source", "source"]),
     ];
 
     let mut diagnostics = Vec::new();
-    for &(field, rule_id, msg, severity) in checks {
-        if ctx.metadata.get(field).is_none() {
+    for &(rule_id, msg, severity, paths) in checks {
+        if !paths.iter().any(|p| resolve_path(&ctx.metadata, p)) {
             diagnostics.push(diag(rule_id, severity, msg, Some("charmcraft.yaml"), None, None));
         }
     }
     diagnostics
+}
+
+fn resolve_path(metadata: &std::collections::BTreeMap<String, Value>, dotted: &str) -> bool {
+    let mut parts = dotted.split('.');
+    let first = match parts.next() {
+        Some(p) => p,
+        None => return false,
+    };
+    let mut cur = match metadata.get(first) {
+        Some(v) => v,
+        None => return false,
+    };
+    for part in parts {
+        match cur {
+            Value::Mapping(m) => match m.get(Value::String(part.into())) {
+                Some(v) => cur = v,
+                None => return false,
+            },
+            _ => return false,
+        }
+    }
+    !matches!(cur, Value::Null)
 }
 
 // ── COS (Observability) ──────────────────────────────────────────────
@@ -451,13 +483,32 @@ fn check_security(ctx: &CharmContext) -> Vec<Diagnostic> {
 
     // SEC001: secret in plain config.
     let all_source = src_content(ctx);
-    let has_juju_secrets = Regex::new(r"juju.*secret|Secret(?:Changed|Rotate)")
-        .unwrap()
-        .is_match(&all_source);
+    // Recognise both legacy spellings and the ops secrets API:
+    // self.app.add_secret(), self.model.get_secret(), Secret.get_content(),
+    // SecretChanged / SecretRotate / SecretRemove / SecretExpired events,
+    // ops.Secret.
+    let has_juju_secrets = Regex::new(
+        r"juju.*secret|\b(?:add_secret|get_secret)\b|\bSecret(?:Changed|Rotate|Remove|Expired)\b|\bops\.Secret\b",
+    )
+    .unwrap()
+    .is_match(&all_source);
 
+    // Skip any config option already declared `type: secret` — its value is
+    // a secret URI, not plain text.
     let secret_opts: Vec<&str> = ctx
         .config_options
-        .keys()
+        .iter()
+        .filter(|(_, spec)| {
+            if let Value::Mapping(m) = spec {
+                if let Some(Value::String(t)) = m.get(Value::String("type".into())) {
+                    if t == "secret" {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+        .map(|(name, _)| name)
         .filter(|name| {
             let lower = name.to_lowercase();
             secret_keywords.iter().any(|kw| lower.contains(kw))
@@ -622,21 +673,32 @@ fn check_doc_topic(ctx: &CharmContext, keyword: &str) -> bool {
     if ctx.readme_content.to_lowercase().contains(keyword) {
         return true;
     }
-    let docs_dir = ctx.charm_dir.join("docs");
-    if docs_dir.is_dir() {
-        for entry in WalkDir::new(&docs_dir).follow_links(true) {
-            if let Ok(e) = entry {
-                if e.file_type().is_file()
-                    && e.path().extension().map_or(false, |ext| ext == "md")
-                {
-                    if let Ok(content) = std::fs::read_to_string(e.path()) {
-                        if content.to_lowercase().contains(keyword) {
-                            return true;
+    // Look in the charm's own docs/, then walk up to a repo root (looking
+    // for .git) so monorepo charms that share a top-level docs/ tree don't
+    // get flagged for every topic.
+    let start = ctx.charm_dir.canonicalize().unwrap_or_else(|_| ctx.charm_dir.clone());
+    let mut current: Option<&std::path::Path> = Some(start.as_path());
+    while let Some(dir) = current {
+        let docs_dir = dir.join("docs");
+        if docs_dir.is_dir() {
+            for entry in WalkDir::new(&docs_dir).follow_links(true) {
+                if let Ok(e) = entry {
+                    if e.file_type().is_file()
+                        && e.path().extension().map_or(false, |ext| ext == "md")
+                    {
+                        if let Ok(content) = std::fs::read_to_string(e.path()) {
+                            if content.to_lowercase().contains(keyword) {
+                                return true;
+                            }
                         }
                     }
                 }
             }
         }
+        if dir.join(".git").exists() {
+            break;
+        }
+        current = dir.parent();
     }
     false
 }
@@ -1124,6 +1186,24 @@ mod tests {
         assert!(metas.is_empty(), "got: {metas:?}");
     }
 
+    #[test]
+    fn modern_charmcraft_title_and_links_satisfy_meta() {
+        let dir = charm_with_yaml(
+            "name: test-charm\n\
+             title: Test Charm\n\
+             summary: x\n\
+             description: x\n\
+             links:\n  \
+               documentation: https://example.com/docs\n  \
+               issues: https://example.com/issues\n  \
+               source: https://example.com/source\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        for rid in ["META002", "META005", "META006", "META007"] {
+            assert!(!ids.contains(rid), "{rid} should not fire for modern charmcraft.yaml");
+        }
+    }
+
     // ── COS rules ───────────────────────────────────────────────
 
     #[test]
@@ -1333,6 +1413,45 @@ mod tests {
         );
         let ids = rule_ids(&run_rules(dir.path()));
         assert!(!ids.contains("SEC001"));
+    }
+
+    #[test]
+    fn ops_add_secret_api_suppresses_sec001() {
+        let dir = charm_with_yaml(
+            "name: test\nconfig:\n  options:\n    smtp-password:\n      type: string\n      description: smtp creds\n",
+        );
+        write(
+            &dir.path().join("src/charm.py"),
+            "import ops\nclass C(ops.CharmBase):\n    def x(self):\n        self.app.add_secret({'k':'v'})\n        self.model.get_secret(label='x')\n",
+        );
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(!ids.contains("SEC001"));
+    }
+
+    #[test]
+    fn type_secret_config_option_not_flagged_sec001() {
+        let dir = charm_with_yaml(
+            "name: test\nconfig:\n  options:\n    smtp-password:\n      type: secret\n      description: smtp creds\n",
+        );
+        write(&dir.path().join("src/charm.py"), "import ops\n");
+        let ids = rule_ids(&run_rules(dir.path()));
+        assert!(!ids.contains("SEC001"));
+    }
+
+    #[test]
+    fn monorepo_shared_docs_suppress_doc_topics() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(repo.join("docs")).unwrap();
+        write(&repo.join("docs/install.md"), "# Installation\n");
+        write(&repo.join("docs/trouble.md"), "# Troubleshooting\n");
+        let charm = repo.join("charms/alpha");
+        std::fs::create_dir_all(charm.join("src")).unwrap();
+        write(&charm.join("charmcraft.yaml"), "name: alpha\n");
+        let ids = rule_ids(&run_rules(&charm));
+        assert!(!ids.contains("DOC002"));
+        assert!(!ids.contains("DOC005"));
     }
 
     // ── STR rules ───────────────────────────────────────────────
