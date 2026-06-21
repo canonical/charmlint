@@ -1,0 +1,85 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(python/tests/fixtures/|rust/tests/fixtures/)
+      - id: end-of-file-fixer
+        exclude: ^(python/tests/fixtures/|rust/tests/fixtures/)
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: detect-private-key
+
+  # Local hooks run the tools through `uv run` / `cargo`, so the versions
+  # come from python/pyproject.toml's `dev` dependency group and
+  # rust/Cargo.toml. This keeps pre-commit and CI on exactly the same tool
+  # versions.
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: bash -c 'cd python && uv run --group dev -- ruff check --fix --exit-non-zero-on-fix "$@"' --
+        language: system
+        files: ^python/.*\.py$
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: bash -c 'cd python && uv run --group dev -- ruff format "$@"' --
+        language: system
+        files: ^python/.*\.py$
+        require_serial: true
+
+      - id: ty
+        name: ty
+        entry: bash -c 'cd python && uv run --group dev -- ty check src tests'
+        language: system
+        files: ^python/.*\.py$
+        pass_filenames: false
+        require_serial: true
+
+      - id: pytest-python
+        name: pytest (python)
+        entry: bash -c 'cd python && uv run --group dev -- pytest --maxfail=1 -q'
+        language: system
+        files: ^python/.*\.py$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: uv-lock-check
+        name: uv lock --check
+        entry: bash -c 'cd python && uv lock --check'
+        language: system
+        files: ^python/(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+        require_serial: true
+
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: bash -c 'cd rust && cargo fmt --all -- --check'
+        language: system
+        files: ^rust/.*\.rs$
+        pass_filenames: false
+        require_serial: true
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: bash -c 'cd rust && cargo clippy --all-targets --all-features -- -D warnings'
+        language: system
+        files: ^rust/(.*\.rs|Cargo\.(toml|lock))$
+        pass_filenames: false
+        require_serial: true
+
+      - id: cargo-test
+        name: cargo test
+        entry: bash -c 'cd rust && cargo test --all-features'
+        language: system
+        files: ^rust/(.*\.rs|Cargo\.(toml|lock))$
+        pass_filenames: false
+        stages: [pre-push]
+        require_serial: true
