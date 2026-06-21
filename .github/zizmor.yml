@@ -6,4 +6,3 @@ rules:
       policies:
         "actions/*": ref-pin
         "github/*": ref-pin
-        "pypa/*": ref-pin
