@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help lint fmt test lint-python lint-rust fmt-python fmt-rust test-python test-rust
+.PHONY: help lint for,at test lint-python lint-rust format-python format-rust test-python test-rust
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
