@@ -102,6 +102,37 @@ class TestUnknownTopLevelFields:
         assert len(cc005) == 1
         assert cc005[0].path == "metadata.yaml"
 
+    def test_metadata_yaml_specific_fields_not_flagged(self, tmp_charm: pathlib.Path):
+        """Fields valid in metadata.yaml but not charmcraft.yaml must not trigger CC005."""
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: test\n"
+            "display-name: My Charm\n"
+            "maintainers:\n  - foo@example.com\n"
+            "docs: https://example.com/docs\n"
+            "issues: https://example.com/issues\n"
+            "source: https://example.com/source\n"
+            "website: https://example.com\n"
+        )
+        report = lint(tmp_charm)
+        assert "CC005" not in {d.rule_id for d in report.diagnostics}
+
+    def test_charmcraft_only_fields_flagged_in_metadata_yaml(self, tmp_charm: pathlib.Path):
+        """charmcraft.yaml-only fields (parts, charm-libs, links) must be flagged in metadata.yaml."""
+        (tmp_charm / "metadata.yaml").write_text("name: test\nparts:\n  charm:\n    plugin: uv\n")
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert len(cc005) == 1
+        assert "parts" in cc005[0].message
+
+    def test_metadata_yaml_fields_flagged_in_charmcraft_yaml(self, tmp_charm: pathlib.Path):
+        """metadata.yaml-only fields (display-name, maintainers) must be flagged in charmcraft.yaml."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "display-name": "My Charm"})
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert len(cc005) == 1
+        assert "display-name" in cc005[0].message
+        assert cc005[0].path == "charmcraft.yaml"
+
 
 class TestUnknownResourceFields:
     """Tests for CC006 — unrecognised keys in resource definitions."""

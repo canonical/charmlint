@@ -33,12 +33,14 @@ def make_full_charm(charm_dir: pathlib.Path) -> None:
         charm_dir,
         {
             "name": "test-charm",
-            "display-name": "Test Charm",
+            "title": "Test Charm",
             "summary": "A test charm for charmlint",
             "description": "A test charm used in charmlint unit tests.",
-            "docs": "https://example.com/docs",
-            "issues": "https://example.com/issues",
-            "source": "https://example.com/source",
+            "links": {
+                "documentation": "https://example.com/docs",
+                "issues": "https://example.com/issues",
+                "source": "https://example.com/source",
+            },
             "requires": {
                 "tracing": {"interface": "tracing"},
                 "logging": {"interface": "loki_push_api"},

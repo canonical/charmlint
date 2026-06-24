@@ -1,9 +1,14 @@
-"""Unknown-field detection — flags unrecognised keys in charmcraft.yaml.
+"""Unknown-field detection — flags unrecognised keys in charmcraft.yaml / metadata.yaml.
 
 Catches typos like ``sumary`` instead of ``summary`` that would otherwise
 go silently unnoticed. Only top-level keys are checked; user-defined
 sub-keys inside ``config.options``, ``actions``, ``requires``, etc. are
 left alone because their names are charm-specific.
+
+Two separate known-field sets are maintained because charmcraft.yaml and
+metadata.yaml have different valid top-level keys (e.g. charmcraft.yaml uses
+``title`` and a nested ``links`` block, while metadata.yaml uses
+``display-name`` and top-level ``docs``/``issues``/``source``/``website``).
 """
 
 from typing import Any
@@ -11,24 +16,17 @@ from typing import Any
 from .. import _models as models
 from . import Rule
 
-# Top-level keys recognised by charmcraft.yaml (union of modern and legacy
-# fields). Kept deliberately broad — a warning for a genuine field is far
+# Top-level keys valid in charmcraft.yaml (modern and legacy forms).
+# Kept deliberately broad — a false positive on a genuine field is far
 # worse than missing a truly unknown one.
-_KNOWN_TOP_LEVEL: frozenset[str] = frozenset(
+_KNOWN_CHARMCRAFT_FIELDS: frozenset[str] = frozenset(
     {
         # Identity / metadata.
         "name",
         "type",
         "title",
-        "display-name",
         "summary",
         "description",
-        "docs",
-        "issues",
-        "source",
-        "website",
-        "contact",
-        "maintainers",
         # Build / platform.
         "base",
         "build-base",
@@ -51,8 +49,10 @@ _KNOWN_TOP_LEVEL: frozenset[str] = frozenset(
         "devices",
         # Charm libraries and dependencies.
         "charm-libs",
-        # Links block (Charmhub).
+        # Links block (Charmhub) — nested form, e.g. links.documentation.
         "links",
+        # Legacy top-level contact (now links.contact).
+        "contact",
         # Subordinate / assumes.
         "subordinate",
         "assumes",
@@ -62,6 +62,48 @@ _KNOWN_TOP_LEVEL: frozenset[str] = frozenset(
         "min-juju-version",
         # Analysis / linting config inside the file.
         "analysis",
+    }
+)
+
+# Top-level keys valid in metadata.yaml (the separate legacy metadata file).
+# metadata.yaml uses flat top-level link fields instead of a nested links block,
+# and display-name/maintainers instead of title/links.contact.
+_KNOWN_METADATA_FIELDS: frozenset[str] = frozenset(
+    {
+        # Identity / metadata.
+        "name",
+        "type",
+        "display-name",
+        "summary",
+        "description",
+        # Top-level link fields (metadata.yaml format, no nested links block).
+        "docs",
+        "issues",
+        "source",
+        "website",
+        "maintainers",
+        # Build / platform (bases was used in metadata.yaml before platforms).
+        "bases",
+        # Relations.
+        "requires",
+        "provides",
+        "peers",
+        "extra-bindings",
+        # Config / actions.
+        "config",
+        "actions",
+        # Workload.
+        "containers",
+        "resources",
+        "storage",
+        "devices",
+        # Subordinate / assumes.
+        "subordinate",
+        "assumes",
+        "terms",
+        # Legacy (deprecated but still accepted).
+        "series",
+        "min-juju-version",
     }
 )
 
@@ -77,22 +119,27 @@ _KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset(
 
 
 class UnknownTopLevelFields(Rule):
-    """Flag unrecognised top-level keys in charmcraft.yaml."""
+    """Flag unrecognised top-level keys in charmcraft.yaml or metadata.yaml."""
 
     id = "CC005"
     name = "unknown-top-level-field"
-    description = "Unrecognised top-level field in charmcraft.yaml (possible typo)"
+    description = "Unrecognised top-level field in charm metadata (possible typo)"
     default_severity = models.Severity.WARNING
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        known = (
+            _KNOWN_METADATA_FIELDS
+            if context.metadata_source == "metadata.yaml"
+            else _KNOWN_CHARMCRAFT_FIELDS
+        )
         diagnostics: list[models.Diagnostic] = []
         for key in context.metadata:
-            if key not in _KNOWN_TOP_LEVEL:
+            if key not in known:
                 diagnostics.append(
                     self.diagnostic(
                         f"Unrecognised top-level field '{key}' in {context.metadata_source} — possible typo",
                         path=context.metadata_source,
-                        fix_hint=_suggest_closest(key, _KNOWN_TOP_LEVEL),
+                        fix_hint=_suggest_closest(key, known),
                     )
                 )
         return diagnostics
