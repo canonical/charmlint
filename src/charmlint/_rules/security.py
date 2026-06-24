@@ -1,11 +1,34 @@
 """Security rules — secrets management, TLS support."""
 
+import ast
 import re
 
 from .. import _models as models
 from . import Rule
 
 _SECRET_CONFIG_KEYWORDS = {"password", "secret", "token", "api-key", "api_key", "credential"}
+
+# Relative-path commands that are conventionally invoked via PATH lookup in
+# charm tooling and are safe enough to allow without a fully-qualified path.
+_SEC009_ALLOWLIST = frozenset({"python", "python3", "uv", "pip", "pip3", "pytest"})
+
+
+def _is_subprocess_run(call: ast.Call) -> bool:
+    """True if ``call`` is a ``subprocess.run(...)`` invocation."""
+    func = call.func
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "run"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "subprocess"
+    )
+
+
+def _has_keyword_true(call: ast.Call, name: str) -> bool:
+    for kw in call.keywords:
+        if kw.arg == name and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+            return True
+    return False
 
 
 class SecretInPlainConfig(Rule):
@@ -88,3 +111,89 @@ class NoTLSSupport(Rule):
                 fix_hint="Add a tls-certificates relation for encryption in transit",
             )
         ]
+
+
+class SubprocessShellTrue(Rule):
+    """Flag ``subprocess.run(..., shell=True)`` calls in charm src/."""
+
+    id = "SEC005"
+    name = "subprocess-shell-true"
+    description = "subprocess.run() called with shell=True"
+    default_severity = models.Severity.ERROR
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for path, content in context.python_sources.items():
+            if "lib" in path.parts:
+                continue
+            try:
+                tree = ast.parse(content)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and _is_subprocess_run(node)):
+                    continue
+                if not _has_keyword_true(node, "shell"):
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        "subprocess.run() called with shell=True — interpolated "
+                        "values become shell metacharacters and enable command injection",
+                        path=str(path),
+                        line=node.lineno,
+                        fix_hint=(
+                            "Drop shell=True and pass the command as a list of "
+                            "arguments, e.g. subprocess.run(['cmd', 'arg1', 'arg2'])"
+                        ),
+                    )
+                )
+        return diagnostics
+
+
+class SubprocessRelativeBinary(Rule):
+    """Flag ``subprocess.run([...])`` calls whose first arg isn't an absolute path."""
+
+    id = "SEC009"
+    name = "subprocess-relative-binary"
+    description = "subprocess call uses a relative binary path instead of a fully-qualified path"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for path, content in context.python_sources.items():
+            if "lib" in path.parts:
+                continue
+            try:
+                tree = ast.parse(content)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and _is_subprocess_run(node)):
+                    continue
+                if not node.args:
+                    continue
+                first = node.args[0]
+                if not isinstance(first, ast.List) or not first.elts:
+                    continue
+                head = first.elts[0]
+                if not (isinstance(head, ast.Constant) and isinstance(head.value, str)):
+                    continue
+                cmd = head.value
+                if cmd.startswith("/"):
+                    continue
+                if cmd in _SEC009_ALLOWLIST:
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        f"subprocess call uses relative binary '{cmd}' — PATH lookups "
+                        f"depend on the calling environment and can resolve to "
+                        f"unexpected executables",
+                        path=str(path),
+                        line=node.lineno,
+                        fix_hint=(
+                            f"Use the fully-qualified path "
+                            f"(e.g. '/usr/bin/{cmd}') so the binary is unambiguous"
+                        ),
+                    )
+                )
+        return diagnostics

@@ -834,6 +834,68 @@ class TestSecurityRules:
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
 
+    def test_sec005_shell_true_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\ndef f():\n    subprocess.run('apt update', shell=True)\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC005"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.ERROR
+        # SEC009 must not fire when the args aren't a list.
+        assert not [d for d in report.diagnostics if d.rule_id == "SEC009"]
+
+    def test_sec009_relative_binary_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\ndef f():\n    subprocess.run(['apt', 'update'])\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC009"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+        assert "apt" in hits[0].message
+
+    def test_sec009_absolute_path_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\ndef f():\n    subprocess.run(['/usr/bin/apt', 'update'])\n",
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in report.diagnostics}
+        assert "SEC005" not in ids
+        assert "SEC009" not in ids
+
+    def test_sec009_allowlisted_command_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\ndef f():\n    subprocess.run(['python3', '-c', 'print(1)'])\n",
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in report.diagnostics}
+        assert "SEC005" not in ids
+        assert "SEC009" not in ids
+
+    def test_sec005_sec009_ignore_lib_directory(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        lib = tmp_charm / "lib" / "charms" / "other" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "thing.py").write_text(
+            "import subprocess\n"
+            "def f():\n"
+            "    subprocess.run('apt update', shell=True)\n"
+            "    subprocess.run(['apt', 'update'])\n",
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in report.diagnostics}
+        assert "SEC005" not in ids
+        assert "SEC009" not in ids
+
 
 class TestDocumentationRules:
     """Tests for DOC* rules (README and docs/ presence)."""
