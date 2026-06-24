@@ -870,6 +870,69 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestCorrectnessRules:
+    """Tests for the CORR (correctness) rules."""
+
+    def test_corr005_bare_swallow_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "def f():\n    try:\n        do()\n    except Exception:\n        pass\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "CORR005"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_corr005_logger_call_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "def f():\n"
+            "    try:\n"
+            "        do()\n"
+            "    except Exception:\n"
+            "        logger.exception('boom')\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR005"]
+
+    def test_corr005_raise_in_body_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "def f():\n"
+            "    try:\n"
+            "        do()\n"
+            "    except Exception:\n"
+            "        cleanup()\n"
+            "        raise\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR005"]
+
+    def test_corr005_specific_exception_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "def f():\n    try:\n        do()\n    except ValueError:\n        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR005"]
+
+    def test_corr005_ignores_lib_directory(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        lib = tmp_charm / "lib" / "charms" / "other" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "thing.py").write_text(
+            "def f():\n    try:\n        do()\n    except Exception:\n        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR005"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
