@@ -3,9 +3,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^(python/tests/fixtures/|rust/tests/fixtures/)
+        exclude: ^tests/fixtures/
       - id: end-of-file-fixer
-        exclude: ^(python/tests/fixtures/|rust/tests/fixtures/)
+        exclude: ^tests/fixtures/
       - id: check-yaml
       - id: check-toml
       - id: check-json
@@ -15,73 +15,47 @@ repos:
       - id: debug-statements
       - id: detect-private-key
 
-  # Local hooks run the tools through `uv run` / `cargo`, so the versions
-  # come from python/pyproject.toml's `dev` dependency group and
-  # rust/Cargo.toml. This keeps pre-commit and CI on exactly the same tool
-  # versions.
+  # Local hooks run the tools through `uv run`, so the versions come from
+  # pyproject.toml's `dev` dependency group. This keeps pre-commit and CI on
+  # exactly the same tool versions.
   - repo: local
     hooks:
       - id: ruff-check
         name: ruff check
-        entry: bash -c 'cd python && uv run --group dev -- ruff check --fix --exit-non-zero-on-fix src tests'
+        entry: uv run --group dev -- ruff check --fix --exit-non-zero-on-fix src tests
         language: system
-        files: ^python/.*\.py$
+        files: \.py$
         pass_filenames: false
         require_serial: true
 
       - id: ruff-format
         name: ruff format
-        entry: bash -c 'cd python && uv run --group dev -- ruff format src tests'
+        entry: uv run --group dev -- ruff format src tests
         language: system
-        files: ^python/.*\.py$
+        files: \.py$
         pass_filenames: false
         require_serial: true
 
       - id: ty
         name: ty
-        entry: bash -c 'cd python && uv run --group dev -- ty check src tests'
+        entry: uv run --group dev -- ty check src tests
         language: system
-        files: ^python/.*\.py$
+        files: \.py$
         pass_filenames: false
         require_serial: true
 
-      - id: pytest-python
-        name: pytest (python)
-        entry: bash -c 'cd python && uv run --group dev -- pytest --maxfail=1 -q'
+      - id: pytest
+        name: pytest
+        entry: uv run --group dev -- pytest --maxfail=1 -q
         language: system
-        files: ^python/.*\.py$
+        files: \.py$
         pass_filenames: false
         stages: [pre-push]
 
       - id: uv-lock-check
         name: uv lock --check
-        entry: bash -c 'cd python && uv lock --check'
+        entry: uv lock --check
         language: system
-        files: ^python/(pyproject\.toml|uv\.lock)$
+        files: ^(pyproject\.toml|uv\.lock)$
         pass_filenames: false
-        require_serial: true
-
-      - id: cargo-fmt
-        name: cargo fmt
-        entry: bash -c 'cd rust && cargo fmt --all -- --check'
-        language: system
-        files: ^rust/.*\.rs$
-        pass_filenames: false
-        require_serial: true
-
-      - id: cargo-clippy
-        name: cargo clippy
-        entry: bash -c 'cd rust && cargo clippy --all-targets --all-features -- -D warnings'
-        language: system
-        files: ^rust/(.*\.rs|Cargo\.(toml|lock))$
-        pass_filenames: false
-        require_serial: true
-
-      - id: cargo-test
-        name: cargo test
-        entry: bash -c 'cd rust && cargo test --all-features'
-        language: system
-        files: ^rust/(.*\.rs|Cargo\.(toml|lock))$
-        pass_filenames: false
-        stages: [pre-push]
         require_serial: true

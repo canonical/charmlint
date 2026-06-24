@@ -18,10 +18,12 @@ ENV/
 htmlcov/
 .tox/
 .nox/
+.hypothesis/
 
 # Type checker caches
 .ty/
 .mypy_cache/
+.ruff_cache/
 
 # IDE
 .idea/
@@ -29,12 +31,3 @@ htmlcov/
 *.swp
 *.swo
 *~
-
-# Rust
-rust/target/
-rust/fuzz/target/
-rust/fuzz/corpus/
-rust/fuzz/artifacts/
-
-# uv lock (committed per package, not here at root)
-/uv.lock
