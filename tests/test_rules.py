@@ -870,6 +870,30 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestSupplyChainRules:
+    """Tests for the SUPP (supply chain) rules."""
+
+    def test_supp002_no_dependency_updates_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SUPP002"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+
+    def test_supp002_dependabot_yml_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / ".github").mkdir(exist_ok=True)
+        (tmp_charm / ".github" / "dependabot.yml").write_text("version: 2\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "SUPP002"]
+
+    def test_supp002_renovate_json_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "renovate.json").write_text("{}")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "SUPP002"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
