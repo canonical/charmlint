@@ -870,6 +870,53 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestCorrectnessRules:
+    """Tests for the CORR (correctness) rules."""
+
+    def test_corr001_subprocess_run_without_check_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\ndef f():\n    subprocess.run(['echo', 'hi'])\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "CORR001"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_corr001_check_true_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\ndef f():\n    subprocess.run(['echo', 'hi'], check=True)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR001"]
+
+    def test_corr001_returncode_inspection_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\n"
+            "def f():\n"
+            "    result = subprocess.run(['echo', 'hi'])\n"
+            "    if result.returncode != 0:\n"
+            "        raise RuntimeError('boom')\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR001"]
+
+    def test_corr001_ignores_lib_directory(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        lib = tmp_charm / "lib" / "charms" / "other" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "thing.py").write_text(
+            "import subprocess\ndef f():\n    subprocess.run(['echo'])\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR001"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
