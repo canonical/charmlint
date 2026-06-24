@@ -12,7 +12,7 @@ migration angle (``LIB001``, ``LIB002``); this module covers the
 metadata + breaking-change angle the skill body used to recite to
 the agent every turn.
 
-Out of scope: ``LIBPATCH`` decreases between git revisions.  The
+Out of scope: ``LIBPATCH`` decreases between git revisions. The
 charmlint context is the working tree only and we do not shell out
 to git from rule modules.
 """
@@ -28,7 +28,7 @@ from . import Rule
 _LIB_PATH_RE = re.compile(r"lib/charms/([^/]+)/v(\d+)/([^/]+)\.py$")
 
 # A LIBID looks like a UUID4 hex string, but charmcraft historically
-# accepts any hex blob.  Tighten just enough to catch obvious typos
+# accepts any hex blob. Tighten just enough to catch obvious typos
 # (empty string, too short, non-hex).
 _LIBID_RE = re.compile(r"^[0-9a-fA-F]{16,}$")
 

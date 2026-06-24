@@ -81,7 +81,7 @@ def _option_is_read(option_name: str, sources: dict[pathlib.Path, str]) -> bool:
 
     Catches the canonical access shapes the ``adding-config`` skill teaches
     (``self.config["log-level"]``, ``self.config.get("log-level", "info")``,
-    ``self.model.config["port"]``).  Misses dynamic access such as
+    ``self.model.config["port"]``). Misses dynamic access such as
     ``getattr(self.config, name)`` or iterating the config dict — those
     are rare and not worth false positives.
     """

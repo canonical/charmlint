@@ -11,7 +11,7 @@ from . import _config, _rules
 from . import _models as models
 
 # Rule IDs follow ``<UPPERCASE LETTERS><DIGITS>`` (e.g. ``COS001``,
-# ``TEST003``).  The category prefix is the leading letter run.
+# ``TEST003``). The category prefix is the leading letter run.
 _RULE_ID_PATTERN = re.compile(r"^([A-Z]+)([0-9]+)$")
 
 
@@ -33,7 +33,7 @@ class _YamlParseError(Exception):
 
     Distinct from the absent-file case so the linter can tell the user
     which file is broken instead of falsely claiming the manifest is
-    missing.  Carries the original ``yaml.YAMLError`` message so the
+    missing. Carries the original ``yaml.YAMLError`` message so the
     diagnostic surfaces the parser's line/column hint.
     """
 
@@ -50,7 +50,7 @@ def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
     rejects it — a malformed manifest is fundamentally different from
     a missing one, and silently coercing to ``{}`` would have us
     report ``FATAL: No charmcraft.yaml or metadata.yaml found`` for a
-    file that is right there but has a typo.  ``OSError`` still maps
+    file that is right there but has a typo. ``OSError`` still maps
     to an empty dict because an unreadable file is closer to "not
     there" than to "broken syntax".
     """

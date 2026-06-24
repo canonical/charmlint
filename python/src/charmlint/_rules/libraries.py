@@ -1,10 +1,10 @@
 """Library rules — fetch-libs imports with PyPI equivalents.
 
 As of Apr 2026, most charm libraries still live in their host charm repos
-and require ``charmcraft fetch-libs``.  A growing subset has been lifted
+and require ``charmcraft fetch-libs``. A growing subset has been lifted
 into the ``canonical/charmlibs`` monorepo and published to PyPI under the
 ``charmlibs-*`` namespace; the import path also changes (``charms.foo.vN.bar``
-→ ``charmlibs.bar``).  See ``design/UPSTREAM_AUDIT.md`` for the audit log
+→ ``charmlibs.bar``). See ``design/UPSTREAM_AUDIT.md`` for the audit log
 and cutoff.
 """
 
@@ -14,7 +14,7 @@ from .. import _models as models
 from . import Rule
 
 # Each entry: (PyPI package name, new import path shown to the user).
-# Keys are the ``charms.<key>`` prefix captured by _IMPORT_RE.  For
+# Keys are the ``charms.<key>`` prefix captured by _IMPORT_RE. For
 # ``operator_libs_linux`` the replacement depends on the submodule, so we
 # look that up in ``_OP_LIBS_LINUX_SUBMODULES`` and ignore this top-level
 # entry.

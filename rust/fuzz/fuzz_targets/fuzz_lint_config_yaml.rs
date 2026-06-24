@@ -1,7 +1,7 @@
 //! Fuzz target: arbitrary bytes → YAML → `LintConfig::from_yaml`.
 //!
 //! `LintConfig::from_yaml` is a defensive walk over a `serde_yaml::Value`
-//! that emits a default config for anything it doesn't recognise.  The
+//! that emits a default config for anything it doesn't recognise. The
 //! fuzz target asserts the documented contract: any byte sequence that
 //! `serde_yaml` happens to parse into a `Value` must feed cleanly through
 //! `from_yaml` without panicking, regardless of how malformed or

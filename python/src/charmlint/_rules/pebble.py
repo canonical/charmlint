@@ -12,7 +12,7 @@ contracts the agent currently re-derives every turn:
 3. Each service entry in a Pebble layer needs ``override``,
    ``command``, and ``startup``.
 
-This module ships the static checks for all three.  The handler
+This module ships the static checks for all three. The handler
 detection is per-function to mirror the relation-data rules; the
 service-dict scan walks every dict literal in src/ source so it
 catches layers built inline as well as via helper methods.

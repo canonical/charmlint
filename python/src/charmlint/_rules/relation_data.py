@@ -5,14 +5,14 @@ agent currently re-derives every turn: relation-data reads via
 ``event.relation.data[event.app]`` (or ``[event.unit]``) need a
 guard for the ``None`` case Juju occasionally hands you, and any
 write to ``event.relation.data[self.app]`` must be inside a
-``self.unit.is_leader()`` guard.  Both are flow-shape patterns;
+``self.unit.is_leader()`` guard. Both are flow-shape patterns;
 this module checks them as per-function regex sweeps, matching the
 roadmap's "regex over the relation-event functions" budget rather
 than full flow-sensitive analysis.
 
 False-positive risk: a charm that guards its read by routing
 through a helper, or one that uses a non-standard parameter name
-for the event, will be missed by the read-guard check.  Pre-1.0,
+for the event, will be missed by the read-guard check. Pre-1.0,
 this is an acceptable trade for ~60 LoC of static text matching.
 """
 

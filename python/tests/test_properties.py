@@ -16,7 +16,7 @@ Invariants under test:
   environment, or time.
 * *Well-formed diagnostics.*  Every ``Diagnostic`` has a non-empty
   ``rule_id``, a valid ``Severity`` enum value, and a non-empty
-  ``message``.  Rules that report a file location must give either
+  ``message``. Rules that report a file location must give either
   both ``path`` and ``line`` or neither.
 """
 
@@ -37,8 +37,8 @@ from charmlint._models import Severity
 # every generated example — a common source of subtle state leaks.
 # In this file that reuse is deliberate: each property body overwrites
 # ``tmp_charm/charmcraft.yaml`` and touches no other state, so a shared
-# directory is equivalent to a fresh one per example.  Suppress the
-# health check globally for the module.  ``max_examples`` inherits from
+# directory is equivalent to a fresh one per example. Suppress the
+# health check globally for the module. ``max_examples`` inherits from
 # the profile registered in ``tests/unit/conftest.py`` (100 for dev,
 # 500 for CI).
 _charm_settings = settings(
@@ -186,9 +186,9 @@ class TestCharmlintProperties:
         """Every ``Diagnostic`` has populated mandatory fields.
 
         ``rule_id`` must be non-empty, severity must be a real enum
-        value, and ``message`` must be non-empty.  ``path`` and
+        value, and ``message`` must be non-empty. ``path`` and
         ``line`` are optional as a pair — if one is set, both should
-        be; neither is equally valid.  A rule that returns a
+        be; neither is equally valid. A rule that returns a
         blank-message diagnostic would make the ruff-style report
         line unreadable, so pin this down across the whole rule set.
         """

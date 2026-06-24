@@ -104,7 +104,7 @@ def _walk_observe_calls(tree: ast.AST) -> list[tuple[str, str | None]]:
     """Yield ``(action_name_underscored, handler_method_or_None)`` per observe call.
 
     Looks for ``<...>.observe(<...>.on.<event>_action, self.<handler>)`` —
-    the canonical registration shape in ops charms.  Subscript-style
+    the canonical registration shape in ops charms. Subscript-style
     (``self.on['my-action']``) and non-self handler targets are
     deliberately ignored; ACT006 only flags the missing-observer case
     when the canonical pattern is absent.
@@ -154,7 +154,7 @@ def _gather_action_observers(
     """Return ``{action: (handler_name, handler_node, source_path)}`` for charm sources.
 
     Skips ``lib/`` because charm libraries do not register a charm's
-    own action observers.  Files that fail to parse are silently
+    own action observers. Files that fail to parse are silently
     skipped — charmlint is not a syntax checker, and a partial
     survey is more useful than no survey.
     """

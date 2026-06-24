@@ -51,7 +51,7 @@ def normalise_name(name: str) -> str:
     """Normalise a distribution name per PEP 503.
 
     Lower-cases the name and collapses any run of ``-``, ``_`` or ``.``
-    into a single ``-``.  This is what PyPI uses as a cache key for its
+    into a single ``-``. This is what PyPI uses as a cache key for its
     simple API, so every lookup must go through it.
     """
     return _NORMALISE_RE.sub("-", name.strip().lower())
@@ -111,7 +111,7 @@ def check_provenance(
     """Check whether PyPI has a provenance attestation for *name* (and *version*).
 
     If *version* is None, picks any file under the latest version present
-    in the simple-index response.  Network or parse failures return
+    in the simple-index response. Network or parse failures return
     :attr:`ProvenanceStatus.UNKNOWN` so callers can fail-open on missing
     connectivity without aborting the whole build.
     """

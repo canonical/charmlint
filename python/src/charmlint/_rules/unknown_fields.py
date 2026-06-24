@@ -1,7 +1,7 @@
 """Unknown-field detection — flags unrecognised keys in charmcraft.yaml.
 
 Catches typos like ``sumary`` instead of ``summary`` that would otherwise
-go silently unnoticed.  Only top-level keys are checked; user-defined
+go silently unnoticed. Only top-level keys are checked; user-defined
 sub-keys inside ``config.options``, ``actions``, ``requires``, etc. are
 left alone because their names are charm-specific.
 """
@@ -12,7 +12,7 @@ from .. import _models as models
 from . import Rule
 
 # Top-level keys recognised by charmcraft.yaml (union of modern and legacy
-# fields).  Kept deliberately broad — a warning for a genuine field is far
+# fields). Kept deliberately broad — a warning for a genuine field is far
 # worse than missing a truly unknown one.
 _KNOWN_TOP_LEVEL: frozenset[str] = frozenset(
     {

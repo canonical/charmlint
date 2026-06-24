@@ -1,7 +1,7 @@
 """Configuration loader for charmlint.
 
 Reads ``.charmlint.yaml`` from the charm directory (or a path specified
-via CLI) and merges with defaults.  Configuration supports:
+via CLI) and merges with defaults. Configuration supports:
 
 - ``rules``: per-rule severity overrides (e.g. ``COS005: error``,
   ``STR002: off``)
@@ -62,8 +62,8 @@ class LintConfig:
 def load_config(charm_dir: pathlib.Path, config_path: pathlib.Path | None = None) -> LintConfig:
     """Load configuration from a ``.charmlint.yaml`` file.
 
-    Searches the charm directory for a config file.  If *config_path*
-    is given, that file is used instead.  Returns an empty config if
+    Searches the charm directory for a config file. If *config_path*
+    is given, that file is used instead. Returns an empty config if
     no file is found.
     """
     path = config_path or (charm_dir / _CONFIG_FILENAME)

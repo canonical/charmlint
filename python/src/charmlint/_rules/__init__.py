@@ -57,7 +57,7 @@ def get_all_rules() -> dict[str, Rule]:
 
 
 # Import all rule modules so their Rule subclasses register on package
-# import.  These imports must run after Rule and _RULES are defined; the
+# import. These imports must run after Rule and _RULES are defined; the
 # rule modules `from . import Rule`, which works because Rule is already
 # bound by the time the package body reaches this line.
 from . import (  # noqa: E402, F401

@@ -16,7 +16,7 @@ Two reference implementations live side by side in this repository:
 | `rust/`   | Rust 2021  | `charmlint` binary via `cargo build` |
 
 Both implementations share the same rule catalogue, diagnostic model, and
-`.charmlint.yaml` configuration format.  They were extracted from
+`.charmlint.yaml` configuration format. They were extracted from
 [`tonyandrewmeyer/cantrip`](https://github.com/tonyandrewmeyer/cantrip)
 where charmlint grew as an internal component of the Cantrip AI charm builder.
 

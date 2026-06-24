@@ -5,12 +5,12 @@ ATT001: a package on the "must-have attestations" list lacks PyPI provenance.
         jubilant, charmlibs-*) are known to publish attestations through
         trusted publishers; an unattested file is a supply-chain red flag.
 
-ATT002: a non-must-have dependency lacks provenance.  Informational by
+ATT002: a non-must-have dependency lacks provenance. Informational by
         default; the ecosystem is still catching up, so we nudge rather
         than block.
 
 Both rules parse ``pyproject.toml`` ``[project].dependencies`` and any
-``requirements.txt`` sitting alongside the charm.  Network failures and
+``requirements.txt`` sitting alongside the charm. Network failures and
 other PyPI hiccups are treated as silent so linting fails open on an
 offline host rather than crying wolf.
 """
@@ -28,7 +28,7 @@ from . import Rule
 # ---------------------------------------------------------------------------
 
 # PEP 508 parsing is heavy; for lint purposes we only need the project name
-# (and, when an exact pin is given, the version).  Anything more exotic is
+# (and, when an exact pin is given, the version). Anything more exotic is
 # accepted as "name only" — the subsequent PyPI lookup works off the latest
 # release, which is the right behaviour when the user hasn't pinned.
 _NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9_.\-]*)")
@@ -56,7 +56,7 @@ def _extract_dependencies(charm_dir: pathlib.Path) -> list[tuple[str, str | None
     """Collect ``(name, version, source_path)`` for each dependency.
 
     Reads ``pyproject.toml`` ``[project].dependencies`` and
-    ``requirements.txt`` if present.  Duplicate names across both files
+    ``requirements.txt`` if present. Duplicate names across both files
     are kept once (pyproject.toml wins for version information).
     """
     seen: dict[str, tuple[str, str | None, str]] = {}

@@ -70,7 +70,7 @@ fn get_str(m: &serde_yaml::Mapping, key: &str) -> Option<String> {
 }
 
 /// Best-effort: extract the body of `def <name>(...):` from a Python source
-/// by indent-following.  Returns `(body_text, def_line_1_based)`.  Used to
+/// by indent-following. Returns `(body_text, def_line_1_based)`. Used to
 /// avoid a heavy Python AST dependency in Rust — accurate enough for the
 /// keyword sweeps the per-function rules need.
 fn extract_function_body(source: &str, name: &str) -> Option<(String, usize)> {
@@ -329,7 +329,7 @@ fn check_pebble(ctx: &CharmContext) -> Vec<Diagnostic> {
     }
 
     // PEB003: Pebble layer service dicts missing override/command/startup.
-    // Scan dict literals containing a `services` key.  Best-effort regex:
+    // Scan dict literals containing a `services` key. Best-effort regex:
     // matches `'<svc>': { ... }` within a `services:` dict.
     let services_re =
         Regex::new(r#"['"]services['"]\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}"#).unwrap();
@@ -717,7 +717,7 @@ fn check_actions(ctx: &CharmContext) -> Vec<Diagnostic> {
     }
 
     // ACT006/ACT007: walk the charm sources for `*.observe(*.on.<event>_action,
-    // self.<handler>)` registrations.  The regex matches the canonical
+    // self.<handler>)` registrations. The regex matches the canonical
     // shape ops charms use; dynamic/subscript observers are intentionally
     // missed (better than risking a false positive).
     let observe_re =
@@ -757,7 +757,7 @@ fn check_actions(ctx: &CharmContext) -> Vec<Diagnostic> {
         }
 
         // ACT007: an observed action whose handler body never calls
-        // `set_results()` or `fail()` will hang until timeout.  We grep
+        // `set_results()` or `fail()` will hang until timeout. We grep
         // for the handler `def` and scan its body until the next `def`
         // at the same or shallower indent.
         let terminates_re = Regex::new(r"\.(?:set_results|fail)\s*\(").unwrap();
@@ -866,7 +866,7 @@ fn check_config_quality(ctx: &CharmContext) -> Vec<Diagnostic> {
         }
     }
 
-    // CFG004: declared but never read in src/.  Matches `config["X"]` or
+    // CFG004: declared but never read in src/. Matches `config["X"]` or
     // `config.get("X"`, the canonical access shapes; dynamic access via
     // getattr/iteration is intentionally missed.
     if !ctx.config_options.is_empty() {
@@ -1179,11 +1179,11 @@ fn check_doc_topic(ctx: &CharmContext, keyword: &str) -> bool {
 // ── LIB (Libraries) ─────────────────────────────────────────────────
 
 fn check_libraries(ctx: &CharmContext) -> Vec<Diagnostic> {
-    // Most charm libraries still require `charmcraft fetch-libs`.  A subset
+    // Most charm libraries still require `charmcraft fetch-libs`. A subset
     // has been lifted into the `canonical/charmlibs` monorepo and published
     // to PyPI under the `charmlibs-*` namespace; the import path also
-    // changes (`charms.foo.vN.bar` → `charmlibs.bar`).  See
-    // `design/UPSTREAM_AUDIT.md` for the audit log.  Values are
+    // changes (`charms.foo.vN.bar` → `charmlibs.bar`). See
+    // `design/UPSTREAM_AUDIT.md` for the audit log. Values are
     // (PyPI package, import hint shown to the user).
     let pypi_map: &[(&str, &str, &str)] = &[
         (
@@ -1274,7 +1274,7 @@ fn check_libraries(ctx: &CharmContext) -> Vec<Diagnostic> {
     }
 
     // LIB003/LIB004 — library metadata shape + breaking-change check over
-    // any `lib/charms/<charm>/v<N>/<name>.py` files.  Uses regex over the
+    // any `lib/charms/<charm>/v<N>/<name>.py` files. Uses regex over the
     // module-level `LIBID = "..."`, `LIBAPI = <int>`, `LIBPATCH = <int>`
     // assignments rather than a full Python AST.
     let lib_path_re = Regex::new(r"lib/charms/([^/]+)/v(\d+)/([^/]+)\.py$").unwrap();
