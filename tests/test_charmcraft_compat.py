@@ -152,7 +152,6 @@ class TestOpsMainCall:
         assert "CC004" not in {d.rule_id for d in report.diagnostics}
 
     def test_main_non_charm_suffix(self, tmp_charm: pathlib.Path):
-        # Class name does not end in 'Charm' — the old regex missed this.
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(
             tmp_charm,
