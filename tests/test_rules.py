@@ -870,6 +870,64 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestJujuRules:
+    """Tests for JUJU (Juju-ness / idiomatic ops) rules."""
+
+    def test_juju004_multi_role_bare_active_status_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "config": {"options": {"role": {"type": "string", "default": "a"}}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase):\n    def _r(self):\n        self.unit.status = ops.ActiveStatus()\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU004"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+
+    def test_juju004_multi_role_empty_string_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "peers": {"replicas": {"interface": "replicas"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            'from ops import ActiveStatus\nclass C:\n    def _r(self):\n        self.unit.status = ActiveStatus("")\n',
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU004"]
+        assert len(hits) == 1
+
+    def test_juju004_multi_role_with_message_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "config": {"options": {"mode": {"type": "string", "default": "a"}}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            'import ops\nclass C(ops.CharmBase):\n    def _r(self):\n        self.unit.status = ops.ActiveStatus("ready")\n',
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU004"]
+
+    def test_juju004_single_role_bare_active_status_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase):\n    def _r(self):\n        self.unit.status = ops.ActiveStatus()\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU004"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
