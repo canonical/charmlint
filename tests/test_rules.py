@@ -870,6 +870,47 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestJujuRules:
+    """Tests for JUJU (Juju-ness / idiomatic ops) rules."""
+
+    def _write_lib(self, charm_dir: pathlib.Path, ns: str, version: str = "v0") -> None:
+        lib_dir = charm_dir / "lib" / "charms" / ns / version
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "thing.py").write_text("# vendored lib\n")
+
+    def test_juju006_external_lib_no_charm_libs_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "my-charm"})
+        self._write_lib(tmp_charm, "other_charm")
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU006"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert hits[0].path == "charmcraft.yaml"
+
+    def test_juju006_external_lib_with_charm_libs_suppressed(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "my-charm",
+                "charm-libs": [{"lib": "other-charm.thing", "version": "0"}],
+            },
+        )
+        self._write_lib(tmp_charm, "other_charm")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU006"]
+
+    def test_juju006_only_own_charm_libs_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "my-charm"})
+        self._write_lib(tmp_charm, "my_charm")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU006"]
+
+    def test_juju006_no_lib_charms_dir_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "my-charm"})
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU006"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
