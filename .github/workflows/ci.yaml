@@ -12,9 +12,6 @@ permissions: {}
 jobs:
   python-lint:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: python
     steps:
       - uses: actions/checkout@v6.0.3
         with:
@@ -31,9 +28,6 @@ jobs:
 
   python-unit:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: python
     strategy:
       fail-fast: false
       matrix:
@@ -47,29 +41,3 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Unit tests
         run: uv run --group dev pytest --cov=charmlint --cov-report=term-missing
-
-  rust-lint:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@v6.0.3
-        with:
-          persist-credentials: false
-      - name: cargo fmt
-        run: cargo fmt --all -- --check
-      - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-  rust-test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@v6.0.3
-        with:
-          persist-credentials: false
-      - name: cargo test
-        run: cargo test --all-features
