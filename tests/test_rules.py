@@ -870,6 +870,76 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestJujuRules:
+    """Tests for JUJU (Juju-ness / idiomatic ops) rules."""
+
+    def test_juju010_secret_then_subprocess_with_variable_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\n"
+            "def handler(self):\n"
+            "    secret = self.model.get_secret(label='s')\n"
+            "    content = secret.get_content()\n"
+            "    token = content['token']\n"
+            "    subprocess.run(['curl', '-H', token])\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU010"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert "handler" in hits[0].message
+
+    def test_juju010_peek_content_with_popen_variable_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\n"
+            "def push(self, secret):\n"
+            "    data = secret.peek_content()\n"
+            "    pw = data['password']\n"
+            "    subprocess.Popen(['mysql', '-p', pw])\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU010"]
+        assert len(hits) == 1
+
+    def test_juju010_get_content_only_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "def handler(self):\n"
+            "    secret = self.model.get_secret(label='s')\n"
+            "    content = secret.get_content()\n"
+            "    return content\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU010"]
+
+    def test_juju010_subprocess_only_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\ndef handler(self, value):\n    subprocess.run(['echo', value])\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU010"]
+
+    def test_juju010_subprocess_all_literal_list_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\n"
+            "def handler(self):\n"
+            "    secret = self.model.get_secret(label='s')\n"
+            "    content = secret.get_content()\n"
+            "    subprocess.run(['ls', '-la', '/tmp'])\n"
+            "    return content\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU010"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
