@@ -1,17 +1,16 @@
 """PEP 740 attestation checks against the PyPI simple API.
 
-A small, dependency-free helper shared by ``charmlint`` and ``quickpack``.
-It answers one question per package: does PyPI hold a verified provenance
-attestation for this distribution?
+A small, dependency-free helper. It answers one question per package:
+does PyPI hold a verified provenance attestation for this distribution?
 
 We rely on PyPI's simple-index v1 JSON, which exposes a ``provenance`` URL
 for each file that was uploaded with a PEP 740 attestation validated by
-PyPI.  Existence of that URL is treated as "attested"; absence means
+PyPI. Existence of that URL is treated as "attested"; absence means
 either the project opted out of attestations or the upload pre-dated
 PEP 740 support.
 
 This module never downloads or cryptographically re-verifies the
-attestation; for that, see the upstream ``pypi-attestations`` CLI.  The
+attestation; for that, see the upstream ``pypi-attestations`` CLI. The
 goal here is a fast, check-at-build-time signal that deters unsigned
 dependencies in the hot paths where Cantrip packs charms.
 
@@ -20,7 +19,7 @@ Must-have packages
 
 Some packages are known to publish attestations via trusted publishers
 (Canonical's GitHub Actions for ops/ops-scenario/ops-tracing/jubilant,
-and the ``charmlibs-*`` namespace).  These are treated as hard failures
+and the ``charmlibs-*`` namespace). These are treated as hard failures
 when unattested so that a misconfigured mirror, a typosquat, or a
 compromised upload path is caught immediately.
 """
@@ -33,21 +32,19 @@ import threading
 import urllib.error
 import urllib.request
 
-# ---------------------------------------------------------------------------
 # Name normalisation and must-have matching
-# ---------------------------------------------------------------------------
 
 _NORMALISE_RE = re.compile(r"[-_.]+")
 
 # Patterns use PEP-503-normalised names (lower-case, ``-`` separated).
 # A trailing ``-*`` is a prefix wildcard; otherwise exact match.
-MUST_HAVE_PATTERNS: tuple[str, ...] = (
+MUST_HAVE_PATTERNS = frozenset{(
     "ops",
     "ops-scenario",
     "ops-tracing",
     "jubilant",
     "charmlibs-*",
-)
+})
 
 
 def normalise_name(name: str) -> str:
@@ -63,18 +60,16 @@ def normalise_name(name: str) -> str:
 def is_must_have(name: str) -> bool:
     """Return True if *name* is one of the packages we require to be attested."""
     normalised = normalise_name(name)
+    if normalised in MUST_HAVE_PATTERNS:
+        return True
     for pattern in MUST_HAVE_PATTERNS:
         if pattern.endswith("-*"):
             if normalised.startswith(pattern[:-1]):
                 return True
-        elif normalised == pattern:
-            return True
     return False
 
 
-# ---------------------------------------------------------------------------
 # PyPI simple-API provenance check
-# ---------------------------------------------------------------------------
 
 
 class ProvenanceStatus(enum.StrEnum):
@@ -96,11 +91,10 @@ class ProvenanceResult:
     detail: str | None = None  # Free-text reason for UNKNOWN / UNATTESTED.
 
 
-# Process-wide cache keyed by (normalised name, version or None).  Avoids
+# Process-wide cache keyed by (normalised name, version or None). Avoids
 # hammering PyPI when a single lint run inspects many dependencies, and
-# makes tests easier to reason about.  Threading lock guards re-entry
-# from parallel callers (charmlint rules are serial today, but we do not
-# want a future parallel driver to double-fetch).
+# makes tests easier to reason about. Threading lock guards re-entry
+# from parallel callers.
 _CACHE: dict[tuple[str, str | None], ProvenanceResult] = {}
 _CACHE_LOCK = threading.Lock()
 
@@ -217,8 +211,7 @@ def _files_for_version(files: list[dict], version: str | None) -> list[dict]:
     if version is None:
         return files
 
-    matching = [f for f in files if _file_matches_version(f.get("filename", ""), version)]
-    return matching
+    return [f for f in files if _file_matches_version(f.get("filename", ""), version)]
 
 
 _FILENAME_VERSION_RE = re.compile(
