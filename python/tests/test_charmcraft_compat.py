@@ -3,7 +3,7 @@
 import pathlib
 import stat
 
-from charmlint.linter import lint
+from charmlint._linter import lint
 from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 

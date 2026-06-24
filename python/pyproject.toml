@@ -36,7 +36,7 @@ dev = [
 ]
 
 [project.scripts]
-charmlint = "charmlint.cli:cli_entry"
+charmlint = "charmlint._cli:cli_entry"
 
 [project.urls]
 Homepage = "https://github.com/tonyandrewmeyer/charmlint"

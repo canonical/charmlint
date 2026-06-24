@@ -16,7 +16,7 @@ from typing import Any
 
 import yaml
 
-from . import models
+from . import _models as models
 
 _CONFIG_FILENAME = ".charmlint.yaml"
 

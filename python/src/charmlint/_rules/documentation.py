@@ -1,6 +1,6 @@
 """Documentation rules — README and docs presence."""
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 

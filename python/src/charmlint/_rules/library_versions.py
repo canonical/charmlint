@@ -21,7 +21,7 @@ import ast
 import pathlib
 import re
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 # `lib/charms/<charm>/v<N>/<name>.py`

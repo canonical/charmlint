@@ -2,7 +2,7 @@
 
 import abc
 
-from .. import models
+from .. import _models as models
 
 # Global rule registry — populated by Rule.__init_subclass__.
 _RULES: dict[str, "Rule"] = {}

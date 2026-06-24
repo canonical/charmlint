@@ -2,7 +2,7 @@
 
 import re
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 _SECRET_CONFIG_KEYWORDS = {"password", "secret", "token", "api-key", "api_key", "credential"}

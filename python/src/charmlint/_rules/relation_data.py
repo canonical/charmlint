@@ -20,7 +20,7 @@ import ast
 import pathlib
 import re
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 # Direct subscript reads that can raise on None app/unit.

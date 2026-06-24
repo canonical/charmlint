@@ -2,7 +2,7 @@
 
 import re
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 

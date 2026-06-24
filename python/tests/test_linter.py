@@ -1,12 +1,12 @@
-"""Tests for charmlint.linter."""
+"""Tests for charmlint._linter."""
 
 import pathlib
 
 import pytest
 
-from charmlint.config import LintConfig
-from charmlint.linter import _category_of, build_context, lint
-from charmlint.models import Severity
+from charmlint._config import LintConfig
+from charmlint._linter import _category_of, build_context, lint
+from charmlint._models import Severity
 from tests.conftest import (
     make_full_charm,
     write_charm_source,
@@ -171,7 +171,7 @@ class TestCategoryOf:
         # Every registered rule's ID must extract to a non-empty
         # category string — guard against future IDs that drift from
         # the convention.
-        from charmlint.rules import get_all_rules
+        from charmlint._rules import get_all_rules
 
         for rule_id in get_all_rules():
             category = _category_of(rule_id)

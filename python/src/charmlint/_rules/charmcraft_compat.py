@@ -9,7 +9,7 @@ import os
 import re
 from typing import Any
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 
