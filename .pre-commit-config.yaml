@@ -23,16 +23,18 @@ repos:
     hooks:
       - id: ruff-check
         name: ruff check
-        entry: bash -c 'cd python && uv run --group dev -- ruff check --fix --exit-non-zero-on-fix "$@"' --
+        entry: bash -c 'cd python && uv run --group dev -- ruff check --fix --exit-non-zero-on-fix src tests'
         language: system
         files: ^python/.*\.py$
+        pass_filenames: false
         require_serial: true
 
       - id: ruff-format
         name: ruff format
-        entry: bash -c 'cd python && uv run --group dev -- ruff format "$@"' --
+        entry: bash -c 'cd python && uv run --group dev -- ruff format src tests'
         language: system
         files: ^python/.*\.py$
+        pass_filenames: false
         require_serial: true
 
       - id: ty

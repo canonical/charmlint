@@ -37,13 +37,14 @@ fn collect_python_files(charm_dir: &Path) -> Vec<PathBuf> {
     for subdir in &["src", "lib"] {
         let d = charm_dir.join(subdir);
         if d.is_dir() {
-            for entry in WalkDir::new(&d).follow_links(true).sort_by_file_name() {
-                if let Ok(e) = entry {
-                    if e.file_type().is_file()
-                        && e.path().extension().map_or(false, |ext| ext == "py")
-                    {
-                        files.push(e.path().to_path_buf());
-                    }
+            for e in WalkDir::new(&d)
+                .follow_links(true)
+                .sort_by_file_name()
+                .into_iter()
+                .flatten()
+            {
+                if e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "py") {
+                    files.push(e.path().to_path_buf());
                 }
             }
         }
@@ -68,28 +69,20 @@ fn check_tests(charm_dir: &Path) -> (bool, bool) {
     let has_unit = unit_dir.is_dir()
         && std::fs::read_dir(&unit_dir)
             .map(|entries| {
-                entries
-                    .flatten()
-                    .any(|e| {
-                        e.file_name()
-                            .to_string_lossy()
-                            .starts_with("test_")
-                            && e.path().extension().map_or(false, |ext| ext == "py")
-                    })
+                entries.flatten().any(|e| {
+                    e.file_name().to_string_lossy().starts_with("test_")
+                        && e.path().extension().is_some_and(|ext| ext == "py")
+                })
             })
             .unwrap_or(false);
 
     let has_integration = integration_dir.is_dir()
         && std::fs::read_dir(&integration_dir)
             .map(|entries| {
-                entries
-                    .flatten()
-                    .any(|e| {
-                        e.file_name()
-                            .to_string_lossy()
-                            .starts_with("test_")
-                            && e.path().extension().map_or(false, |ext| ext == "py")
-                    })
+                entries.flatten().any(|e| {
+                    e.file_name().to_string_lossy().starts_with("test_")
+                        && e.path().extension().is_some_and(|ext| ext == "py")
+                })
             })
             .unwrap_or(false);
 
@@ -155,7 +148,7 @@ pub fn build_context(charm_dir: &Path) -> CharmContext {
             if let Some(opts) = data.get("options") {
                 value_to_map(opts)
             } else {
-                data.into_iter().map(|(k, v)| (k, v)).collect()
+                data.into_iter().collect()
             }
         }
     } else {
@@ -163,7 +156,7 @@ pub fn build_context(charm_dir: &Path) -> CharmContext {
         if let Some(opts) = data.get("options") {
             value_to_map(opts)
         } else {
-            data.into_iter().map(|(k, v)| (k, v)).collect()
+            data.into_iter().collect()
         }
     };
 

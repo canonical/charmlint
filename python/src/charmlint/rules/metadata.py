@@ -11,7 +11,13 @@ from . import Rule
 # charmcraft.yaml (title, links.{documentation,issues,source}) and legacy
 # metadata.yaml (display-name, docs, issues, source) both satisfy the rule.
 _METADATA_CHECKS: list[tuple[str, str, str, models.Severity, tuple[str, ...]]] = [
-    ("name", "META001", "Missing 'name' field in charm metadata", models.Severity.ERROR, ("name",)),
+    (
+        "name",
+        "META001",
+        "Missing 'name' field in charm metadata",
+        models.Severity.ERROR,
+        ("name",),
+    ),
     (
         "display-name",
         "META002",
