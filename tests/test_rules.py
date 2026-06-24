@@ -870,6 +870,53 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestOperationalRules:
+    """Tests for the OPS (operational readiness) rules."""
+
+    def test_ops002_containers_without_restart_action_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"workload": {"resource": "workload-image"}},
+                "actions": {"pause": {"description": "Pause"}},
+            },
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "OPS002"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+
+    def test_ops002_restart_action_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"workload": {"resource": "workload-image"}},
+                "actions": {"restart": {"description": "Restart workload"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS002"]
+
+    def test_ops002_replan_action_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"workload": {"resource": "workload-image"}},
+                "actions": {"force-replan": {"description": "Replan"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS002"]
+
+    def test_ops002_no_containers_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS002"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
