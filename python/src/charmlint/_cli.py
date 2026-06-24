@@ -112,7 +112,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        help="Path to .charmlint.yaml config file",
+        help="Path to a TOML config file (pyproject.toml, charmlint.toml, or .charmlint.toml)",
     )
     parser.add_argument(
         "--strict",
