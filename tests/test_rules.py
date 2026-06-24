@@ -916,6 +916,94 @@ class TestCorrectnessRules:
         report = lint(tmp_charm)
         assert not [d for d in report.diagnostics if d.rule_id == "CORR001"]
 
+    def test_corr007_self_method_call_in_init_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            "    def __init__(self, *args, **kwargs):\n"
+            "        super().__init__(*args, **kwargs)\n"
+            "        self._configure_workload()\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "CORR007"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.ERROR
+
+    def test_corr007_unit_status_assignment_in_init_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            "    def __init__(self, *args, **kwargs):\n"
+            "        super().__init__(*args, **kwargs)\n"
+            "        self.unit.status = ops.ActiveStatus()\n",
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report.diagnostics if d.rule_id == "CORR007"]
+
+    def test_corr007_config_branch_in_init_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            "    def __init__(self, *args, **kwargs):\n"
+            "        super().__init__(*args, **kwargs)\n"
+            "        if self.config['x']:\n"
+            "            pass\n",
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report.diagnostics if d.rule_id == "CORR007"]
+
+    def test_corr007_clean_init_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            '    """Docstring."""\n'
+            "    def __init__(self, *args, **kwargs):\n"
+            '        """Init docstring."""\n'
+            "        super().__init__(*args, **kwargs)\n"
+            "        self.framework.observe(self.on.install, self._on_install)\n"
+            "        self.helper = SomeHelper(self)\n"
+            "        self.other: SomeHelper = SomeHelper(self)\n"
+            "    def _on_install(self, event):\n"
+            "        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR007"]
+
+    def test_corr007_ops_charmbase_inheritance_via_alias(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import CharmBase\n"
+            "class MyCharm(CharmBase):\n"
+            "    def __init__(self, *args, **kwargs):\n"
+            "        super().__init__(*args, **kwargs)\n"
+            "        self._configure_workload()\n",
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report.diagnostics if d.rule_id == "CORR007"]
+
+    def test_corr007_ignores_lib_directory(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        lib = tmp_charm / "lib" / "charms" / "other" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "thing.py").write_text(
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            "    def __init__(self, *args, **kwargs):\n"
+            "        super().__init__(*args, **kwargs)\n"
+            "        self._configure_workload()\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR007"]
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
