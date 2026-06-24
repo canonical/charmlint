@@ -65,6 +65,7 @@ from . import (  # noqa: E402, F401
     attestations,
     charmcraft_compat,
     config_quality,
+    correctness,
     deprecated,
     documentation,
     libraries,
