@@ -870,6 +870,111 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestJujuRules:
+    """Tests for JUJU (Juju-ness / idiomatic ops) rules."""
+
+    def test_juju005_collect_app_status_no_leader_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            """\
+import ops
+
+class C(ops.CharmBase):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.framework.observe(self.on.collect_app_status, self._on_collect_app_status)
+
+    def _on_collect_app_status(self, event):
+        event.add_status(ops.ActiveStatus())
+""",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU005"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.ERROR
+        assert "_on_collect_app_status" in hits[0].message
+
+    def test_juju005_with_leader_guard_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            """\
+import ops
+
+class C(ops.CharmBase):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.framework.observe(self.on.collect_app_status, self._on_collect_app_status)
+
+    def _on_collect_app_status(self, event):
+        if not self.unit.is_leader():
+            return
+        event.add_status(ops.ActiveStatus())
+""",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU005"]
+
+    def test_juju005_handler_without_status_mutation_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            """\
+import ops
+
+class C(ops.CharmBase):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.framework.observe(self.on.collect_app_status, self._on_collect_app_status)
+
+    def _on_collect_app_status(self, event):
+        pass
+""",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU005"]
+
+    def test_juju005_non_collect_handler_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            """\
+import ops
+
+class C(ops.CharmBase):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.framework.observe(self.on.collect_unit_status, self._on_collect_unit_status)
+
+    def _on_collect_unit_status(self, event):
+        event.add_status(ops.ActiveStatus())
+""",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU005"]
+
+    def test_juju005_self_app_status_assignment_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            """\
+import ops
+
+class C(ops.CharmBase):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.framework.observe(self.on.collect_app_status, self._on_collect_app_status)
+
+    def _on_collect_app_status(self, event):
+        self.app.status = ops.ActiveStatus()
+""",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU005"]
+        assert len(hits) == 1
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
