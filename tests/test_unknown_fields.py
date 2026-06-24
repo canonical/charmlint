@@ -89,6 +89,19 @@ class TestUnknownTopLevelFields:
         # CC001 may fire for deprecated series, but CC005 should not.
         assert "CC005" not in {d.rule_id for d in report.diagnostics}
 
+    def test_cc005_path_is_charmcraft_yaml(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "sumary": "oops"})
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert cc005[0].path == "charmcraft.yaml"
+
+    def test_cc005_path_is_metadata_yaml_for_legacy_charms(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "metadata.yaml").write_text("name: test\nsumary: oops\n")
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert len(cc005) == 1
+        assert cc005[0].path == "metadata.yaml"
+
 
 class TestUnknownResourceFields:
     """Tests for CC006 — unrecognised keys in resource definitions."""

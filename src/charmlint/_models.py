@@ -58,6 +58,7 @@ class CharmContext:
     """All the data a rule needs, loaded once by the linter engine."""
 
     charm_dir: pathlib.Path
+    metadata_source: str = "charmcraft.yaml"
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
     actions: dict[str, Any] = dataclasses.field(default_factory=dict)
     config_options: dict[str, Any] = dataclasses.field(default_factory=dict)

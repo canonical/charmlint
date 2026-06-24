@@ -49,6 +49,25 @@ class TestBuildContext:
         assert ctx.has_tests_unit is False
         assert ctx.has_tests_integration is False
 
+    def test_metadata_source_charmcraft_yaml(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        ctx = build_context(tmp_charm)
+        assert ctx.metadata_source == "charmcraft.yaml"
+
+    def test_metadata_source_metadata_yaml(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "metadata.yaml").write_text("name: legacy-charm\n")
+        ctx = build_context(tmp_charm)
+        assert ctx.metadata_source == "metadata.yaml"
+
+    def test_metadata_source_metadata_yaml_when_charmcraft_yaml_absent(
+        self, tmp_charm: pathlib.Path
+    ):
+        # When charmcraft.yaml is absent (or empty), metadata_source is
+        # "metadata.yaml" regardless of whether metadata.yaml exists.
+        # The linter emits a FATAL before rules run when both are absent.
+        ctx = build_context(tmp_charm)
+        assert ctx.metadata_source == "metadata.yaml"
+
 
 class TestLintFiltering:
     """Tests for config-based rule filtering."""
