@@ -146,7 +146,35 @@ class TestOpsMainCall:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(
             tmp_charm,
-            "import ops\n\nclass MyCharm(ops.CharmBase): pass\n\nmain(MyCharm)\n",
+            "from ops import main, CharmBase\n\nclass MyCharm(CharmBase): pass\n\nmain(MyCharm)\n",
         )
         report = lint(tmp_charm)
         assert "CC004" not in {d.rule_id for d in report.diagnostics}
+
+    def test_main_non_charm_suffix(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import main, CharmBase\n\nclass KafkaApp(CharmBase): pass\n\nmain(KafkaApp)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CC004" not in {d.rule_id for d in report.diagnostics}
+
+    def test_main_with_keyword_args(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import main, CharmBase\n\nclass MyCharm(CharmBase): pass\n\n"
+            "main(MyCharm, use_juju_for_storage=True)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CC004" not in {d.rule_id for d in report.diagnostics}
+
+    def test_diagnostic_includes_path(self, tmp_charm: pathlib.Path):
+        # The diagnostic should point to the file that imports ops.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\nclass MyCharm(ops.CharmBase): pass\n")
+        report = lint(tmp_charm)
+        cc004 = [d for d in report.diagnostics if d.rule_id == "CC004"]
+        assert cc004, "Expected CC004 diagnostic"
+        assert cc004[0].path is not None

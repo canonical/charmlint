@@ -155,23 +155,39 @@ class OpsMainCall(Rule):
         # Only applies to charms that import ops.
         has_ops = False
         entrypoint_content = ""
+        entrypoint_file = None
         for path, content in context.python_sources.items():
             if "lib" in path.parts:
                 continue
             if re.search(r"\bimport\s+ops\b|from\s+ops\b", content):
                 has_ops = True
                 entrypoint_content += content + "\n"
+                if entrypoint_file is None:
+                    entrypoint_file = path
 
         if not has_ops:
             return []
 
         # Check for ops.main() call.
-        if re.search(r"ops\.main\s*\(|main\s*\(\s*\w+Charm\s*\)", entrypoint_content):
+        if re.search(r"ops\.main\s*\(", entrypoint_content):
             return []
 
+        # Also accept a bare main() call when main was imported directly from ops
+        # (e.g. `from ops import main` then `main(MyCharm, use_juju_for_storage=True)`).
+        if re.search(
+            r"from\s+ops\b[^#\n]*\bimport\b[^#\n]*\bmain\b", entrypoint_content
+        ) and re.search(r"\bmain\s*\(", entrypoint_content):
+            return []
+
+        path_str = (
+            str(entrypoint_file.relative_to(context.charm_dir))
+            if entrypoint_file is not None
+            else None
+        )
         return [
             self.diagnostic(
                 "Charm source imports ops but does not call ops.main()",
+                path=path_str,
                 fix_hint="Add ops.main(MyCharm) at the end of the entrypoint",
             )
         ]
