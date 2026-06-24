@@ -1,11 +1,20 @@
 """Security rules — secrets management, TLS support."""
 
+import ast
 import re
 
 from .. import _models as models
 from . import Rule
 
 _SECRET_CONFIG_KEYWORDS = {"password", "secret", "token", "api-key", "api_key", "credential"}
+
+# Variable-name pattern used by SEC004 to flag sensitive values interpolated
+# into logger calls.  Matches the *name* of the bound variable, not its value.
+_SENSITIVE_NAME_RE = re.compile(
+    r"password|secret|token|api[-_]?key|credential|private[-_]?key",
+    re.IGNORECASE,
+)
+_LOG_LEVELS = frozenset({"debug", "info", "warning", "warn", "error", "exception", "critical"})
 
 
 class SecretInPlainConfig(Rule):
@@ -88,3 +97,68 @@ class NoTLSSupport(Rule):
                 fix_hint="Add a tls-certificates relation for encryption in transit",
             )
         ]
+
+
+class SensitiveValueInLogs(Rule):
+    """Flag logger calls that interpolate variables with sensitive-looking names.
+
+    The check is name-based (speculative) — it inspects the *name* of the bound
+    variable interpolated into the f-string, not its runtime value.  This keeps
+    false positives bounded: an f-string like ``f"got {password}"`` is flagged,
+    while ``f"got {something}"`` (no sensitive keyword in the name) is not.
+    Plain string literals such as ``logger.info("plain password")`` are ignored
+    because no variable is being interpolated.  Charm libraries under ``lib/``
+    are skipped — they aren't this charm's code to fix.
+    """
+
+    id = "SEC004"
+    name = "sensitive-value-in-logs"
+    description = "Logger call interpolates a variable whose name suggests a secret"
+    default_severity = models.Severity.ERROR
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for path, content in context.python_sources.items():
+            if "lib" in path.parts:
+                continue
+            try:
+                tree = ast.parse(content)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                if not (
+                    isinstance(func, ast.Attribute)
+                    and func.attr in _LOG_LEVELS
+                    and isinstance(func.value, ast.Name)
+                    and func.value.id == "logger"
+                ):
+                    continue
+                if not node.args:
+                    continue
+                first = node.args[0]
+                if not isinstance(first, ast.JoinedStr):
+                    continue
+                for piece in first.values:
+                    if not isinstance(piece, ast.FormattedValue):
+                        continue
+                    inner = piece.value
+                    if not isinstance(inner, ast.Name):
+                        continue
+                    if _SENSITIVE_NAME_RE.search(inner.id):
+                        diagnostics.append(
+                            self.diagnostic(
+                                f"Logger call interpolates variable '{inner.id}' "
+                                f"whose name suggests a secret — value may be "
+                                f"written to logs",
+                                path=str(path),
+                                line=node.lineno,
+                                fix_hint=(
+                                    "Avoid logging secret values; log a redacted "
+                                    "placeholder or omit the field entirely"
+                                ),
+                            )
+                        )
+        return diagnostics

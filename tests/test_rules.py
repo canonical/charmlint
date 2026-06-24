@@ -834,6 +834,57 @@ class TestSecurityRules:
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
 
+    def test_sec004_password_in_log_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "def f(password):\n"
+            "    logger.info(f'got {password}')\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC004"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.ERROR
+
+    def test_sec004_innocent_name_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "def f(something):\n"
+            "    logger.info(f'got {something}')\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC004" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec004_plain_string_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "logger.info('plain password text')\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC004" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec004_lib_directory_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n")
+        lib_dir = tmp_charm / "lib" / "charms" / "x" / "v0"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "y.py").write_text(
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "def f(password):\n"
+            "    logger.info(f'got {password}')\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC004" not in {d.rule_id for d in report.diagnostics}
+
 
 class TestDocumentationRules:
     """Tests for DOC* rules (README and docs/ presence)."""
