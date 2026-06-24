@@ -870,6 +870,65 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestOperationalRules:
+    """Tests for the OPS (operational readiness) rules."""
+
+    def test_ops001_containers_without_diag_action_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"workload": {"resource": "workload-image"}},
+                "actions": {"pause": {"description": "Pause"}},
+            },
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "OPS001"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+
+    def test_ops001_packages_without_diag_action_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "packages": ["nginx"],
+                "actions": {"pause": {"description": "Pause"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert any(d.rule_id == "OPS001" for d in report.diagnostics)
+
+    def test_ops001_diag_action_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"workload": {"resource": "workload-image"}},
+                "actions": {"get-debug-log": {"description": "Collect logs"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS001"]
+
+    def test_ops001_status_action_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"workload": {"resource": "workload-image"}},
+                "actions": {"show-status": {"description": "Workload status"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS001"]
+
+    def test_ops001_no_workload_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS001"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 

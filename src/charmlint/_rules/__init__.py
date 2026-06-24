@@ -71,6 +71,7 @@ from . import (  # noqa: E402, F401
     library_versions,
     metadata,
     observability,
+    operational,
     pebble,
     relation_data,
     security,
