@@ -870,6 +870,102 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestFeatureRules:
+    """Tests for the FEAT (expected features) rules."""
+
+    def test_feat007_loki_relation_without_instantiation_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "requires": {"logging": {"interface": "loki_push_api"}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase): pass\nops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "FEAT007"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert hits[0].path is None
+        assert hits[0].line is None
+
+    def test_feat007_logforwarder_instantiation_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "requires": {"logging": {"interface": "loki_push_api"}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "from charms.loki_k8s.v1.loki_push_api import LogForwarder\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *a):\n"
+            "        super().__init__(*a)\n"
+            "        self._logs = LogForwarder(self)\n"
+            "ops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT007"]
+
+    def test_feat007_logproxyconsumer_instantiation_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "requires": {"logging": {"interface": "loki_push_api"}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "from charms.loki_k8s.v0.loki_push_api import LogProxyConsumer\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *a):\n"
+            "        super().__init__(*a)\n"
+            "        self._logs = LogProxyConsumer(self, log_files=['/x'])\n"
+            "ops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT007"]
+
+    def test_feat007_no_loki_relation_does_not_fire(self, tmp_charm: pathlib.Path):
+        # No loki_push_api relation at all — COS003 territory, not FEAT007.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase): pass\nops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT007"]
+
+    def test_feat007_lib_instantiation_does_not_suppress(self, tmp_charm: pathlib.Path):
+        # An instantiation inside lib/ (the helper's own source) does not count.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "requires": {"logging": {"interface": "loki_push_api"}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase): pass\nops.main(C)\n",
+        )
+        lib = tmp_charm / "lib" / "charms" / "loki_k8s" / "v1"
+        lib.mkdir(parents=True)
+        (lib / "loki_push_api.py").write_text(
+            "class LogForwarder:\n    def __init__(self, charm): pass\n_x = LogForwarder(None)\n",
+        )
+        report = lint(tmp_charm)
+        assert any(d.rule_id == "FEAT007" for d in report.diagnostics)
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
