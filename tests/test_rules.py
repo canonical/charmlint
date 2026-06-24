@@ -870,6 +870,61 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestJujuRules:
+    """Tests for JUJU (Juju-ness / idiomatic ops) rules."""
+
+    def test_juju009_fstring_in_logger_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "def f(x):\n"
+            '    logger.info(f"value is {x}")\n',
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU009"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert hits[0].line == 4
+
+    def test_juju009_lazy_percent_format_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "def f(x):\n"
+            '    logger.info("value is %s", x)\n',
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU009"]
+
+    def test_juju009_str_format_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "def f(x):\n"
+            '    logger.info("value is {}".format(x))\n',
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU009"]
+
+    def test_juju009_plain_string_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import logging\n"
+            "logger = logging.getLogger(__name__)\n"
+            "def f():\n"
+            '    logger.info("plain")\n',
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU009"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
