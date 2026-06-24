@@ -870,6 +870,33 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestOperationalRules:
+    """Tests for the OPS (operational readiness) rules."""
+
+    def test_ops003_missing_issue_template_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "OPS003"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+
+    def test_ops003_issue_template_directory_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        template_dir = tmp_charm / ".github" / "ISSUE_TEMPLATE"
+        template_dir.mkdir(parents=True)
+        (template_dir / "bug_report.md").write_text("---\nname: Bug\n---\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS003"]
+
+    def test_ops003_issue_template_file_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        github_dir = tmp_charm / ".github"
+        github_dir.mkdir()
+        (github_dir / "ISSUE_TEMPLATE.md").write_text("Describe the bug...\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS003"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
