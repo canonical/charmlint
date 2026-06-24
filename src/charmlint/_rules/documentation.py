@@ -77,9 +77,9 @@ def _check_doc_topic(
     if keyword in context.readme_content.lower():
         return []
 
-    # Check the charm's own docs/, then walk up to a repo root (looking for
-    # .git) so monorepo charms that share a top-level docs/ tree aren't
-    # flagged for every topic.
+    # Check only the charm's own docs/ directory. Walking up to ancestor
+    # directories causes false negatives in monorepos where a sibling charm's
+    # docs/ tree could satisfy a check for a charm with no such documentation.
     for docs_dir in _candidate_docs_dirs(context.charm_dir):
         if not docs_dir.is_dir():
             continue
@@ -95,16 +95,5 @@ def _check_doc_topic(
 
 
 def _candidate_docs_dirs(charm_dir):
-    """Yield docs/ candidates: the charm dir, then ancestor dirs up to a repo root."""
-    seen = set()
-    current = charm_dir.resolve()
-    yield current / "docs"
-    seen.add(current)
-    # Walk up until we hit the filesystem root or a .git marker (inclusive).
-    for parent in current.parents:
-        if parent in seen:
-            break
-        seen.add(parent)
-        yield parent / "docs"
-        if (parent / ".git").exists():
-            break
+    """Yield docs/ candidates: only the charm's own docs/ directory."""
+    yield charm_dir.resolve() / "docs"

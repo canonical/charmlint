@@ -838,8 +838,10 @@ class TestSecurityRules:
 class TestDocumentationRules:
     """Tests for DOC* rules (README and docs/ presence)."""
 
-    def test_monorepo_shared_docs_satisfy_doc_topics(self, tmp_path: pathlib.Path):
+    def test_monorepo_ancestor_docs_do_not_satisfy_doc_topics(self, tmp_path: pathlib.Path):
         # Monorepo layout: <repo>/.git, <repo>/docs/, <repo>/charms/<name>/.
+        # Ancestor docs/ must NOT suppress DOC rules for a charm that has no
+        # docs of its own — otherwise a sibling charm's docs cause false negatives.
         repo = tmp_path / "repo"
         (repo / ".git").mkdir(parents=True)
         (repo / "docs").mkdir()
@@ -847,6 +849,19 @@ class TestDocumentationRules:
         (repo / "docs" / "troubleshoot.md").write_text("# Troubleshooting\n")
         charm_dir = repo / "charms" / "alpha"
         (charm_dir / "src").mkdir(parents=True)
+        write_charmcraft_yaml(charm_dir, {"name": "alpha"})
+        report = lint(charm_dir)
+        ids = {d.rule_id for d in report.diagnostics}
+        assert "DOC002" in ids
+        assert "DOC005" in ids
+
+    def test_charm_own_docs_satisfy_doc_topics(self, tmp_path: pathlib.Path):
+        # A charm's own docs/ directory should still satisfy DOC topic checks.
+        charm_dir = tmp_path / "alpha"
+        (charm_dir / "src").mkdir(parents=True)
+        (charm_dir / "docs").mkdir()
+        (charm_dir / "docs" / "install.md").write_text("# Installation\n\nrun foo")
+        (charm_dir / "docs" / "troubleshoot.md").write_text("# Troubleshooting\n")
         write_charmcraft_yaml(charm_dir, {"name": "alpha"})
         report = lint(charm_dir)
         ids = {d.rule_id for d in report.diagnostics}
