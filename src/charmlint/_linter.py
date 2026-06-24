@@ -10,6 +10,10 @@ import yaml
 from . import _config, _rules
 from . import _models as models
 
+# Use the libyaml-backed C loader when available — it's ~10× faster than
+# the pure-Python SafeLoader and matches what ops does internally.
+_SafeLoader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 # Rule IDs follow ``<UPPERCASE LETTERS><DIGITS>`` (e.g. ``COS001``,
 # ``TEST003``). The category prefix is the leading letter run.
 _RULE_ID_PATTERN = re.compile(r"^([A-Z]+)([0-9]+)$")
@@ -58,7 +62,7 @@ def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
         return {}
     try:
         with path.open() as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=_SafeLoader)
     except yaml.YAMLError as exc:
         raise _YamlParseError(path, str(exc)) from exc
     except OSError:
