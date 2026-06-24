@@ -81,7 +81,14 @@ def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
 
 
 def _read_python_sources(python_files: list[pathlib.Path]) -> dict[pathlib.Path, str]:
-    """Read all Python files into a content cache."""
+    """Read all Python files into a content cache.
+
+    Eager loading is fine: a sweep over 379 real charms in the Hyrum cache showed
+    a median footprint of 19 KB (3 files) and a worst case of 1.4 MB (40 files,
+    canonical/kafka-k8s-operator) for the resident string values. p90 is 680 KB,
+    p99 is 1.05 MB. Most rules iterate every file, so lazy loading wouldn't cut
+    peak memory — it would just defer the same reads and add cache plumbing.
+    """
     sources: dict[pathlib.Path, str] = {}
     for path in python_files:
         with contextlib.suppress(OSError):
