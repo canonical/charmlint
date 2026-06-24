@@ -834,6 +834,96 @@ class TestSecurityRules:
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
 
+    def test_sec006_machine_charm_urlopen_without_hashlib_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import urllib.request\n"
+            "def install():\n"
+            "    urllib.request.urlopen('https://example.com/x.tar.gz')\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC006"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_sec006_hashlib_in_same_function_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import hashlib\n"
+            "import urllib.request\n"
+            "def install():\n"
+            "    data = urllib.request.urlopen('https://example.com/x').read()\n"
+            "    digest = hashlib.sha256(data).hexdigest()\n"
+            "    assert digest == 'abc'\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC006" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec006_k8s_charm_with_containers_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"workload": {"resource": "workload-image"}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import urllib.request\n"
+            "def install():\n"
+            "    urllib.request.urlopen('https://example.com/x')\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC006" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec006_requests_get_without_check_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import requests\ndef fetch():\n    requests.get('https://example.com/x')\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC006"]
+        assert len(hits) == 1
+
+    def test_sec006_wget_subprocess_without_check_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\n"
+            "def install():\n"
+            "    subprocess.run(['wget', 'https://example.com/x'])\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC006"]
+        assert len(hits) == 1
+
+    def test_sec006_ignores_lib_directory(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        lib = tmp_charm / "lib" / "charms" / "other" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "thing.py").write_text(
+            "import urllib.request\n"
+            "def install():\n"
+            "    urllib.request.urlopen('https://example.com/x')\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC006" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec006_sha256sum_subprocess_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import subprocess\n"
+            "def install():\n"
+            "    subprocess.run(['wget', 'https://example.com/x'])\n"
+            "    subprocess.run(['sha256sum', '-c', 'sums.txt'], check=True)\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC006" not in {d.rule_id for d in report.diagnostics}
+
 
 class TestDocumentationRules:
     """Tests for DOC* rules (README and docs/ presence)."""
