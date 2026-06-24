@@ -870,6 +870,75 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestFeatureRules:
+    """Tests for the FEAT (expected features) rules."""
+
+    def test_feat008_peers_without_backup_action_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "peers": {"replicas": {"interface": "replicas"}},
+                "actions": {"get-health": {"description": "health"}},
+            },
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "FEAT008"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert hits[0].path is None
+        assert hits[0].line is None
+
+    def test_feat008_backup_action_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "peers": {"replicas": {"interface": "replicas"}},
+                "actions": {"create-backup": {"description": "back up"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT008"]
+
+    def test_feat008_restore_action_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "peers": {"replicas": {"interface": "replicas"}},
+                "actions": {"restore-from-snapshot": {"description": "restore"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT008"]
+
+    def test_feat008_case_insensitive(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "peers": {"replicas": {"interface": "replicas"}},
+                "actions": {"Export-Config": {"description": "export"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT008"]
+
+    def test_feat008_no_peers_no_fire(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "actions": {"get-health": {"description": "health"}}},
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT008"]
+
+    def test_feat008_empty_peers_no_fire(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x", "peers": {}})
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT008"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
