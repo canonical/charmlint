@@ -6,9 +6,9 @@ from unittest import mock
 
 import pytest
 
-import pypi_attest
 from charmlint import _linter as linter
 from charmlint import _models as models
+from charmlint import _pypi_attest as pypi_attest
 from charmlint._rules import attestations as att_rules
 
 
@@ -157,7 +157,7 @@ class TestATT001MustHave:
         rule = att_rules.MustHaveAttestationsMissing()
 
         stub = _provenance_stub({"ops": pypi_attest.ProvenanceStatus.UNATTESTED})
-        with mock.patch("pypi_attest.check_provenance", stub):
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
             diags = rule.check(context)
 
         assert len(diags) == 1
@@ -177,7 +177,7 @@ class TestATT001MustHave:
         rule = att_rules.MustHaveAttestationsMissing()
 
         stub = _provenance_stub({})  # Everything ATTESTED by default.
-        with mock.patch("pypi_attest.check_provenance", stub):
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
             diags = rule.check(context)
 
         assert diags == []
@@ -192,7 +192,7 @@ class TestATT001MustHave:
         rule = att_rules.MustHaveAttestationsMissing()
 
         stub = _provenance_stub({"ops": pypi_attest.ProvenanceStatus.UNKNOWN})
-        with mock.patch("pypi_attest.check_provenance", stub):
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
             diags = rule.check(context)
 
         assert diags == []
@@ -207,7 +207,7 @@ class TestATT001MustHave:
         rule = att_rules.MustHaveAttestationsMissing()
 
         stub = _provenance_stub({"requests": pypi_attest.ProvenanceStatus.UNATTESTED})
-        with mock.patch("pypi_attest.check_provenance", stub):
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
             diags = rule.check(context)
 
         assert diags == []
@@ -223,7 +223,7 @@ class TestATT002OtherDeps:
         rule = att_rules.DependencyMissingAttestation()
 
         stub = _provenance_stub({"requests": pypi_attest.ProvenanceStatus.UNATTESTED})
-        with mock.patch("pypi_attest.check_provenance", stub):
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
             diags = rule.check(context)
 
         assert len(diags) == 1
@@ -240,7 +240,7 @@ class TestATT002OtherDeps:
         rule = att_rules.DependencyMissingAttestation()
 
         stub = _provenance_stub({"ops": pypi_attest.ProvenanceStatus.UNATTESTED})
-        with mock.patch("pypi_attest.check_provenance", stub):
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
             diags = rule.check(context)
 
         assert diags == []
@@ -256,7 +256,7 @@ class TestATT002OtherDeps:
         rule = att_rules.DependencyMissingAttestation()
 
         stub = _provenance_stub({})
-        with mock.patch("pypi_attest.check_provenance", stub):
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
             diags = rule.check(context)
 
         assert diags == []

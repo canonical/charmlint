@@ -19,9 +19,8 @@ import pathlib
 import re
 import tomllib
 
-import pypi_attest
-
 from .. import _models as models
+from .. import _pypi_attest as pypi_attest
 from . import Rule
 
 # ---------------------------------------------------------------------------
