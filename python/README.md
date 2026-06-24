@@ -60,12 +60,21 @@ Rules are grouped by category prefix:
 
 ## Configuration
 
-Place `.charmlint.yaml` in the charm directory:
+Configure under `[tool.charmlint]` in `pyproject.toml`, or in a standalone
+`charmlint.toml` / `.charmlint.toml`. Discovery walks up from the charm
+directory, in the manner of ruff.
 
-```yaml
-select: [COS, META]
-ignore: [ATT002]
-min_severity: warning
+```toml
+[tool.charmlint]
+severity = "warning"  # minimum severity to report
+
+[tool.charmlint.lint]
+select = ["COS", "META"]
+ignore = ["ATT002"]
+
+[tool.charmlint.lint.per-rule-severity]
+COS005 = "error"
+STR002 = "off"
 ```
 
 ## Bundled helper
