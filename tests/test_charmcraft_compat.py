@@ -162,7 +162,6 @@ class TestOpsMainCall:
         assert "CC004" not in {d.rule_id for d in report.diagnostics}
 
     def test_main_with_keyword_args(self, tmp_charm: pathlib.Path):
-        # Keyword arguments after the class — the old regex stopped at the comma.
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(
             tmp_charm,
