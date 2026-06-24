@@ -870,6 +870,67 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestJujuRules:
+    """Tests for JUJU (Juju-ness / idiomatic ops) rules."""
+
+    def test_juju008_uses_secrets_no_observer_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def _on_install(self, _):\n"
+            "        self.app.add_secret({'k': 'v'})\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU008"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_juju008_secret_rotate_observed_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n"
+            "        self.framework.observe(self.on.secret_rotate, self._on_rotate)\n"
+            "    def _on_install(self, _):\n"
+            "        self.app.add_secret({'k': 'v'})\n"
+            "    def _on_rotate(self, event):\n"
+            "        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU008"]
+
+    def test_juju008_secret_expired_observed_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n"
+            "        self.framework.observe(self.on.secret_expired, self._on_expired)\n"
+            "    def _on_install(self, _):\n"
+            "        secret = self.model.get_secret(id='x')\n"
+            "    def _on_expired(self, event):\n"
+            "        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU008"]
+
+    def test_juju008_no_secret_use_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase):\n    def _on_install(self, _):\n        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU008"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
