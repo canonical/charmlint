@@ -1,6 +1,7 @@
 """Security rules — secrets management, TLS support."""
 
 import re
+from typing import Any
 
 from .. import _models as models
 from . import Rule
@@ -88,3 +89,41 @@ class NoTLSSupport(Rule):
                 fix_hint="Add a tls-certificates relation for encryption in transit",
             )
         ]
+
+
+class OCIImageMutableTag(Rule):
+    """Flag OCI-image resources whose upstream-source uses a mutable tag, not a SHA digest."""
+
+    id = "SEC003"
+    name = "oci-image-mutable-tag"
+    description = "OCI image upstream-source uses a mutable tag instead of a SHA digest"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        resources: dict[str, Any] = context.metadata.get("resources", {}) or {}
+        if not isinstance(resources, dict):
+            return []
+
+        diagnostics: list[models.Diagnostic] = []
+        for res_name, res_def in resources.items():
+            if not isinstance(res_def, dict):
+                continue
+            if res_def.get("type") != "oci-image":
+                continue
+            upstream = res_def.get("upstream-source")
+            if not isinstance(upstream, str) or not upstream:
+                continue
+            if "@sha256:" in upstream:
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"OCI image resource '{res_name}' upstream-source '{upstream}' "
+                    f"uses a mutable tag — tags can be overwritten in the registry",
+                    path="charmcraft.yaml",
+                    fix_hint=(
+                        "Pin the image by SHA digest "
+                        "(e.g. 'ubuntu/loki@sha256:bef622...') instead of a tag"
+                    ),
+                )
+            )
+        return diagnostics

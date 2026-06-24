@@ -834,6 +834,75 @@ class TestSecurityRules:
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
 
+    def test_sec003_oci_image_mutable_tag_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "resources": {
+                    "loki-image": {
+                        "type": "oci-image",
+                        "description": "Loki",
+                        "upstream-source": "ubuntu/loki:2.9.0",
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC003"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_sec003_sha_pinned_image_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "resources": {
+                    "loki-image": {
+                        "type": "oci-image",
+                        "description": "Loki",
+                        "upstream-source": (
+                            "ubuntu/loki@sha256:"
+                            "bef622661f78a3a3c2f6f7d76e2c5b9a3b5e7a8c9d0e1f2a3b4c5d6e7f80910a"
+                        ),
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert "SEC003" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec003_non_oci_resource_ignored(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "resources": {
+                    "snap": {
+                        "type": "file",
+                        "description": "snap",
+                        "filename": "x.snap",
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert "SEC003" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec003_missing_upstream_source_ignored(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "resources": {
+                    "img": {"type": "oci-image", "description": "x"},
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert "SEC003" not in {d.rule_id for d in report.diagnostics}
+
 
 class TestDocumentationRules:
     """Tests for DOC* rules (README and docs/ presence)."""
