@@ -110,6 +110,51 @@ class TestTestingRules:
         report = lint(tmp_charm)
         assert "TEST003" in {d.rule_id for d in report.diagnostics}
 
+    def test006_context_with_meta_kwarg_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "tests").mkdir()
+        (tmp_charm / "tests" / "test_charm.py").write_text(
+            "from ops import testing\n"
+            "def test_x():\n"
+            "    ctx = testing.Context(MyCharm, meta={'name': 'x'})\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "TEST006"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test006_context_with_config_kwarg_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "tests").mkdir()
+        (tmp_charm / "tests" / "test_charm.py").write_text(
+            "from ops.testing import Context\n"
+            "def test_x():\n"
+            "    ctx = Context(MyCharm, config={'options': {}})\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "TEST006"]
+        assert len(hits) == 1
+
+    def test006_plain_context_call_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "tests").mkdir()
+        (tmp_charm / "tests" / "test_charm.py").write_text(
+            "from ops import testing\ndef test_x():\n    ctx = testing.Context(MyCharm)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "TEST006"]
+
+    def test006_non_test_file_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import testing\n"
+            "def f():\n"
+            "    return testing.Context(MyCharm, meta={'name': 'x'})\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "TEST006"]
+
 
 class TestDeprecatedRules:
     """Tests for deprecated API detection."""
