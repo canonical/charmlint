@@ -133,6 +133,18 @@ class TestUnknownTopLevelFields:
         assert "display-name" in cc005[0].message
         assert cc005[0].path == "charmcraft.yaml"
 
+    def test_maintainers_flagged_in_charmcraft_yaml(self, tmp_charm: pathlib.Path):
+        """'maintainers' is valid in metadata.yaml but must be flagged in charmcraft.yaml (use links.contact instead)."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "maintainers": ["foo@example.com"]},
+        )
+        report = lint(tmp_charm)
+        cc005 = [d for d in report.diagnostics if d.rule_id == "CC005"]
+        assert len(cc005) == 1
+        assert "maintainers" in cc005[0].message
+        assert cc005[0].path == "charmcraft.yaml"
+
 
 class TestUnknownResourceFields:
     """Tests for CC006 — unrecognised keys in resource definitions."""
