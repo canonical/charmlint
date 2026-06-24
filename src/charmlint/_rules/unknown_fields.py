@@ -90,8 +90,8 @@ class UnknownTopLevelFields(Rule):
             if key not in _KNOWN_TOP_LEVEL:
                 diagnostics.append(
                     self.diagnostic(
-                        f"Unrecognised top-level field '{key}' in charmcraft.yaml — possible typo",
-                        path="charmcraft.yaml",
+                        f"Unrecognised top-level field '{key}' in {context.metadata_source} — possible typo",
+                        path=context.metadata_source,
                         fix_hint=_suggest_closest(key, _KNOWN_TOP_LEVEL),
                     )
                 )
@@ -120,7 +120,7 @@ class UnknownResourceFields(Rule):
                     diagnostics.append(
                         self.diagnostic(
                             f"Unrecognised field '{key}' in resource '{res_name}' — possible typo",
-                            path="charmcraft.yaml",
+                            path=context.metadata_source,
                             fix_hint=_suggest_closest(key, _KNOWN_RESOURCE_FIELDS),
                         )
                     )

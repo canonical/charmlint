@@ -104,8 +104,10 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
 
     # Load metadata from charmcraft.yaml or legacy metadata.yaml.
     metadata = _load_yaml(charm_dir / "charmcraft.yaml")
+    metadata_source = "charmcraft.yaml"
     if not metadata:
         metadata = _load_yaml(charm_dir / "metadata.yaml")
+        metadata_source = "metadata.yaml"
 
     # Load actions (charmcraft.yaml or actions.yaml).
     actions: dict[str, Any] = metadata.get("actions", {})
@@ -138,6 +140,7 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
 
     return models.CharmContext(
         charm_dir=charm_dir,
+        metadata_source=metadata_source,
         metadata=metadata,
         actions=actions,
         config_options=config_options,

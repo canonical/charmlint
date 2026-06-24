@@ -50,6 +50,20 @@ class TestMetadataRules:
         for rid in ("META002", "META005", "META006", "META007"):
             assert rid not in ids, f"{rid} should not fire for modern charmcraft.yaml"
 
+    def test_meta_diagnostics_path_is_charmcraft_yaml(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        report = lint(tmp_charm)
+        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"][0]
+        assert meta001.path == "charmcraft.yaml"
+
+    def test_meta_diagnostics_path_is_metadata_yaml_for_legacy_charms(
+        self, tmp_charm: pathlib.Path
+    ):
+        (tmp_charm / "metadata.yaml").write_text("display-name: X\n")
+        report = lint(tmp_charm)
+        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"][0]
+        assert meta001.path == "metadata.yaml"
+
 
 class TestObservabilityRules:
     """Tests for COS and ops-tracing checks."""

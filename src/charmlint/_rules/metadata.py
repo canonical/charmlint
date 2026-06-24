@@ -85,7 +85,7 @@ def _make_rule(
                 value = _resolve(context.metadata, key)
                 if value:
                     return []
-            return [self.diagnostic(msg, path="charmcraft.yaml")]
+            return [self.diagnostic(msg, path=context.metadata_source)]
 
     _MetadataRule.__name__ = f"MetadataRule_{rid}"
     _MetadataRule.__qualname__ = _MetadataRule.__name__
