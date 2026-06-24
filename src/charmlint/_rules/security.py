@@ -88,3 +88,39 @@ class NoTLSSupport(Rule):
                 fix_hint="Add a tls-certificates relation for encryption in transit",
             )
         ]
+
+
+class HardcodedSecretDefault(Rule):
+    """Flag secret-type or secret-named config options that ship a non-empty default."""
+
+    id = "SEC008"
+    name = "hardcoded-secret-default"
+    description = "Secret-type or secret-named config option has a non-empty default value"
+    default_severity = models.Severity.ERROR
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for opt_name, opt_spec in context.config_options.items():
+            if not isinstance(opt_spec, dict):
+                continue
+            is_secret_type = opt_spec.get("type") == "secret"
+            is_secret_name = any(kw in opt_name.lower() for kw in _SECRET_CONFIG_KEYWORDS)
+            if not (is_secret_type or is_secret_name):
+                continue
+            if "default" not in opt_spec:
+                continue
+            default = opt_spec["default"]
+            if default is None or default == "":
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"Config option '{opt_name}' is a secret but ships a "
+                    f"hardcoded default value — secrets must not be baked into the charm",
+                    path="charmcraft.yaml",
+                    fix_hint=(
+                        "Remove the default and require operators to supply the secret "
+                        "via `juju config` or a Juju secret"
+                    ),
+                )
+            )
+        return diagnostics

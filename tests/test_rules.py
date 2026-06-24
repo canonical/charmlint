@@ -834,6 +834,89 @@ class TestSecurityRules:
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
 
+    def test_sec008_secret_type_with_default_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "my-creds": {
+                            "type": "secret",
+                            "description": "creds",
+                            "default": "secret:abc",
+                        },
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC008"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.ERROR
+
+    def test_sec008_secret_named_with_default_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "admin-password": {
+                            "type": "string",
+                            "description": "pw",
+                            "default": "hunter2",
+                        },
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC008"]
+        assert len(hits) == 1
+
+    def test_sec008_secret_type_empty_default_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "my-creds": {
+                            "type": "secret",
+                            "description": "creds",
+                            "default": "",
+                        },
+                        "other-creds": {
+                            "type": "secret",
+                            "description": "creds",
+                        },
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert "SEC008" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec008_non_sensitive_option_with_default_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "log-level": {
+                            "type": "string",
+                            "description": "log level",
+                            "default": "INFO",
+                        },
+                    },
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert "SEC008" not in {d.rule_id for d in report.diagnostics}
+
 
 class TestDocumentationRules:
     """Tests for DOC* rules (README and docs/ presence)."""
