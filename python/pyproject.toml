@@ -48,7 +48,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/charmlint", "src/pypi_attest"]
+packages = ["src/charmlint"]
 
 [tool.ruff]
 line-length = 99
@@ -74,7 +74,7 @@ ignore = [
 "tests/**" = ["ARG002"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["charmlint", "pypi_attest"]
+known-first-party = ["charmlint"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
