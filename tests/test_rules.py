@@ -834,6 +834,53 @@ class TestSecurityRules:
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
 
+    def test_secret_persistence_not_flagged(self, tmp_charm: pathlib.Path):
+        """'secret' as a leading modifier (not the stored value) must not fire SEC001."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "secret-persistence": {
+                            "type": "string",
+                            "description": "Backend type (GOOGLE_SECRET_MANAGER, VAULT, …)",
+                        },
+                        "secret-store-gcp-project-id": {
+                            "type": "string",
+                            "description": "GCP project for the secret store",
+                        },
+                        "tls-secret-name": {
+                            "type": "string",
+                            "description": "Name of the Juju secret holding the TLS cert",
+                        },
+                    },
+                },
+            },
+        )
+        write_charm_source(tmp_charm, "import ops\n")
+        report = lint(tmp_charm)
+        assert "SEC001" not in {d.rule_id for d in report.diagnostics}
+
+    def test_terminal_keyword_still_flagged(self, tmp_charm: pathlib.Path):
+        """Config options where the keyword IS the final component must still fire SEC001."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "admin-password": {"type": "string", "description": "Admin password"},
+                        "api-token": {"type": "string", "description": "API token"},
+                        "db-credential": {"type": "string", "description": "DB credential"},
+                    },
+                },
+            },
+        )
+        write_charm_source(tmp_charm, "import ops\n")
+        report = lint(tmp_charm)
+        assert "SEC001" in {d.rule_id for d in report.diagnostics}
+
 
 class TestDocumentationRules:
     """Tests for DOC* rules (README and docs/ presence)."""

@@ -5,7 +5,14 @@ import re
 from .. import _models as models
 from . import Rule
 
-_SECRET_CONFIG_KEYWORDS = {"password", "secret", "token", "api-key", "api_key", "credential"}
+# Match a secret-like keyword only when it appears as the terminal
+# hyphen/underscore-separated component of the config name.  This avoids
+# false positives on names like "secret-persistence" or "tls-secret-name"
+# where the keyword describes a reference or context rather than the value.
+_SECRET_KEYWORD_RE = re.compile(
+    r"(?:^|[-_])(?:password|secret|token|api[-_]key|credential)$",
+    re.IGNORECASE,
+)
 
 
 class SecretInPlainConfig(Rule):
@@ -41,7 +48,7 @@ class SecretInPlainConfig(Rule):
         for opt_name, opt_spec in context.config_options.items():
             if isinstance(opt_spec, dict) and opt_spec.get("type") == "secret":
                 continue
-            if any(kw in opt_name.lower() for kw in _SECRET_CONFIG_KEYWORDS):
+            if _SECRET_KEYWORD_RE.search(opt_name):
                 secret_opts.append(opt_name)
 
         if secret_opts and not has_juju_secrets:
