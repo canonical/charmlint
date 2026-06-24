@@ -72,6 +72,7 @@ from . import (  # noqa: E402, F401
     metadata,
     observability,
     pebble,
+    performance,
     relation_data,
     security,
     status,

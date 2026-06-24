@@ -870,6 +870,62 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestPerformanceRules:
+    """Tests for the PERF (performance) rules."""
+
+    def test_perf001_time_sleep_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import time\ndef f():\n    time.sleep(2)\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "PERF001"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_perf001_multiple_calls_each_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import time\ndef f():\n    time.sleep(1)\n    time.sleep(2)\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "PERF001"]
+        assert len(hits) == 2
+
+    def test_perf001_no_time_sleep_clean(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "def f():\n    return 42\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "PERF001"]
+
+    def test_perf001_ignores_lib_directory(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        lib = tmp_charm / "lib" / "charms" / "other" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "thing.py").write_text(
+            "import time\ndef f():\n    time.sleep(5)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "PERF001"]
+
+    def test_perf001_bare_sleep_import_not_flagged(self, tmp_charm: pathlib.Path):
+        # `from time import sleep; sleep(1)` is intentionally not flagged —
+        # plain `sleep` is too ambiguous to detect reliably without import
+        # tracking. Lower-risk: only flag `time.sleep(...)`.
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "from time import sleep\ndef f():\n    sleep(1)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "PERF001"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
