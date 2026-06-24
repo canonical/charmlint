@@ -834,6 +834,56 @@ class TestSecurityRules:
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
 
+    def test_sec007_open_write_sensitive_path_no_chmod_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "def render():\n"
+            "    with open('/etc/myapp/secrets.conf', 'w') as f:\n"
+            "        f.write('token=abc')\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SEC007"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_sec007_chmod_call_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import os\n"
+            "def render():\n"
+            "    path = '/etc/myapp/secrets.conf'\n"
+            "    with open('/etc/myapp/secrets.conf', 'w') as f:\n"
+            "        f.write('token=abc')\n"
+            "    os.chmod(path, 0o600)\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC007" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec007_non_sensitive_path_ignored(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "def render():\n"
+            "    with open('/var/log/myapp/output.log', 'w') as f:\n"
+            "        f.write('hi')\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC007" not in {d.rule_id for d in report.diagnostics}
+
+    def test_sec007_ignores_lib_directory(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        lib = tmp_charm / "lib" / "charms" / "other" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "thing.py").write_text(
+            "def render():\n"
+            "    with open('/etc/myapp/secrets.conf', 'w') as f:\n"
+            "        f.write('token=abc')\n",
+        )
+        report = lint(tmp_charm)
+        assert "SEC007" not in {d.rule_id for d in report.diagnostics}
+
 
 class TestDocumentationRules:
     """Tests for DOC* rules (README and docs/ presence)."""

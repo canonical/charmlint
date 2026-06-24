@@ -1,11 +1,14 @@
 """Security rules — secrets management, TLS support."""
 
+import ast
 import re
 
 from .. import _models as models
 from . import Rule
 
 _SECRET_CONFIG_KEYWORDS = {"password", "secret", "token", "api-key", "api_key", "credential"}
+_SENSITIVE_PATH_RE = re.compile(r"conf|config|secret|token|cred|cert", re.IGNORECASE)
+_OPEN_WRITE_MODES = frozenset({"w", "w+", "wa"})
 
 
 class SecretInPlainConfig(Rule):
@@ -88,3 +91,106 @@ class NoTLSSupport(Rule):
                 fix_hint="Add a tls-certificates relation for encryption in transit",
             )
         ]
+
+
+def _sensitive_literal(node: ast.expr | None) -> str | None:
+    """Return the literal string value if it matches the sensitive-path keyword set."""
+    if (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and _SENSITIVE_PATH_RE.search(node.value)
+    ):
+        return node.value
+    return None
+
+
+def _open_write_sensitive_path(call: ast.Call) -> str | None:
+    """Return the sensitive path if ``call`` is ``open(<lit>, '<write-mode>')``."""
+    if not (isinstance(call.func, ast.Name) and call.func.id == "open"):
+        return None
+    if len(call.args) < 2:
+        return None
+    mode_node = call.args[1]
+    if not (isinstance(mode_node, ast.Constant) and isinstance(mode_node.value, str)):
+        return None
+    if mode_node.value not in _OPEN_WRITE_MODES:
+        return None
+    return _sensitive_literal(call.args[0])
+
+
+def _write_text_sensitive_path(call: ast.Call) -> str | None:
+    """Return the sensitive path if ``call`` is ``Path("<lit>").write_text(...)``."""
+    if not (isinstance(call.func, ast.Attribute) and call.func.attr == "write_text"):
+        return None
+    receiver = call.func.value
+    # Path("/etc/myapp/secrets.conf").write_text(...)
+    if (
+        isinstance(receiver, ast.Call)
+        and isinstance(receiver.func, ast.Name)
+        and receiver.func.id == "Path"
+        and receiver.args
+    ):
+        return _sensitive_literal(receiver.args[0])
+    return None
+
+
+def _has_chmod_call(func: ast.FunctionDef) -> bool:
+    """True if the function body contains a call to ``os.chmod(...)`` or ``<x>.chmod(...)``."""
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        if isinstance(f, ast.Attribute) and f.attr == "chmod":
+            return True
+    return False
+
+
+class ConfigFileWorldReadable(Rule):
+    """Flag functions writing a sensitive-named file without restricting its mode."""
+
+    id = "SEC007"
+    name = "config-file-world-readable"
+    description = (
+        "Sensitive config/credential file opened for writing without "
+        "a subsequent chmod to restrict its mode"
+    )
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for path, content in context.python_sources.items():
+            if "lib" in path.parts:
+                continue
+            try:
+                tree = ast.parse(content)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.FunctionDef):
+                    continue
+                sensitive_path: str | None = None
+                for sub in ast.walk(node):
+                    if not isinstance(sub, ast.Call):
+                        continue
+                    sensitive_path = _open_write_sensitive_path(sub) or _write_text_sensitive_path(
+                        sub
+                    )
+                    if sensitive_path:
+                        break
+                if not sensitive_path:
+                    continue
+                if _has_chmod_call(node):
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Function '{node.name}' writes sensitive file '{sensitive_path}' "
+                        f"without a chmod call — credentials may be left world-readable",
+                        path=str(path),
+                        line=node.lineno,
+                        fix_hint=(
+                            "After writing the file, call `os.chmod(path, 0o600)` "
+                            "(or pathlib's `.chmod(0o600)`) to restrict its mode"
+                        ),
+                    )
+                )
+        return diagnostics
