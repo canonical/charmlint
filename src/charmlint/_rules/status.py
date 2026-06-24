@@ -52,10 +52,12 @@ def _make_status_rule(_pat: str, _id: str, _name: str, _msg: str) -> type[Rule]:
             if not source:
                 return []
 
-            has_status_call = bool(re.search(r"(?:Blocked|Waiting|Maintenance)Status", source))
             has_condition = bool(re.search(pat, source, re.IGNORECASE))
+            if not has_condition:
+                return []
 
-            if not (has_condition and has_status_call):
+            has_status_call = bool(re.search(r"(?:Blocked|Waiting|Maintenance)Status", source))
+            if not has_status_call:
                 return [self.diagnostic(msg)]
             return []
 
