@@ -22,6 +22,28 @@ class TestBuildContext:
         ctx = build_context(tmp_charm)
         assert ctx.metadata["name"] == "my-charm"
 
+    def test_falls_back_to_metadata_yaml(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "metadata.yaml").write_text("name: legacy-charm\nsummary: hi\n")
+        ctx = build_context(tmp_charm)
+        assert ctx.metadata["name"] == "legacy-charm"
+
+    def test_merges_metadata_yaml_into_charmcraft_yaml(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"type": "charm", "parts": {}})
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: split-charm\nsummary: A split charm\ndescription: Long desc\n"
+        )
+        ctx = build_context(tmp_charm)
+        assert ctx.metadata["type"] == "charm"
+        assert ctx.metadata["name"] == "split-charm"
+        assert ctx.metadata["summary"] == "A split charm"
+
+    def test_charmcraft_yaml_takes_precedence_over_metadata_yaml(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "from-charmcraft", "type": "charm"})
+        (tmp_charm / "metadata.yaml").write_text("name: from-metadata\nsummary: hi\n")
+        ctx = build_context(tmp_charm)
+        assert ctx.metadata["name"] == "from-charmcraft"
+        assert ctx.metadata["summary"] == "hi"
+
     def test_loads_actions(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,

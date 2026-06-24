@@ -110,11 +110,19 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
     charm_dir = charm_dir.resolve()
 
     # Load metadata from charmcraft.yaml or legacy metadata.yaml.
+    # When both files exist, merge them: charmcraft.yaml takes precedence
+    # for duplicate keys, but fields only in metadata.yaml are included.
+    # This matches charmcraft's own behaviour for split-metadata charms.
     metadata = _load_yaml(charm_dir / "charmcraft.yaml")
     metadata_source = "charmcraft.yaml"
+    metadata_fallback = _load_yaml(charm_dir / "metadata.yaml")
     if not metadata:
-        metadata = _load_yaml(charm_dir / "metadata.yaml")
+        metadata = metadata_fallback
         metadata_source = "metadata.yaml"
+    elif metadata_fallback:
+        for key in metadata_fallback:
+            if key not in metadata:
+                metadata[key] = metadata_fallback[key]
 
     # Load actions (charmcraft.yaml or actions.yaml).
     actions: dict[str, Any] = metadata.get("actions", {})
