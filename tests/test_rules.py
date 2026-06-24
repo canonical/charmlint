@@ -870,6 +870,59 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestFeatureRules:
+    """Tests for the FEAT (expected features) rules."""
+
+    def test_feat006_peers_without_leader_elected_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "peers": {"replicas": {"interface": "x-peers"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *a):\n"
+            "        super().__init__(*a)\n"
+            "        self.framework.observe(self.on.install, self._on_install)\n"
+            "    def _on_install(self, e): pass\n"
+            "ops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "FEAT006"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert hits[0].path is None
+        assert hits[0].line is None
+
+    def test_feat006_peers_with_leader_elected_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "peers": {"replicas": {"interface": "x-peers"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *a):\n"
+            "        super().__init__(*a)\n"
+            "        self.framework.observe(self.on.leader_elected, self._on_le)\n"
+            "    def _on_le(self, e): pass\n"
+            "ops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT006"]
+
+    def test_feat006_no_peers_does_not_fire(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase): pass\nops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT006"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 

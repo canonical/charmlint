@@ -67,6 +67,7 @@ from . import (  # noqa: E402, F401
     config_quality,
     deprecated,
     documentation,
+    features,
     libraries,
     library_versions,
     metadata,
