@@ -82,7 +82,11 @@ fn format_diagnostic_colour(
         if !location.is_empty() {
             parts.push(format!("{DIM}{location}{RESET}"));
         }
-        parts.push(format!("{}{}{RESET}", severity_style(d.severity), d.rule_id));
+        parts.push(format!(
+            "{}{}{RESET}",
+            severity_style(d.severity),
+            d.rule_id
+        ));
         parts.push(d.message.clone());
         parts.join(" ")
     } else {
@@ -90,7 +94,13 @@ fn format_diagnostic_colour(
     }
 }
 
-fn format_summary_colour(total: usize, errors: usize, warnings: usize, infos: usize, use_colour: bool) -> String {
+fn format_summary_colour(
+    total: usize,
+    errors: usize,
+    warnings: usize,
+    infos: usize,
+    use_colour: bool,
+) -> String {
     if total == 0 {
         return if use_colour {
             format!("{GREEN}No issues found.{RESET}")
@@ -151,12 +161,10 @@ fn main() {
     }
 
     // Determine colour mode.
-    let use_colour =
-        !cli.no_colour && atty_stdout() && cli.output_format != "json";
+    let use_colour = !cli.no_colour && atty_stdout() && cli.output_format != "json";
 
     // Load config.
-    let mut lint_config =
-        config::load_config(&charm_dir, cli.config.as_deref());
+    let mut lint_config = config::load_config(&charm_dir, cli.config.as_deref());
 
     // Overlay CLI flags.
     if let Some(select) = &cli.select {
@@ -187,7 +195,13 @@ fn main() {
         }
         println!(
             "{}",
-            format_summary_colour(report.total, report.errors, report.warnings, report.info, use_colour)
+            format_summary_colour(
+                report.total,
+                report.errors,
+                report.warnings,
+                report.info,
+                use_colour
+            )
         );
     }
 

@@ -8,7 +8,9 @@ use std::path::Path;
 
 /// Extract category from rule ID (strip trailing digits).
 fn rule_category(rule_id: &str) -> String {
-    rule_id.trim_end_matches(|c: char| c.is_ascii_digit()).to_string()
+    rule_id
+        .trim_end_matches(|c: char| c.is_ascii_digit())
+        .to_string()
 }
 
 /// Check whether a rule should run given the config.
@@ -19,12 +21,7 @@ fn should_run_rule(rule_id: &str, config: &LintConfig) -> bool {
     if config.severity_overrides.get(rule_id).map(|s| s.as_str()) == Some("off") {
         return false;
     }
-    if config
-        .severity_overrides
-        .get(&category)
-        .map(|s| s.as_str())
-        == Some("off")
-    {
+    if config.severity_overrides.get(&category).map(|s| s.as_str()) == Some("off") {
         return false;
     }
 
@@ -57,9 +54,8 @@ pub fn lint(charm_dir: &Path, config: &LintConfig) -> LintReport {
             vec![Diagnostic {
                 rule_id: "FATAL".to_string(),
                 severity: Severity::Error,
-                message:
-                    "No charmcraft.yaml or metadata.yaml found — is this a charm directory?"
-                        .to_string(),
+                message: "No charmcraft.yaml or metadata.yaml found — is this a charm directory?"
+                    .to_string(),
                 path: None,
                 line: None,
                 fix_hint: None,
@@ -78,10 +74,7 @@ pub fn lint(charm_dir: &Path, config: &LintConfig) -> LintReport {
 
         // Apply severity overrides.
         let d = if let Some(sev) = effective_severity(&d.rule_id, config) {
-            Diagnostic {
-                severity: sev,
-                ..d
-            }
+            Diagnostic { severity: sev, ..d }
         } else {
             d
         };
@@ -199,7 +192,11 @@ mod tests {
         };
         let report = lint(dir.path(), &config);
         for d in &report.diagnostics {
-            assert!(d.rule_id.starts_with("META"), "unexpected rule {}", d.rule_id);
+            assert!(
+                d.rule_id.starts_with("META"),
+                "unexpected rule {}",
+                d.rule_id
+            );
         }
     }
 
@@ -222,8 +219,11 @@ mod tests {
             .severity_overrides
             .insert("COS001".to_string(), "error".to_string());
         let report = lint(dir.path(), &config);
-        let cos001: Vec<&Diagnostic> =
-            report.diagnostics.iter().filter(|d| d.rule_id == "COS001").collect();
+        let cos001: Vec<&Diagnostic> = report
+            .diagnostics
+            .iter()
+            .filter(|d| d.rule_id == "COS001")
+            .collect();
         assert!(!cos001.is_empty());
         assert_eq!(cos001[0].severity, Severity::Error);
     }

@@ -23,6 +23,7 @@ impl Severity {
         }
     }
 
+    #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self {
             Self::Error => "error",
@@ -81,6 +82,7 @@ pub struct CharmContext {
     pub metadata: BTreeMap<String, serde_yaml::Value>,
     pub actions: BTreeMap<String, serde_yaml::Value>,
     pub config_options: BTreeMap<String, serde_yaml::Value>,
+    #[allow(dead_code)]
     pub python_files: Vec<PathBuf>,
     pub python_sources: BTreeMap<PathBuf, String>,
     pub readme_content: String,
@@ -124,6 +126,7 @@ impl LintReport {
         }
     }
 
+    #[allow(dead_code)]
     pub fn summary_line(&self) -> String {
         if self.total == 0 {
             return "No issues found.".to_string();

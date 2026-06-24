@@ -28,9 +28,7 @@ class TestMetadataRules:
         meta_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("META")}
         assert not meta_ids
 
-    def test_modern_charmcraft_title_and_links_satisfy_meta(
-        self, tmp_charm: pathlib.Path
-    ):
+    def test_modern_charmcraft_title_and_links_satisfy_meta(self, tmp_charm: pathlib.Path):
         # Modern charmcraft.yaml uses `title` and a `links:` block instead of
         # the legacy top-level `display-name`/`docs`/`issues`/`source`.
         write_charmcraft_yaml(
@@ -782,7 +780,6 @@ class TestSecurityRules:
         write_charm_source(tmp_charm, "import ops\n# Uses juju secret API\nSecretChanged\n")
         report = lint(tmp_charm)
         assert "SEC001" not in {d.rule_id for d in report.diagnostics}
-
 
     def test_secret_with_ops_add_secret_ok(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(

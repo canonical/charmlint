@@ -108,9 +108,7 @@ mod tests {
 
     #[test]
     fn rules_section_parsed_into_severity_overrides() {
-        let config = LintConfig::from_yaml(&yaml(
-            "rules:\n  COS005: error\n  STR002: off\n",
-        ));
+        let config = LintConfig::from_yaml(&yaml("rules:\n  COS005: error\n  STR002: off\n"));
         assert_eq!(config.severity_overrides.get("COS005").unwrap(), "error");
         assert_eq!(config.severity_overrides.get("STR002").unwrap(), "off");
     }
@@ -123,9 +121,8 @@ mod tests {
 
     #[test]
     fn select_and_ignore_parsed_as_lists() {
-        let config = LintConfig::from_yaml(&yaml(
-            "select:\n  - COS\n  - META\nignore:\n  - STR003\n",
-        ));
+        let config =
+            LintConfig::from_yaml(&yaml("select:\n  - COS\n  - META\nignore:\n  - STR003\n"));
         assert_eq!(config.select, vec!["COS".to_string(), "META".to_string()]);
         assert_eq!(config.ignore, vec!["STR003".to_string()]);
     }

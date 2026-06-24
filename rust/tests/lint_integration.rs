@@ -27,7 +27,10 @@ fn minimal_charm() -> tempfile::TempDir {
     dir
 }
 
-fn run_json(charm_dir: &Path, extra_args: &[&str]) -> (std::process::ExitStatus, serde_json::Value) {
+fn run_json(
+    charm_dir: &Path,
+    extra_args: &[&str],
+) -> (std::process::ExitStatus, serde_json::Value) {
     let output = Command::new(charmlint_bin())
         .arg(charm_dir)
         .arg("--format")
@@ -55,7 +58,10 @@ fn empty_directory_emits_fatal_diagnostic() {
     let dir = tempfile::tempdir().unwrap();
     let (status, report) = run_json(dir.path(), &[]);
     assert_eq!(report["errors"].as_u64(), Some(1));
-    assert_eq!(rule_ids(&report), ["FATAL".to_string()].into_iter().collect());
+    assert_eq!(
+        rule_ids(&report),
+        ["FATAL".to_string()].into_iter().collect()
+    );
     assert!(!status.success(), "expected non-zero exit for FATAL");
 }
 
@@ -77,7 +83,10 @@ fn select_flag_filters_to_single_category() {
     let (_, report) = run_json(dir.path(), &["--select", "META"]);
     let ids = rule_ids(&report);
     for id in &ids {
-        assert!(id.starts_with("META"), "unexpected rule {id} passed --select META");
+        assert!(
+            id.starts_with("META"),
+            "unexpected rule {id} passed --select META"
+        );
     }
     assert!(!ids.is_empty(), "expected at least one META diagnostic");
 }
