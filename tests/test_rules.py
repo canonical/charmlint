@@ -870,6 +870,92 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestJujuRules:
+    """Tests for JUJU (Juju-ness / idiomatic ops) rules."""
+
+    def test_juju001_direct_assignment_in_handler_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import ActiveStatus\n"
+            "class C:\n"
+            "    def _on_start(self, event):\n"
+            "        self.unit.status = ActiveStatus('ready')\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "JUJU001"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+
+    def test_juju001_inside_collect_unit_status_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import ActiveStatus\n"
+            "class C:\n"
+            "    def _on_collect_unit_status(self, event):\n"
+            "        self.unit.status = ActiveStatus('ready')\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU001"]
+
+    def test_juju001_maintenance_status_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import MaintenanceStatus\n"
+            "class C:\n"
+            "    def _on_install(self, event):\n"
+            "        self.unit.status = MaintenanceStatus('installing')\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU001"]
+
+    def test_juju001_self_model_unit_status_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C:\n"
+            "    def _on_start(self, event):\n"
+            "        self.model.unit.status = ops.BlockedStatus('nope')\n",
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report.diagnostics if d.rule_id == "JUJU001"]
+
+    def test_juju007_mixed_patterns_fires(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import ActiveStatus\n"
+            "class C:\n"
+            "    def __init__(self):\n"
+            "        self.framework.observe(self.on.collect_unit_status, self._on_collect_unit_status)\n"
+            "    def _on_collect_unit_status(self, event):\n"
+            "        event.add_status(ActiveStatus('ok'))\n"
+            "    def _on_start(self, event):\n"
+            "        self.unit.status = ActiveStatus('ready')\n",
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report.diagnostics if d.rule_id == "JUJU007"]
+        # JUJU001 also fires for the direct assignment.
+        assert [d for d in report.diagnostics if d.rule_id == "JUJU001"]
+
+    def test_juju007_only_collect_unit_status_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import ActiveStatus\n"
+            "class C:\n"
+            "    def __init__(self):\n"
+            "        self.framework.observe(self.on.collect_unit_status, self._on_collect_unit_status)\n"
+            "    def _on_collect_unit_status(self, event):\n"
+            "        event.add_status(ActiveStatus('ok'))\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "JUJU007"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
