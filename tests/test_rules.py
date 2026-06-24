@@ -870,6 +870,118 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestCorrectnessRules:
+    """Tests for the CORR (correctness) rules."""
+
+    def test_corr002_storage_without_observer_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "storage": {
+                    "data": {"type": "filesystem", "location": "/var/lib/data"},
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "CORR002"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+        assert "data" in hits[0].message
+        assert hits[0].path == "charmcraft.yaml"
+
+    def test_corr002_observer_present_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "storage": {
+                    "data": {"type": "filesystem", "location": "/var/lib/data"},
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n"
+            "        self.framework.observe(\n"
+            "            self.on.data_storage_attached, self._on_data_attached\n"
+            "        )\n"
+            "    def _on_data_attached(self, event):\n"
+            "        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR002"]
+
+    def test_corr002_hyphenated_storage_name_normalised(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "storage": {
+                    "chunk-store": {"type": "filesystem", "location": "/var/lib/chunks"},
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n"
+            "        self.framework.observe(\n"
+            "            self.on.chunk_store_storage_attached, self._on_chunks\n"
+            "        )\n"
+            "    def _on_chunks(self, event):\n"
+            "        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR002"]
+
+    def test_corr002_partial_coverage_flags_missing(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "storage": {
+                    "index": {"type": "filesystem", "location": "/var/lib/index"},
+                    "chunks": {"type": "filesystem", "location": "/var/lib/chunks"},
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class MyCharm(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n"
+            "        self.framework.observe(\n"
+            "            self.on.index_storage_attached, self._on_index\n"
+            "        )\n"
+            "    def _on_index(self, event):\n"
+            "        pass\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "CORR002"]
+        assert len(hits) == 1
+        assert "chunks" in hits[0].message
+
+    def test_corr002_no_storage_section_no_diagnostic(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(tmp_charm, "import ops\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "CORR002"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
