@@ -870,6 +870,31 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestSupplyChainRules:
+    """Tests for the SUPP (supply chain) rules."""
+
+    def test_supp004_no_workflows_dir_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SUPP004"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_supp004_empty_workflows_dir_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / ".github" / "workflows").mkdir(parents=True)
+        report = lint(tmp_charm)
+        assert [d for d in report.diagnostics if d.rule_id == "SUPP004"]
+
+    def test_supp004_workflow_file_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        workflows = tmp_charm / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text("on: push\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "SUPP004"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
