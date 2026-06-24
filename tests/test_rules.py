@@ -870,6 +870,87 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestEventLifecycleRules:
+    """Tests for the EVNT (event lifecycle completeness) rules."""
+
+    def test_evnt001_required_relation_without_observer_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "requires": {"db": {"interface": "pgsql"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase):\n    pass\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "EVNT001"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+        assert hits[0].path == "charmcraft.yaml"
+
+    def test_evnt001_observer_present_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "requires": {"db": {"interface": "pgsql"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n"
+            "        self.framework.observe(\n"
+            "            self.on.db_relation_broken, self._on_db_broken\n"
+            "        )\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "EVNT001"]
+
+    def test_evnt001_optional_relation_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "requires": {"db": {"interface": "pgsql", "optional": True}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase):\n    pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "EVNT001"]
+
+    def test_evnt001_no_requires_section_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nclass C(ops.CharmBase):\n    pass\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "EVNT001"]
+
+    def test_evnt001_hyphenated_endpoint_matches_underscore_observer(
+        self, tmp_charm: pathlib.Path
+    ):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "requires": {"my-db": {"interface": "pgsql"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n"
+            "        self.framework.observe(\n"
+            "            self.on.my_db_relation_broken, self._on_broken\n"
+            "        )\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "EVNT001"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
