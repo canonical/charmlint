@@ -61,3 +61,61 @@ class UsesHarness(Rule):
                     )
                 ]
         return []
+
+
+_HARNESS_IMPORT_RE = re.compile(
+    r"from\s+ops\.testing\s+import\s+[^\n]*\bHarness\b|\bops\.testing\.Harness\b",
+)
+_CONTEXT_IMPORT_RE = re.compile(
+    r"from\s+ops\.testing\s+import\s+[^\n]*\bContext\b|\bops\.testing\.Context\b",
+)
+
+
+class K8sCharmHarnessOnly(Rule):
+    """K8s charm (with Pebble containers) uses only Harness — no Scenario Context."""
+
+    id = "TEST004"
+    name = "k8s-charm-harness-only"
+    description = (
+        "K8s charm with Pebble containers uses only Harness for unit tests — "
+        "Scenario (ops.testing.Context) simulates Pebble more faithfully"
+    )
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        containers = context.metadata.get("containers") or {}
+        if not containers:
+            return []
+
+        test_dir = context.charm_dir / "tests"
+        if not test_dir.is_dir():
+            return []
+
+        harness_seen = False
+        context_seen = False
+        for test_file in sorted(test_dir.rglob("*.py")):
+            try:
+                content = test_file.read_text(errors="replace")
+            except OSError:
+                continue
+            if not harness_seen and _HARNESS_IMPORT_RE.search(content):
+                harness_seen = True
+            if not context_seen and _CONTEXT_IMPORT_RE.search(content):
+                context_seen = True
+            if context_seen:
+                break
+
+        if harness_seen and not context_seen:
+            return [
+                self.diagnostic(
+                    "K8s charm with Pebble containers uses only Harness for unit tests — "
+                    "Harness has limited Pebble support; migrate to Scenario "
+                    "(ops.testing.Context) for accurate can_connect, layer lifecycle, "
+                    "and check-event simulation",
+                    fix_hint=(
+                        "Add Scenario-based tests using ops.testing.Context/State, "
+                        "which faithfully simulate Pebble container behaviour"
+                    ),
+                )
+            ]
+        return []

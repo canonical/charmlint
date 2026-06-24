@@ -110,6 +110,56 @@ class TestTestingRules:
         report = lint(tmp_charm)
         assert "TEST003" in {d.rule_id for d in report.diagnostics}
 
+    def test004_k8s_charm_only_harness_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"workload": {"resource": "workload-image"}}},
+        )
+        (tmp_charm / "tests").mkdir()
+        (tmp_charm / "tests" / "test_charm.py").write_text(
+            "from ops.testing import Harness\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "TEST004"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test004_k8s_charm_only_context_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"workload": {"resource": "workload-image"}}},
+        )
+        (tmp_charm / "tests").mkdir()
+        (tmp_charm / "tests" / "test_charm.py").write_text(
+            "from ops.testing import Context\n",
+        )
+        report = lint(tmp_charm)
+        assert "TEST004" not in {d.rule_id for d in report.diagnostics}
+
+    def test004_k8s_charm_both_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"workload": {"resource": "workload-image"}}},
+        )
+        (tmp_charm / "tests").mkdir()
+        (tmp_charm / "tests" / "test_harness.py").write_text(
+            "from ops.testing import Harness\n",
+        )
+        (tmp_charm / "tests" / "test_scenario.py").write_text(
+            "from ops.testing import Context\n",
+        )
+        report = lint(tmp_charm)
+        assert "TEST004" not in {d.rule_id for d in report.diagnostics}
+
+    def test004_no_containers_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "tests").mkdir()
+        (tmp_charm / "tests" / "test_charm.py").write_text(
+            "from ops.testing import Harness\n",
+        )
+        report = lint(tmp_charm)
+        assert "TEST004" not in {d.rule_id for d in report.diagnostics}
+
 
 class TestDeprecatedRules:
     """Tests for deprecated API detection."""
