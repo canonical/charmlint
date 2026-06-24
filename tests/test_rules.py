@@ -870,6 +870,29 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestSupplyChainRules:
+    """Tests for the SUPP (supply chain) rules."""
+
+    def test_supp001_no_lockfile_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "SUPP001"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+
+    def test_supp001_uv_lock_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "uv.lock").write_text("")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "SUPP001"]
+
+    def test_supp001_poetry_lock_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "poetry.lock").write_text("")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "SUPP001"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 

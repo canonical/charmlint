@@ -76,6 +76,7 @@ from . import (  # noqa: E402, F401
     security,
     status,
     structure,
+    supply_chain,
     testing,
     unknown_fields,
 )
