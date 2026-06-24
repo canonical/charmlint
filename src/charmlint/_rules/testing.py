@@ -61,3 +61,52 @@ class UsesHarness(Rule):
                     )
                 ]
         return []
+
+
+_HARNESS_IMPORT_RE = re.compile(
+    r"from\s+ops\.testing\s+import\s+[^\n]*\bHarness\b|\bops\.testing\.Harness\b",
+)
+_CONTEXT_IMPORT_RE = re.compile(
+    r"from\s+ops\.testing\s+import\s+[^\n]*\bContext\b|\bops\.testing\.Context\b",
+)
+
+
+class HarnessAndScenarioMixed(Rule):
+    """Detect a test suite mixing both Harness and Scenario (Context)."""
+
+    id = "TEST005"
+    name = "harness-and-scenario-mixed"
+    description = "Test suite uses both Harness and Scenario (Context) — pick one framework"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        test_dir = context.charm_dir / "tests"
+        if not test_dir.is_dir():
+            return []
+
+        harness_seen = False
+        context_seen = False
+        for test_file in sorted(test_dir.rglob("*.py")):
+            try:
+                content = test_file.read_text(errors="replace")
+            except OSError:
+                continue
+            if not harness_seen and _HARNESS_IMPORT_RE.search(content):
+                harness_seen = True
+            if not context_seen and _CONTEXT_IMPORT_RE.search(content):
+                context_seen = True
+            if harness_seen and context_seen:
+                break
+
+        if harness_seen and context_seen:
+            return [
+                self.diagnostic(
+                    "Test suite imports both Harness and Scenario (Context) — "
+                    "standardise on one testing framework",
+                    fix_hint=(
+                        "Migrate remaining Harness tests to Scenario "
+                        "(ops.testing.Context/State) and drop Harness imports"
+                    ),
+                )
+            ]
+        return []
