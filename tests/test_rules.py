@@ -359,6 +359,76 @@ class TestRelationDataRules:
         assert "REL002" not in {d.rule_id for d in report.diagnostics}
 
 
+class TestEventLifecycleRules:
+    """Tests for EVNT (event lifecycle completeness) rules."""
+
+    def test_evnt002_unguarded_subscript_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on_db_changed(self, event):\n"
+            "        pw = event.relation.data[event.app]['password']\n"
+            "        return pw\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "EVNT002"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert "_on_db_changed" in hits[0].message
+
+    def test_evnt002_pydantic_import_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nimport pydantic\n\nclass C(ops.CharmBase):\n"
+            "    def _on_db_changed(self, event):\n"
+            "        pw = event.relation.data[event.app]['password']\n"
+            "        return pw\n",
+        )
+        report = lint(tmp_charm)
+        assert "EVNT002" not in {d.rule_id for d in report.diagnostics}
+
+    def test_evnt002_pydantic_from_import_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nfrom pydantic import BaseModel\n\nclass C(ops.CharmBase):\n"
+            "    def _on_db_changed(self, event):\n"
+            "        pw = event.relation.data[event.app]['password']\n"
+            "        return pw\n",
+        )
+        report = lint(tmp_charm)
+        assert "EVNT002" not in {d.rule_id for d in report.diagnostics}
+
+    def test_evnt002_get_form_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on_db_changed(self, event):\n"
+            "        pw = event.relation.data[event.app].get('password')\n"
+            "        return pw\n",
+        )
+        report = lint(tmp_charm)
+        assert "EVNT002" not in {d.rule_id for d in report.diagnostics}
+
+    def test_evnt002_try_except_keyerror_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on_db_changed(self, event):\n"
+            "        try:\n"
+            "            pw = event.relation.data[event.app]['password']\n"
+            "        except KeyError:\n"
+            "            return\n"
+            "        return pw\n",
+        )
+        report = lint(tmp_charm)
+        assert "EVNT002" not in {d.rule_id for d in report.diagnostics}
+
+
 class TestPebbleRules:
     """Tests for PEB001/PEB002/PEB003 (Pebble layer hygiene)."""
 
