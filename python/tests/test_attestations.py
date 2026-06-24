@@ -7,8 +7,9 @@ from unittest import mock
 import pytest
 
 import pypi_attest
-from charmlint import linter, models
-from charmlint.rules import attestations as att_rules
+from charmlint import _linter as linter
+from charmlint import _models as models
+from charmlint._rules import attestations as att_rules
 
 
 @pytest.fixture(autouse=True)

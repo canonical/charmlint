@@ -2,7 +2,7 @@
 
 import pathlib
 
-from charmlint.linter import lint
+from charmlint._linter import lint
 from tests.conftest import write_charmcraft_yaml
 
 

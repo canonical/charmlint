@@ -1,9 +1,9 @@
-"""Tests for charmlint.cli."""
+"""Tests for charmlint._cli."""
 
 import json
 import pathlib
 
-from charmlint.cli import main
+from charmlint._cli import main
 from tests.conftest import make_full_charm, write_charmcraft_yaml
 
 

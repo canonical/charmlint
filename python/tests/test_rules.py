@@ -2,8 +2,8 @@
 
 import pathlib
 
-from charmlint.linter import lint
-from charmlint.models import Severity
+from charmlint._linter import lint
+from charmlint._models import Severity
 from tests.conftest import (
     make_full_charm,
     write_charm_source,

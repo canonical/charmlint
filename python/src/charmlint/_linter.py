@@ -7,9 +7,8 @@ from typing import Any
 
 import yaml
 
-from . import config as _config
-from . import models
-from . import rules as _rules
+from . import _config, _rules
+from . import _models as models
 
 # Rule IDs follow ``<UPPERCASE LETTERS><DIGITS>`` (e.g. ``COS001``,
 # ``TEST003``).  The category prefix is the leading letter run.

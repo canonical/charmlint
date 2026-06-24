@@ -21,7 +21,7 @@ catches layers built inline as well as via helper methods.
 import ast
 import pathlib
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 # Pebble methods that need a can_connect guard.

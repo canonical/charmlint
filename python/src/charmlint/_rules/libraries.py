@@ -10,7 +10,7 @@ and cutoff.
 
 import re
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 # Each entry: (PyPI package name, new import path shown to the user).

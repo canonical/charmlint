@@ -1,5 +1,5 @@
 """Allow running charmlint as ``python -m charmlint``."""
 
-from . import cli
+from . import _cli
 
-cli.cli_entry()
+_cli.cli_entry()

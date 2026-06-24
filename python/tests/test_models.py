@@ -1,8 +1,8 @@
-"""Tests for charmlint.models."""
+"""Tests for charmlint._models."""
 
 import pathlib
 
-from charmlint.models import Diagnostic, LintReport, Severity
+from charmlint._models import Diagnostic, LintReport, Severity
 
 
 class TestDiagnostic:

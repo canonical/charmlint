@@ -8,7 +8,7 @@ left alone because their names are charm-specific.
 
 from typing import Any
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 # Top-level keys recognised by charmcraft.yaml (union of modern and legacy

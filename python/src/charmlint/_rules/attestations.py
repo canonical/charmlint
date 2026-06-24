@@ -21,7 +21,7 @@ import tomllib
 
 import pypi_attest
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 # ---------------------------------------------------------------------------

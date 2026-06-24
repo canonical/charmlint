@@ -6,9 +6,8 @@ import json
 import pathlib
 import sys
 
-from . import config as _config
-from . import linter as _linter
-from . import models
+from . import _config, _linter
+from . import _models as models
 
 # ---------------------------------------------------------------------------
 # ANSI colour helpers — disabled when stdout is not a terminal or --no-colour

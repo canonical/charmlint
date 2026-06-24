@@ -29,8 +29,8 @@ import yaml
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from charmlint.linter import lint
-from charmlint.models import Severity
+from charmlint._linter import lint
+from charmlint._models import Severity
 
 # Hypothesis warns when a @given test uses a function-scoped pytest
 # fixture because the fixture is created once and then reused across

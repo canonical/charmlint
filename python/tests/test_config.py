@@ -1,11 +1,11 @@
-"""Tests for charmlint.config."""
+"""Tests for charmlint._config."""
 
 import pathlib
 
 import yaml
 
-from charmlint.config import LintConfig, load_config
-from charmlint.models import Severity
+from charmlint._config import LintConfig, load_config
+from charmlint._models import Severity
 
 
 class TestLintConfig:

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 # (rule_id, human_description, default_severity, accepted_keys)

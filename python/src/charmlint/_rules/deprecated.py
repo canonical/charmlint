@@ -3,7 +3,7 @@
 import pathlib
 import re
 
-from .. import models
+from .. import _models as models
 from . import Rule
 
 # (regex_pattern, rule_id, name, message, fix_hint)

@@ -10,9 +10,9 @@ Public API::
 """
 
 # Re-exports for the public API.
-from charmlint.config import LintConfig
-from charmlint.linter import lint
-from charmlint.models import Diagnostic, LintReport, Severity
+from charmlint._config import LintConfig
+from charmlint._linter import lint
+from charmlint._models import Diagnostic, LintReport, Severity
 
 __all__ = [
     "Diagnostic",
