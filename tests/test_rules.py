@@ -870,6 +870,85 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestFeatureRules:
+    """Tests for the FEAT (expected features) rules."""
+
+    def test_feat009_machine_charm_missing_both_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *a):\n"
+            "        super().__init__(*a)\n"
+            "        self.framework.observe(self.on.install, self._on_install)\n"
+            "    def _on_install(self, e): pass\n"
+            "ops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "FEAT009"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+        assert hits[0].path is None
+        assert hits[0].line is None
+
+    def test_feat009_machine_charm_missing_one_warns(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *a):\n"
+            "        super().__init__(*a)\n"
+            "        self.framework.observe(self.on.upgrade_series_prepare, self._p)\n"
+            "    def _p(self, e): pass\n"
+            "ops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "FEAT009"]
+        assert len(hits) == 1
+        assert "upgrade_series_complete" in hits[0].message
+
+    def test_feat009_machine_charm_both_handlers_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *a):\n"
+            "        super().__init__(*a)\n"
+            "        self.framework.observe(self.on.upgrade_series_prepare, self._p)\n"
+            "        self.framework.observe(self.on.upgrade_series_complete, self._c)\n"
+            "    def _p(self, e): pass\n"
+            "    def _c(self, e): pass\n"
+            "ops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT009"]
+
+    def test_feat009_k8s_charm_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "containers": {"workload": {"resource": "oci-image"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *a):\n"
+            "        super().__init__(*a)\n"
+            "ops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT009"]
+
+    def test_feat009_does_not_fire_for_non_charm(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(tmp_charm, "x = 1\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "FEAT009"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
