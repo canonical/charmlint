@@ -76,14 +76,23 @@ class ConfigMissingDescription(Rule):
         return diagnostics
 
 
+_DYNAMIC_CONFIG_PATTERNS = [
+    re.compile(r"dict\(\*\*.*?config\)"),
+    re.compile(r"for\s+\w+\s+in\s+.*?config[^.\[]"),
+    re.compile(r"config\.items\(\)"),
+    re.compile(r"config\.values\(\)"),
+]
+
+
 def _option_is_read(option_name: str, sources: dict[pathlib.Path, str]) -> bool:
     """True iff some src/ source reads ``<...>.config["X"]`` or ``.config.get("X")``.
 
     Catches the canonical access shapes the ``adding-config`` skill teaches
     (``self.config["log-level"]``, ``self.config.get("log-level", "info")``,
-    ``self.model.config["port"]``). Misses dynamic access such as
-    ``getattr(self.config, name)`` or iterating the config dict — those
-    are rare and not worth false positives.
+    ``self.model.config["port"]``).  Also catches dynamic access patterns that
+    iterate or unpack the whole config dict (``dict(**self.config)``,
+    ``for k in self.config:``, ``self.config.items()``, ``self.config.values()``),
+    which imply all config options are being consumed.
     """
     pattern = re.compile(rf"\bconfig(?:\[|\.get\()\s*['\"]{re.escape(option_name)}['\"]")
     for path, content in sources.items():
@@ -91,6 +100,9 @@ def _option_is_read(option_name: str, sources: dict[pathlib.Path, str]) -> bool:
             continue
         if pattern.search(content):
             return True
+        for dp in _DYNAMIC_CONFIG_PATTERNS:
+            if dp.search(content):
+                return True
     return False
 
 

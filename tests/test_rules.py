@@ -702,6 +702,104 @@ class TestConfigRules:
         report = lint(tmp_charm)
         assert "CFG004" not in {d.rule_id for d in report.diagnostics}
 
+    def test_config_dict_unpack_satisfies_unread(self, tmp_charm: pathlib.Path):
+        """``dict(**self.config)`` counts as reading all config options."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "port": {"type": "int", "default": 8080, "description": "x"},
+                        "host": {"type": "string", "default": "localhost", "description": "x"},
+                    }
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on_config_changed(self, event):\n"
+            "        cfg = dict(**self.config)\n"
+            "        if not cfg.get('port'):\n"
+            "            self.unit.status = ops.BlockedStatus('bad port')\n",
+        )
+        report = lint(tmp_charm)
+        assert "CFG004" not in {d.rule_id for d in report.diagnostics}
+
+    def test_config_iteration_satisfies_unread(self, tmp_charm: pathlib.Path):
+        """``for key in self.config:`` counts as reading all config options."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "port": {"type": "int", "default": 8080, "description": "x"},
+                    }
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on_config_changed(self, event):\n"
+            "        for key in self.config:\n"
+            "            print(key, self.config[key])\n"
+            "        self.unit.status = ops.BlockedStatus('x')\n",
+        )
+        report = lint(tmp_charm)
+        assert "CFG004" not in {d.rule_id for d in report.diagnostics}
+
+    def test_config_items_satisfies_unread(self, tmp_charm: pathlib.Path):
+        """``self.config.items()`` counts as reading all config options."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "port": {"type": "int", "default": 8080, "description": "x"},
+                        "host": {"type": "string", "default": "localhost", "description": "x"},
+                    }
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on_config_changed(self, event):\n"
+            "        for k, v in self.config.items():\n"
+            "            print(k, v)\n"
+            "        self.unit.status = ops.BlockedStatus('x')\n",
+        )
+        report = lint(tmp_charm)
+        assert "CFG004" not in {d.rule_id for d in report.diagnostics}
+
+    def test_config_values_satisfies_unread(self, tmp_charm: pathlib.Path):
+        """``self.config.values()`` counts as reading all config options."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "port": {"type": "int", "default": 8080, "description": "x"},
+                    }
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on_config_changed(self, event):\n"
+            "        vals = list(self.config.values())\n"
+            "        if not all(vals):\n"
+            "            self.unit.status = ops.BlockedStatus('x')\n",
+        )
+        report = lint(tmp_charm)
+        assert "CFG004" not in {d.rule_id for d in report.diagnostics}
+
     def test_config_no_blocked_status_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,
