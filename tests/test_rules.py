@@ -870,6 +870,88 @@ class TestStructureRules:
         assert not str_ids
 
 
+class TestOperationalRules:
+    """Tests for the OPS (operational readiness) rules."""
+
+    def test_ops004_required_relation_not_mentioned_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "description": "A charm that does some work.",
+                "requires": {
+                    "database": {"interface": "postgresql_client"},
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in report.diagnostics if d.rule_id == "OPS004"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert hits[0].path == "charmcraft.yaml"
+
+    def test_ops004_required_relation_mentioned_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "description": "A charm that talks to a database backend.",
+                "requires": {
+                    "database": {"interface": "postgresql_client"},
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS004"]
+
+    def test_ops004_hyphenated_relation_matched_with_spaces(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "description": "Provides an ingress per app for HTTP traffic.",
+                "requires": {
+                    "ingress-per-app": {"interface": "ingress_per_app"},
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS004"]
+
+    def test_ops004_only_optional_relations_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "description": "A charm that does some work.",
+                "requires": {
+                    "tracing": {"interface": "tracing", "optional": True},
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS004"]
+
+    def test_ops004_no_requires_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "description": "A self-contained charm."},
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS004"]
+
+    def test_ops004_no_description_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "requires": {"database": {"interface": "postgresql_client"}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report.diagnostics if d.rule_id == "OPS004"]
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
