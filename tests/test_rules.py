@@ -172,6 +172,46 @@ class TestStatusRules:
         assert "STS003" in {d.rule_id for d in report.diagnostics}
 
 
+class TestDeprecatedRules:
+    """Tests for deprecated API detection."""
+
+    def test_stored_state_detected(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "class MyCharm:\n    _stored = StoredState()\n")
+        report = lint(tmp_charm)
+        dep_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("DEP")}
+        assert "DEP001" in dep_ids
+
+    def test_clean_source_no_deprecated(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\nclass MyCharm(ops.CharmBase): pass\n")
+        report = lint(tmp_charm)
+        dep_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("DEP")}
+        assert not dep_ids
+
+    def test_reactive_framework_import_detected(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from charms.reactive import when, set_flag\n\n"
+            "@when('config.changed')\ndef configure():\n    set_flag('configured')\n",
+        )
+        report = lint(tmp_charm)
+        dep_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("DEP")}
+        assert "DEP004" in dep_ids
+
+    def test_reactive_decorator_detected(self, tmp_charm: pathlib.Path):
+        """``@when(...)`` on its own (no explicit charms.reactive import) still flags."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "@when('db.available')\ndef on_db_available():\n    pass\n",
+        )
+        report = lint(tmp_charm)
+        dep_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("DEP")}
+        assert "DEP004" in dep_ids
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
