@@ -6,8 +6,8 @@ classes follow in their own PRs.
 
 import re
 
-from .. import _models as models  # noqa: F401  # used by the rule PRs that follow
-from . import Rule  # noqa: F401  # used by the rule PRs that follow
+from .. import _models as models
+from . import Rule
 
 # Each entry: (PyPI package name, new import path shown to the user).
 _FETCH_LIBS_PYPI_MAP: dict[str, tuple[str, str]] = {
@@ -39,3 +39,42 @@ def _resolve(prefix: str, submodule: str) -> tuple[str, str] | None:
     if prefix == "operator_libs_linux":
         return _OP_LIBS_LINUX_SUBMODULES.get(submodule)
     return _FETCH_LIBS_PYPI_MAP.get(prefix)
+
+
+class FetchLibsHasPyPI(Rule):
+    """Detect fetch-libs imports that have known PyPI equivalents."""
+
+    id = "LIB001"
+    name = "fetch-libs-has-pypi"
+    description = "Charm library import has a PyPI equivalent"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        seen: set[tuple[str, str]] = set()
+
+        for path, content in context.python_sources.items():
+            for match in _IMPORT_RE.finditer(content):
+                prefix = match.group(1)
+                submodule = match.group(2)
+                key = (prefix, submodule)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                resolved = _resolve(prefix, submodule)
+                if resolved:
+                    pypi_name, import_hint = resolved
+                    line = content[: match.start()].count("\n") + 1
+                    diagnostics.append(
+                        self.diagnostic(
+                            (
+                                f"charms.{prefix}.v*.{submodule} — replace with PyPI package "
+                                f"'{pypi_name}' ({import_hint})"
+                            ),
+                            path=str(path),
+                            line=line,
+                            fix_hint=f"pip install {pypi_name}",
+                        )
+                    )
+        return diagnostics

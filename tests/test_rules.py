@@ -421,6 +421,19 @@ class TestDocumentationRules:
         assert "DOC001" not in {d.rule_id for d in report.diagnostics}
 
 
+class TestLibraryRules:
+    """Tests for charm-library import rules."""
+
+    def test_known_pypi_detected(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from charms.tls_certificates_interface.v3 import tls_certificates\n",
+        )
+        report = lint(tmp_charm)
+        assert "LIB001" in {d.rule_id for d in report.diagnostics}
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
