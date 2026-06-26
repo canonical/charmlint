@@ -51,3 +51,26 @@ class ConfigMissingDefault(Rule):
                     )
                 )
         return diagnostics
+
+
+class ConfigMissingDescription(Rule):
+    """Check that all config options have a description."""
+
+    id = "CFG003"
+    name = "config-missing-description"
+    description = "Config option is missing a description"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for opt_name, opt_def in context.config_options.items():
+            if not isinstance(opt_def, dict):
+                continue
+            if not opt_def.get("description"):
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Config option '{opt_name}' is missing a description",
+                        path="charmcraft.yaml",
+                    )
+                )
+        return diagnostics
