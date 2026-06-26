@@ -59,4 +59,4 @@ def get_all_rules() -> dict[str, Rule]:
 # Import rule modules so their Rule subclasses register on package
 # import. The rest of the rule modules are being re-added one PR at a
 # time — see RULES_TRACKER.md at the repo root.
-from . import metadata, observability  # noqa: E402, F401
+from . import metadata, observability, status  # noqa: E402, F401

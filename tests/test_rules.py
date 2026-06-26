@@ -4,7 +4,7 @@ import pathlib
 
 from charmlint._linter import lint
 from charmlint._models import Severity
-from tests.conftest import make_full_charm, write_charmcraft_yaml
+from tests.conftest import make_full_charm, write_charm_source, write_charmcraft_yaml
 
 
 class TestMetadataRules:
@@ -81,6 +81,95 @@ class TestObservabilityRules:
         (tmp_charm / "requirements.txt").write_text("ops\nops-tracing\n")
         report = lint(tmp_charm)
         assert "COS005" not in {d.rule_id for d in report.diagnostics}
+
+
+class TestStatusRules:
+    """Tests for STS001/STS002/STS003 status reporting checks."""
+
+    def test_missing_config_condition_without_status_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on(self, _):\n"
+            "        if not self.config.get('key'):\n"
+            "            pass  # missing config: key — not handled with status\n",
+        )
+        report = lint(tmp_charm)
+        assert "STS001" in {d.rule_id for d in report.diagnostics}
+
+    def test_missing_config_with_blocked_status_passes(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nfrom ops import BlockedStatus\n\nclass C(ops.CharmBase):\n"
+            "    def _on(self, _):\n"
+            "        if not self.config.get('key'):\n"
+            "            self.unit.status = BlockedStatus('missing config: key')\n",
+        )
+        report = lint(tmp_charm)
+        assert "STS001" not in {d.rule_id for d in report.diagnostics}
+
+    def test_missing_config_with_waiting_status_passes(self, tmp_charm: pathlib.Path):
+        """WaitingStatus is a valid alternative to BlockedStatus for config checks."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nfrom ops import WaitingStatus\n\nclass C(ops.CharmBase):\n"
+            "    def _on(self, _):\n"
+            "        if not self.config.get('key'):\n"
+            "            self.unit.status = WaitingStatus('missing config: key')\n",
+        )
+        report = lint(tmp_charm)
+        assert "STS001" not in {d.rule_id for d in report.diagnostics}
+
+    def test_no_condition_pattern_not_flagged(self, tmp_charm: pathlib.Path):
+        """A charm that never mentions the condition should not be flagged."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on(self, _):\n"
+            "        self.unit.status = ops.BlockedStatus('missing TLS cert')\n",
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in report.diagnostics}
+        assert "STS001" not in ids
+        assert "STS002" not in ids
+        assert "STS003" not in ids
+
+    def test_no_source_not_flagged(self, tmp_charm: pathlib.Path):
+        """A charm with no Python source should not be flagged."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in report.diagnostics}
+        assert "STS001" not in ids
+        assert "STS002" not in ids
+        assert "STS003" not in ids
+
+    def test_invalid_config_condition_without_status_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on(self, _):\n"
+            "        if self.config.get('combo') and self.config.get('other'):\n"
+            "            pass  # invalid config combination\n",
+        )
+        report = lint(tmp_charm)
+        assert "STS002" in {d.rule_id for d in report.diagnostics}
+
+    def test_missing_relation_condition_without_status_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on(self, _):\n"
+            "        if not self.model.relations.get('db'):\n"
+            "            pass  # missing relation: db\n",
+        )
+        report = lint(tmp_charm)
+        assert "STS003" in {d.rule_id for d in report.diagnostics}
 
 
 class TestFullCharm:
