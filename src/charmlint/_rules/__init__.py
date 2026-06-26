@@ -66,6 +66,7 @@ from . import (  # noqa: E402, F401
     deprecated,
     metadata,
     observability,
+    pebble,
     status,
     unknown_fields,
 )
