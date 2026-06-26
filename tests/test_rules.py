@@ -313,6 +313,19 @@ class TestPebbleRules:
         report = lint(tmp_charm)
         assert "PEB001" in {d.rule_id for d in report.diagnostics}
 
+    def test_pebble_call_without_can_connect_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\n"
+            "class C(ops.CharmBase):\n"
+            "    def _on(self, event):\n"
+            "        c = self.unit.get_container('app')\n"
+            "        c.restart('svc')\n",
+        )
+        report = lint(tmp_charm)
+        assert "PEB002" in {d.rule_id for d in report.diagnostics}
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""

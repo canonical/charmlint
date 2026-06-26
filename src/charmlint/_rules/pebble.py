@@ -92,3 +92,67 @@ class PebbleAddLayerNoCombine(Rule):
                     )
                 )
         return diagnostics
+
+
+class PebbleCallWithoutCanConnect(Rule):
+    """Flag Pebble methods called in a function without can_connect guard."""
+
+    id = "PEB002"
+    name = "pebble-call-without-can-connect"
+    description = "Pebble method called in a function with no can_connect() guard"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        segments = _function_segments(context.python_sources)
+
+        guarded: dict[str, bool] = {}
+        for _path, func, source in segments:
+            if "can_connect" in source or "pebble_ready" in func.name or "PebbleReady" in source:
+                guarded[func.name] = True
+            else:
+                guarded.setdefault(func.name, False)
+
+        callers: dict[str, list[str]] = {}
+        for _path, func, _source in segments:
+            for callee in _called_self_methods(func):
+                callers.setdefault(callee, []).append(func.name)
+
+        changed = True
+        while changed:
+            changed = False
+            for fname, is_guarded in list(guarded.items()):
+                if is_guarded:
+                    continue
+                call_sites = callers.get(fname)
+                if not call_sites:
+                    continue
+                if all(guarded.get(c, False) for c in call_sites):
+                    guarded[fname] = True
+                    changed = True
+
+        diagnostics: list[models.Diagnostic] = []
+        for path, func, source in segments:
+            if guarded.get(func.name):
+                continue
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if not (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in _PEBBLE_CALLS
+                ):
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Function '{func.name}' calls .{node.func.attr}() with no "
+                        "can_connect() guard — early hooks may raise ConnectionError",
+                        path=str(path),
+                        line=func.lineno,
+                        fix_hint=(
+                            "Add `if not container.can_connect(): event.defer(); return` "
+                            "or hoist the call into the pebble_ready handler"
+                        ),
+                    )
+                )
+                break
+        return diagnostics
