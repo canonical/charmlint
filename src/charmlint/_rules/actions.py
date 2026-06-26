@@ -213,3 +213,54 @@ class ActionMissingObserver(Rule):
                 )
             )
         return diagnostics
+
+
+def _handler_terminates(handler: ast.FunctionDef) -> bool:
+    """True iff handler body calls ``*.set_results(...)`` or ``*.fail(...)``."""
+    for sub in ast.walk(handler):
+        if (
+            isinstance(sub, ast.Call)
+            and isinstance(sub.func, ast.Attribute)
+            and sub.func.attr in ("set_results", "fail")
+        ):
+            return True
+    return False
+
+
+class ActionHandlerIncomplete(Rule):
+    """Check that each action handler ends in ``set_results()`` or ``fail()``."""
+
+    id = "ACT007"
+    name = "action-handler-incomplete"
+    description = "Action handler does not call set_results() or fail()"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if not context.actions:
+            return []
+        observers = _gather_action_observers(context.python_sources)
+        diagnostics: list[models.Diagnostic] = []
+        for action_name in context.actions:
+            normalised = action_name.replace("-", "_")
+            entry = observers.get(normalised)
+            if entry is None:
+                continue
+            handler_name, handler_node, path = entry
+            if handler_node is None:
+                continue
+            if _handler_terminates(handler_node):
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"Action handler '{handler_name}' for action '{action_name}' "
+                    "never calls set_results() or fail() — the action will hang "
+                    "until it times out",
+                    path=str(path),
+                    line=handler_node.lineno,
+                    fix_hint=(
+                        "Call `event.set_results(...)` on success or "
+                        "`event.fail('reason')` to report failure"
+                    ),
+                )
+            )
+        return diagnostics

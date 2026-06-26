@@ -277,6 +277,25 @@ class TestActionRules:
         act006 = [d for d in report.diagnostics if d.rule_id == "ACT006"]
         assert act006
 
+    def test_action_handler_incomplete_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {"description": "x"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, *args):\n"
+            "        super().__init__(*args)\n"
+            "        self.framework.observe(self.on.do_thing_action, self._on_do_thing)\n"
+            "    def _on_do_thing(self, event):\n"
+            "        pass\n",
+        )
+        report = lint(tmp_charm)
+        act007 = [d for d in report.diagnostics if d.rule_id == "ACT007"]
+        assert act007
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
