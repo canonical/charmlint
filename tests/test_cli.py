@@ -19,9 +19,9 @@ class TestCLI:
         assert exit_code == 1
 
     def test_bad_charm_returns_error(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         exit_code = main([str(tmp_charm)])
-        # Should have errors (TEST001 is an error).
+        # Missing ``name`` triggers META001 (error severity).
         assert exit_code == 1
 
     def test_good_charm_returns_zero(self, tmp_charm: pathlib.Path):
@@ -30,7 +30,7 @@ class TestCLI:
         assert exit_code == 0
 
     def test_json_output(self, tmp_charm: pathlib.Path, capsys):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -40,21 +40,20 @@ class TestCLI:
     def test_select_filter(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         exit_code = main([str(tmp_charm), "--select", "META"])
-        # Only META rules — no TEST001 error, so might pass.
-        # META001 is not triggered because name is present.
-        # But META002-META007 are warnings, so exit code 0.
+        # Name is present so META001 doesn't fire; with only META selected,
+        # no diagnostics → exit 0.
         assert exit_code == 0
 
     def test_ignore_filter(self, tmp_charm: pathlib.Path, capsys):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        main([str(tmp_charm), "--format", "json", "--ignore", "TEST001,TEST002,TEST003"])
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        main([str(tmp_charm), "--format", "json", "--ignore", "META001"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
-        test_diags = [d for d in data["diagnostics"] if d["rule_id"].startswith("TEST")]
-        assert not test_diags
+        meta_diags = [d for d in data["diagnostics"] if d["rule_id"] == "META001"]
+        assert not meta_diags
 
     def test_severity_filter(self, tmp_charm: pathlib.Path, capsys):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json", "--severity", "error"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -63,12 +62,7 @@ class TestCLI:
 
     def test_strict_mode(self, tmp_charm: pathlib.Path):
         make_full_charm(tmp_charm)
-        # Full charm has some info/warning items (TLS, docs).
-        # With --strict, warnings cause exit code 2.
         exit_code_normal = main([str(tmp_charm)])
         assert exit_code_normal == 0
-        # Check if there are warnings — if so, strict returns 2.
         exit_code_strict = main([str(tmp_charm), "--strict"])
-        # Full charm might still have some warnings (SEC002 is info, DOC003-DOC005 are info).
-        # If no warnings, strict also returns 0.
         assert exit_code_strict in (0, 2)

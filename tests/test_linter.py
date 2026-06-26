@@ -102,24 +102,24 @@ class TestLintFiltering:
             assert d.rule_id.startswith("META"), f"Unexpected rule: {d.rule_id}"
 
     def test_ignore_rules(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        config = LintConfig(ignore=["TEST001"])
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        config = LintConfig(ignore=["META001"])
         report = lint(tmp_charm, config)
-        assert "TEST001" not in {d.rule_id for d in report.diagnostics}
+        assert "META001" not in {d.rule_id for d in report.diagnostics}
 
     def test_severity_override(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        config = LintConfig(severity_overrides={"COS001": "error"})
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        config = LintConfig(severity_overrides={"META001": "warning"})
         report = lint(tmp_charm, config)
-        cos001 = [d for d in report.diagnostics if d.rule_id == "COS001"]
-        assert cos001
-        assert cos001[0].severity == Severity.ERROR
+        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"]
+        assert meta001
+        assert meta001[0].severity == Severity.WARNING
 
     def test_disable_rule(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        config = LintConfig(severity_overrides={"COS001": "off"})
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        config = LintConfig(severity_overrides={"META001": "off"})
         report = lint(tmp_charm, config)
-        assert "COS001" not in {d.rule_id for d in report.diagnostics}
+        assert "META001" not in {d.rule_id for d in report.diagnostics}
 
     def test_min_severity_filter(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
@@ -145,12 +145,12 @@ class TestLintFiltering:
         assert report.diagnostics == []
 
     def test_ignore_long_category_does_not_match_short_prefix(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        # ``COS`` is a real category; ``COSS`` must not match it.
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        # ``META`` is a real category; ``METAA`` must not match it.
         # Confirms exact-string category matching, not prefix matching.
-        config = LintConfig(ignore=["COSS"])
+        config = LintConfig(ignore=["METAA"])
         report = lint(tmp_charm, config)
-        assert any(d.rule_id.startswith("COS") for d in report.diagnostics)
+        assert any(d.rule_id.startswith("META") for d in report.diagnostics)
 
     def test_malformed_charmcraft_yaml_returns_parse_error(self, tmp_path: pathlib.Path):
         charm_dir = tmp_path / "broken"
