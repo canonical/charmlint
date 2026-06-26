@@ -25,9 +25,7 @@ class TestLintConfig:
         assert config.severity_overrides["STR002"] == "off"
 
     def test_select_and_ignore(self):
-        config = LintConfig.from_dict(
-            {"lint": {"select": ["COS", "META"], "ignore": ["STR003"]}}
-        )
+        config = LintConfig.from_dict({"lint": {"select": ["COS", "META"], "ignore": ["STR003"]}})
         assert config.select == ["COS", "META"]
         assert config.ignore == ["STR003"]
 
@@ -72,7 +70,7 @@ class TestLoadConfig:
         assert "STR002" in config.ignore
 
     def test_pyproject_without_charmlint_section_ignored(self, tmp_path: pathlib.Path):
-        (tmp_path / "pyproject.toml").write_text('[tool.ruff]\nline-length = 99\n')
+        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 99\n")
         config = load_config(tmp_path)
         assert config == LintConfig()
 

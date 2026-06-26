@@ -120,9 +120,7 @@ def _discover(start: pathlib.Path) -> tuple[pathlib.Path, dict[str, Any]] | None
     return None
 
 
-def load_config(
-    charm_dir: pathlib.Path, config_path: pathlib.Path | None = None
-) -> LintConfig:
+def load_config(charm_dir: pathlib.Path, config_path: pathlib.Path | None = None) -> LintConfig:
     """Load configuration, searching upward from *charm_dir*.
 
     If *config_path* is provided it is used directly: a ``pyproject.toml``
