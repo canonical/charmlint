@@ -1,6 +1,6 @@
 """Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``.
 
-CC001–CC003 live here; CC004 returns in its own PR.
+CC001–CC004 (the charmcraft-compat rules).
 """
 
 import os
@@ -130,3 +130,49 @@ class Entrypoint(Rule):
             )
 
         return diagnostics
+
+
+class OpsMainCall(Rule):
+    """Check that an ops-framework charm calls ``ops.main()`` in its entrypoint."""
+
+    id = "CC004"
+    name = "no-ops-main-call"
+    description = "Charm entrypoint does not call ops.main()"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        has_ops = False
+        entrypoint_content = ""
+        entrypoint_file = None
+        for path, content in context.python_sources.items():
+            if "lib" in path.parts:
+                continue
+            if re.search(r"\bimport\s+ops\b|from\s+ops\b", content):
+                has_ops = True
+                entrypoint_content += content + "\n"
+                if entrypoint_file is None:
+                    entrypoint_file = path
+
+        if not has_ops:
+            return []
+
+        if re.search(r"ops\.main\s*\(", entrypoint_content):
+            return []
+
+        if re.search(
+            r"from\s+ops\b[^#\n]*\bimport\b[^#\n]*\bmain\b", entrypoint_content
+        ) and re.search(r"\bmain\s*\(", entrypoint_content):
+            return []
+
+        path_str = (
+            str(entrypoint_file.relative_to(context.charm_dir))
+            if entrypoint_file is not None
+            else None
+        )
+        return [
+            self.diagnostic(
+                "Charm source imports ops but does not call ops.main()",
+                path=path_str,
+                fix_hint="Add ops.main(MyCharm) at the end of the entrypoint",
+            )
+        ]

@@ -66,3 +66,26 @@ class TestEntrypoint:
         (tmp_charm / "dispatch").write_text("#!/bin/sh\nexec ./src/charm.py\n")
         report = lint(tmp_charm)
         assert "CC003" in {d.rule_id for d in report.diagnostics}
+
+
+class TestOpsMainCall:
+    """Tests for CC004 — ops.main() call."""
+
+    def test_missing_ops_main(self, tmp_charm: pathlib.Path):
+        from tests.conftest import write_charm_source
+
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\nclass C(ops.CharmBase):\n    pass\n")
+        report = lint(tmp_charm)
+        assert "CC004" in {d.rule_id for d in report.diagnostics}
+
+    def test_with_ops_main_passes(self, tmp_charm: pathlib.Path):
+        from tests.conftest import write_charm_source
+
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n    pass\n\nops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CC004" not in {d.rule_id for d in report.diagnostics}
