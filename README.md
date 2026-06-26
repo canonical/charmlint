@@ -39,25 +39,9 @@ uv run pytest tests/ -v
 
 ## Rule catalogue
 
-Rules are grouped by category prefix:
-
-| Prefix | Category |
-|--------|----------|
-| META   | Metadata completeness |
-| DOC    | Documentation quality |
-| COS    | Observability / COS integration |
-| SEC    | Security |
-| ATT    | PyPI attestations (PEP 740) |
-| TEST   | Testing structure |
-| PEBBLE | Pebble container config |
-| REL    | Relation data |
-| STATUS | Status handling |
-| CONFIG | Configuration quality |
-| STRUCT | Repository structure |
-| DEP    | Deprecated patterns |
-| LIB    | Charm library usage |
-| LIBVER | Library version pinning |
-| COMPAT | charmcraft.yaml compatibility |
+Rule IDs follow `PREFIX###` (for example `SEC001`, `META003`). The prefix
+groups rules by lens. See [docs/id-scheme.md](docs/id-scheme.md) for the
+full prefix catalogue and naming rules.
 
 ## Configuration
 
