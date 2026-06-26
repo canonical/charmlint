@@ -428,7 +428,7 @@ class TestLibraryRules:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(
             tmp_charm,
-            "from charms.tls_certificates_interface.v3 import tls_certificates\n",
+            "from charms.tls_certificates_interface.v3.tls_certificates import X\n",
         )
         report = lint(tmp_charm)
         assert "LIB001" in {d.rule_id for d in report.diagnostics}
