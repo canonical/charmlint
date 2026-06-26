@@ -58,3 +58,32 @@ class SecretInPlainConfig(Rule):
                 )
             return diagnostics
         return []
+
+
+class NoTLSSupport(Rule):
+    """Check for TLS/encryption support."""
+
+    id = "SEC002"
+    name = "no-tls-support"
+    description = "No TLS/encryption support detected"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        for section in ("requires", "provides", "peers"):
+            for rel_def in context.metadata.get(section, {}).values():
+                if isinstance(rel_def, dict) and rel_def.get("interface") in (
+                    "tls-certificates",
+                    "certificates",
+                ):
+                    return []
+
+        all_source = "\n".join(context.python_sources.values())
+        if re.search(r"\btls\b|\bcertificate\b|\bssl\b", all_source, re.IGNORECASE):
+            return []
+
+        return [
+            self.diagnostic(
+                "No TLS/encryption support detected",
+                fix_hint="Add a tls-certificates relation for encryption in transit",
+            )
+        ]
