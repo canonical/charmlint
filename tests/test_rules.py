@@ -44,6 +44,21 @@ class TestMetadataRules:
         assert meta001.path == "metadata.yaml"
 
 
+class TestDocumentationRules:
+    """Tests for documentation presence rules."""
+
+    def test_no_readme(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "DOCUMENTATION-001" in {d.rule_id for d in report}
+
+    def test_readme_present(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "README.md").write_text("# Hello\n")
+        report = lint(tmp_charm)
+        assert "DOCUMENTATION-001" not in {d.rule_id for d in report}
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
