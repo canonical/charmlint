@@ -1,8 +1,10 @@
 """Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``.
 
-CC001–CC002 live here; CC003–CC004 return in their own PRs.
+CC001–CC003 live here; CC004 returns in its own PR.
 """
 
+import os
+import re
 from typing import Any
 
 from .. import _models as models
@@ -74,5 +76,57 @@ class NamingConventions(Rule):
                             path="charmcraft.yaml",
                         )
                     )
+
+        return diagnostics
+
+
+class Entrypoint(Rule):
+    """Check that the charm entrypoint exists and is executable."""
+
+    id = "CC003"
+    name = "entrypoint-issues"
+    description = "Charm entrypoint missing or not executable"
+    default_severity = models.Severity.ERROR
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        dispatch = context.charm_dir / "dispatch"
+        if not dispatch.exists():
+            return []
+
+        try:
+            content = dispatch.read_text(errors="replace")
+        except OSError:
+            return []
+
+        match = re.search(r"(?:exec\s+)?[./]*(\S+\.py)", content)
+        if not match:
+            return []
+
+        entrypoint_rel = match.group(1)
+        entrypoint = context.charm_dir / entrypoint_rel
+
+        diagnostics: list[models.Diagnostic] = []
+        if not entrypoint.exists():
+            diagnostics.append(
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' referenced in dispatch does not exist",
+                    path="dispatch",
+                )
+            )
+        elif not entrypoint.is_file():
+            diagnostics.append(
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' is not a regular file",
+                    path="dispatch",
+                )
+            )
+        elif not os.access(entrypoint, os.X_OK):
+            diagnostics.append(
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' is not executable",
+                    path=str(entrypoint_rel),
+                    fix_hint=f"Run: chmod +x {entrypoint_rel}",
+                )
+            )
 
         return diagnostics

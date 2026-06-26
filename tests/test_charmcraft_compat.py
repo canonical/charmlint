@@ -56,3 +56,13 @@ class TestNamingConventions:
         report = lint(tmp_charm)
         cc002 = [d for d in report.diagnostics if d.rule_id == "CC002"]
         assert any("my_action" in d.message for d in cc002)
+
+
+class TestEntrypoint:
+    """Tests for CC003 — entrypoint exists + executable."""
+
+    def test_missing_entrypoint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "dispatch").write_text("#!/bin/sh\nexec ./src/charm.py\n")
+        report = lint(tmp_charm)
+        assert "CC003" in {d.rule_id for d in report.diagnostics}
