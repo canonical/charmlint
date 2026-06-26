@@ -91,3 +91,30 @@ class RelationDataReadUnguarded(Rule):
                     )
                 )
         return diagnostics
+
+
+class RelationDataWriteWithoutLeader(Rule):
+    """Flag handlers that write to ``relation.data[self.app]`` without is_leader guard."""
+
+    id = "REL002"
+    name = "relation-data-write-without-leader"
+    description = "Writes app-data bag without an is_leader() guard"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for path, func, source in _function_segments(context.python_sources):
+            if not _WRITE_SELF_APP.search(source):
+                continue
+            if _LEADER_GUARD.search(source):
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"Handler '{func.name}' writes to event.relation.data[self.app] "
+                    "without an is_leader() guard — non-leader writes raise at runtime",
+                    path=str(path),
+                    line=func.lineno,
+                    fix_hint=("Add `if not self.unit.is_leader(): return` before the write"),
+                )
+            )
+        return diagnostics
