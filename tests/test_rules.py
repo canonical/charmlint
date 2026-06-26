@@ -386,6 +386,25 @@ class TestConfigRules:
         report = lint(tmp_charm)
         assert "CFG004" in {d.rule_id for d in report.diagnostics}
 
+    def test_config_no_blocked_status(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {"foo": {"type": "string", "default": "", "description": "x"}}
+                },
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n"
+            "    def _on(self, _):\n"
+            "        x = self.config.get('foo')\n",
+        )
+        report = lint(tmp_charm)
+        assert "CFG005" in {d.rule_id for d in report.diagnostics}
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""

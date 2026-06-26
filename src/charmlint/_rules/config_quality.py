@@ -128,3 +128,32 @@ class ConfigOptionUnread(Rule):
                 )
             )
         return diagnostics
+
+
+class ConfigNoBlockedStatus(Rule):
+    """Flag charms with config but no BlockedStatus validation surface."""
+
+    id = "CFG005"
+    name = "config-no-blocked-status"
+    description = "Charm has config options but never sets BlockedStatus"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if not context.config_options:
+            return []
+        pattern = re.compile(r"\bBlockedStatus\b")
+        for path, content in context.python_sources.items():
+            if "lib" in path.parts:
+                continue
+            if pattern.search(content):
+                return []
+        return [
+            self.diagnostic(
+                "Charm declares config options but never references "
+                "BlockedStatus — invalid config has no visible status",
+                fix_hint=(
+                    "Validate config and set `self.unit.status = "
+                    "ops.BlockedStatus('reason')` for invalid values"
+                ),
+            )
+        ]
