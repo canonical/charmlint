@@ -264,6 +264,19 @@ class TestActionRules:
         report = lint(tmp_charm)
         assert "ACT005" in {d.rule_id for d in report.diagnostics}
 
+    def test_action_missing_observer_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {"description": "x"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n    pass\n",
+        )
+        report = lint(tmp_charm)
+        act006 = [d for d in report.diagnostics if d.rule_id == "ACT006"]
+        assert act006
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""

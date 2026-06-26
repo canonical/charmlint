@@ -183,3 +183,33 @@ def _gather_action_observers(
             handler_node = methods.get(handler_name) if handler_name else None
             out.setdefault(action, (handler_name, handler_node, path))
     return out
+
+
+class ActionMissingObserver(Rule):
+    """Check that every declared action has a ``framework.observe`` registration."""
+
+    id = "ACT006"
+    name = "action-missing-observer"
+    description = "Action declared in charmcraft.yaml has no observer in src/"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if not context.actions:
+            return []
+        observers = _gather_action_observers(context.python_sources)
+        diagnostics: list[models.Diagnostic] = []
+        for action_name in context.actions:
+            normalised = action_name.replace("-", "_")
+            if normalised in observers:
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"Action '{action_name}' has no observer "
+                    f"(expected `self.framework.observe(self.on.{normalised}_action, ...)`)",
+                    fix_hint=(
+                        f"Add `self.framework.observe(self.on.{normalised}_action, "
+                        f"self._on_{normalised})` in __init__ and a matching handler"
+                    ),
+                )
+            )
+        return diagnostics
