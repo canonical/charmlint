@@ -212,6 +212,35 @@ class TestDeprecatedRules:
         assert "DEP004" in dep_ids
 
 
+class TestActionRules:
+    """Tests for action quality checks."""
+
+    def test_missing_expected_actions(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        act_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("ACT")}
+        assert {"ACT001", "ACT002", "ACT003"} <= act_ids
+
+    def test_action_aliases_accepted(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "actions": {
+                    "health-check": {"description": "Check health"},
+                    "stop": {"description": "Stop"},
+                    "start": {"description": "Start"},
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        act_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("ACT")}
+        # Aliases should satisfy ACT001, ACT002, ACT003.
+        assert "ACT001" not in act_ids
+        assert "ACT002" not in act_ids
+        assert "ACT003" not in act_ids
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
