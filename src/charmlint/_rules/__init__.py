@@ -74,5 +74,6 @@ from . import (  # noqa: E402, F401
     relation_data,
     security,
     status,
+    structure,
     unknown_fields,
 )
