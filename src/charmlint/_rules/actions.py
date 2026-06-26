@@ -1,7 +1,9 @@
 """Action rules — expected operational actions and action quality.
 
-ACT001–ACT004 live here; ACT005–ACT007 return in their own PRs.
+ACT001–ACT005 live here; ACT006–ACT007 return in their own PRs.
 """
+
+from typing import Any
 
 from .. import _models as models
 from . import Rule
@@ -75,4 +77,33 @@ class ActionMissingDescription(Rule):
                         path="charmcraft.yaml",
                     )
                 )
+        return diagnostics
+
+
+class ActionParamMissingDescription(Rule):
+    """Check that all action parameters have descriptions."""
+
+    id = "ACT005"
+    name = "action-param-missing-description"
+    description = "Action parameter is missing a description"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for action_name, action_def in context.actions.items():
+            if not isinstance(action_def, dict):
+                continue
+            params: dict[str, Any] = action_def.get("params", action_def.get("parameters", {}))
+            if not isinstance(params, dict):
+                continue
+            properties = params.get("properties", params)
+            for param_name, param_def in properties.items():
+                if isinstance(param_def, dict) and not param_def.get("description"):
+                    diagnostics.append(
+                        self.diagnostic(
+                            f"Action '{action_name}' parameter '{param_name}' "
+                            f"is missing a description",
+                            path="charmcraft.yaml",
+                        )
+                    )
         return diagnostics

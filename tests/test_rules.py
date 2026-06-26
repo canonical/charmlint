@@ -248,6 +248,22 @@ class TestActionRules:
         report = lint(tmp_charm)
         assert "ACT004" in {d.rule_id for d in report.diagnostics}
 
+    def test_action_param_missing_description(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "actions": {
+                    "do-thing": {
+                        "description": "Does a thing",
+                        "params": {"properties": {"verbose": {"type": "boolean"}}},
+                    }
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert "ACT005" in {d.rule_id for d in report.diagnostics}
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
