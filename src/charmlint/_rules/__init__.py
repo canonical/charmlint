@@ -66,4 +66,5 @@ from . import (  # noqa: E402, F401
     metadata,
     observability,
     status,
+    unknown_fields,
 )
