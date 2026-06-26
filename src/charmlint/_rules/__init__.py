@@ -71,6 +71,7 @@ from . import (  # noqa: E402, F401
     metadata,
     observability,
     pebble,
+    relation_data,
     status,
     unknown_fields,
 )
