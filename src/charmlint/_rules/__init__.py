@@ -65,6 +65,7 @@ from . import (  # noqa: E402, F401
     charmcraft_compat,
     config_quality,
     deprecated,
+    documentation,
     metadata,
     observability,
     pebble,
