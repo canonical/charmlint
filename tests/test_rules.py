@@ -347,6 +347,17 @@ class TestConfigRules:
         report = lint(tmp_charm)
         assert "CFG001" in {d.rule_id for d in report.diagnostics}
 
+    def test_config_missing_default(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {"options": {"foo": {"type": "string", "description": "x"}}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert "CFG002" in {d.rule_id for d in report.diagnostics}
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""

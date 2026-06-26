@@ -28,3 +28,26 @@ class ConfigMissingType(Rule):
                     )
                 )
         return diagnostics
+
+
+class ConfigMissingDefault(Rule):
+    """Check that all config options have a default value."""
+
+    id = "CFG002"
+    name = "config-missing-default"
+    description = "Config option is missing a default value"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for opt_name, opt_def in context.config_options.items():
+            if not isinstance(opt_def, dict):
+                continue
+            if "default" not in opt_def:
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Config option '{opt_name}' is missing a default value",
+                        path="charmcraft.yaml",
+                    )
+                )
+        return diagnostics
