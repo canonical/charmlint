@@ -61,6 +61,7 @@ def get_all_rules() -> dict[str, Rule]:
 # time — see RULES_TRACKER.md at the repo root.
 from . import (  # noqa: E402, F401
     actions,
+    attestations,
     charmcraft_compat,
     deprecated,
     metadata,
