@@ -64,3 +64,15 @@ class MissingInstallationDocs(Rule):
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return _check_doc_topic(self, context, "installation", "installation/setup")
+
+
+class MissingConfigurationDocs(Rule):
+    """Check for configuration documentation."""
+
+    id = "DOC003"
+    name = "missing-configuration-docs"
+    description = "No configuration documentation found"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        return _check_doc_topic(self, context, "configuration", "configuration")
