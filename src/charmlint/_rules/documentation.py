@@ -52,3 +52,15 @@ def _check_doc_topic(
                 continue
 
     return [rule.diagnostic(f"No {label} documentation found")]
+
+
+class MissingInstallationDocs(Rule):
+    """Check for installation documentation."""
+
+    id = "DOC002"
+    name = "missing-installation-docs"
+    description = "No installation/setup documentation found"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        return _check_doc_topic(self, context, "installation", "installation/setup")
