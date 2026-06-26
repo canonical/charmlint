@@ -68,13 +68,19 @@ class TestObservabilityRules:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         report = lint(tmp_charm)
         cos_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("COS")}
-        assert {"COS001", "COS002", "COS003", "COS004"} <= cos_ids
+        assert {"COS001", "COS002", "COS003", "COS004", "COS005"} <= cos_ids
 
     def test_cos_present_no_diagnostics(self, tmp_charm: pathlib.Path):
         make_full_charm(tmp_charm)
         report = lint(tmp_charm)
         cos_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("COS")}
         assert not cos_ids
+
+    def test_ops_tracing_in_requirements(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "requirements.txt").write_text("ops\nops-tracing\n")
+        report = lint(tmp_charm)
+        assert "COS005" not in {d.rule_id for d in report.diagnostics}
 
 
 class TestFullCharm:

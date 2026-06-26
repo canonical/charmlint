@@ -1,8 +1,6 @@
-"""Observability rules — COS relations.
+"""Observability rules — COS relations and ops-tracing."""
 
-COS001–COS004 are added here; COS005 (ops-tracing) returns in its own PR.
-"""
-
+import re
 from typing import Any
 
 from .. import _models as models
@@ -71,3 +69,36 @@ def _make_cos_rule(_iface: str, _id: str, _name: str, _msg: str) -> type[Rule]:
 
 for _interface, _rule_id, _name, _message in _COS_CHECKS:
     _make_cos_rule(_interface, _rule_id, _name, _message)
+
+
+class OpsTracingNotInstalled(Rule):
+    """Check that ops-tracing is listed as a dependency."""
+
+    id = "COS005"
+    name = "ops-tracing-not-installed"
+    description = "ops-tracing not detected in dependencies or source"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        # Check requirements files.
+        for req_name in ("requirements.txt", "pyproject.toml"):
+            req_path = context.charm_dir / req_name
+            if req_path.exists():
+                try:
+                    content = req_path.read_text(errors="replace")
+                    if "ops-tracing" in content:
+                        return []
+                except OSError:
+                    pass
+
+        # Check source for setup call.
+        for content in context.python_sources.values():
+            if re.search(r"ops_tracing|setup_tracing", content):
+                return []
+
+        return [
+            self.diagnostic(
+                "ops-tracing not detected — add for distributed tracing",
+                fix_hint="Add 'ops-tracing' to requirements.txt or pyproject.toml",
+            )
+        ]
