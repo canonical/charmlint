@@ -113,3 +113,15 @@ def _run_checks(
             )
         )
     return diagnostics
+
+
+class MustHaveAttestationsMissing(Rule):
+    """A must-have package is missing a PyPI attestation."""
+
+    id = "ATT001"
+    name = "must-have-package-unattested"
+    description = "Dependency must have a PyPI attestation but PyPI reports none for this release."
+    default_severity = models.Severity.ERROR
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        return _run_checks(self, context, only_must_have=True)
