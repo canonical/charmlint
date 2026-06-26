@@ -61,6 +61,22 @@ class TestMetadataRules:
             assert rid not in ids, f"{rid} should not fire for modern charmcraft.yaml"
 
 
+class TestObservabilityRules:
+    """Tests for COS relation checks."""
+
+    def test_missing_cos_relations(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        cos_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("COS")}
+        assert {"COS001", "COS002", "COS003", "COS004"} <= cos_ids
+
+    def test_cos_present_no_diagnostics(self, tmp_charm: pathlib.Path):
+        make_full_charm(tmp_charm)
+        report = lint(tmp_charm)
+        cos_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("COS")}
+        assert not cos_ids
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
