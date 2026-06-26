@@ -433,6 +433,15 @@ class TestLibraryRules:
         report = lint(tmp_charm)
         assert "LIB001" in {d.rule_id for d in report.diagnostics}
 
+    def test_unknown_lib_detected(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from charms.unknown_lib.v1.bar import X\n",
+        )
+        report = lint(tmp_charm)
+        assert "LIB002" in {d.rule_id for d in report.diagnostics}
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""

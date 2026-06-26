@@ -78,3 +78,39 @@ class FetchLibsHasPyPI(Rule):
                         )
                     )
         return diagnostics
+
+
+class FetchLibsUnknownPyPI(Rule):
+    """Detect fetch-libs imports with no known PyPI equivalent."""
+
+    id = "LIB002"
+    name = "fetch-libs-unknown-pypi"
+    description = "Charm library import — no PyPI equivalent yet; keep fetch-libs"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        seen: set[tuple[str, str]] = set()
+
+        for path, content in context.python_sources.items():
+            for match in _IMPORT_RE.finditer(content):
+                prefix = match.group(1)
+                submodule = match.group(2)
+                key = (prefix, submodule)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                if _resolve(prefix, submodule) is None:
+                    line_no = content[: match.start()].count("\n") + 1
+                    diagnostics.append(
+                        self.diagnostic(
+                            (
+                                f"charms.{prefix}.v*.{submodule} — no PyPI equivalent yet; "
+                                "continue using `charmcraft fetch-libs`"
+                            ),
+                            path=str(path),
+                            line=line_no,
+                        )
+                    )
+        return diagnostics
