@@ -63,6 +63,7 @@ from . import (  # noqa: E402, F401
     actions,
     attestations,
     charmcraft_compat,
+    config_quality,
     deprecated,
     metadata,
     observability,
