@@ -326,6 +326,15 @@ class TestPebbleRules:
         report = lint(tmp_charm)
         assert "PEB002" in {d.rule_id for d in report.diagnostics}
 
+    def test_layer_service_missing_keys_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "layer = {\n    'services': {\n        'app': {'command': 'run'},\n    }\n}\n",
+        )
+        report = lint(tmp_charm)
+        assert "PEB003" in {d.rule_id for d in report.diagnostics}
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""

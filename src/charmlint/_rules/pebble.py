@@ -156,3 +156,81 @@ class PebbleCallWithoutCanConnect(Rule):
                 )
                 break
         return diagnostics
+
+
+def _service_dict_keys(service_node: ast.expr) -> set[str] | None:
+    """Return the string-keyed entries of an AST Dict, else ``None``."""
+    if not isinstance(service_node, ast.Dict):
+        return None
+    keys: set[str] = set()
+    for key_node in service_node.keys:
+        if key_node is None:
+            continue
+        key = _string_key(key_node)
+        if key is not None:
+            keys.add(key)
+    return keys
+
+
+def _iter_service_entries(dict_node: ast.Dict) -> list[tuple[str, ast.expr]]:
+    """For a layer Dict that has a ``services`` key, return ``(svc_name, svc_node)``."""
+    entries: list[tuple[str, ast.expr]] = []
+    for key_node, value_node in zip(dict_node.keys, dict_node.values, strict=False):
+        if key_node is None:
+            continue
+        if _string_key(key_node) != "services":
+            continue
+        if not isinstance(value_node, ast.Dict):
+            continue
+        for svc_key, svc_value in zip(value_node.keys, value_node.values, strict=False):
+            if svc_key is None:
+                continue
+            name = _string_key(svc_key)
+            if name is not None:
+                entries.append((name, svc_value))
+    return entries
+
+
+_REQUIRED_SERVICE_KEYS = ("override", "command", "startup")
+
+
+class PebbleLayerServiceMissingKeys(Rule):
+    """Flag Pebble layer service dicts missing override/command/startup."""
+
+    id = "PEB003"
+    name = "pebble-layer-service-missing-keys"
+    description = "Pebble layer service entry missing required key (override/command/startup)"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for path, content in context.python_sources.items():
+            if "lib" in path.parts:
+                continue
+            try:
+                tree = ast.parse(content)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Dict):
+                    continue
+                for svc_name, svc_node in _iter_service_entries(node):
+                    keys = _service_dict_keys(svc_node)
+                    if keys is None:
+                        continue
+                    missing = [k for k in _REQUIRED_SERVICE_KEYS if k not in keys]
+                    if not missing:
+                        continue
+                    diagnostics.append(
+                        self.diagnostic(
+                            f"Pebble service '{svc_name}' is missing required key(s): "
+                            f"{', '.join(missing)}",
+                            path=str(path),
+                            line=svc_node.lineno,
+                            fix_hint=(
+                                "Pebble services need `override` (replace/merge), "
+                                "`command`, and `startup` (enabled/disabled) at minimum"
+                            ),
+                        )
+                    )
+        return diagnostics
