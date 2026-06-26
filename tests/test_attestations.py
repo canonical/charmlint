@@ -211,3 +211,52 @@ class TestATT001MustHave:
             diags = rule.check(context)
 
         assert diags == []
+
+
+class TestATT002OtherDeps:
+    def test_non_must_have_unattested_is_info(self, tmp_path: pathlib.Path) -> None:
+        charm = _make_charm_with_deps(
+            tmp_path,
+            pyproject=('[project]\nname = "c"\nversion = "0.1"\ndependencies = ["requests"]\n'),
+        )
+        context = _context(charm)
+        rule = att_rules.DependencyMissingAttestation()
+
+        stub = _provenance_stub({"requests": pypi_attest.ProvenanceStatus.UNATTESTED})
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
+            diags = rule.check(context)
+
+        assert len(diags) == 1
+        assert diags[0].rule_id == "ATT002"
+        assert diags[0].severity is models.Severity.INFO
+
+    def test_ignores_must_have_packages(self, tmp_path: pathlib.Path) -> None:
+        """Must-have names are ATT001's responsibility."""
+        charm = _make_charm_with_deps(
+            tmp_path,
+            pyproject=('[project]\nname = "c"\nversion = "0.1"\ndependencies = ["ops>=3.0"]\n'),
+        )
+        context = _context(charm)
+        rule = att_rules.DependencyMissingAttestation()
+
+        stub = _provenance_stub({"ops": pypi_attest.ProvenanceStatus.UNATTESTED})
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
+            diags = rule.check(context)
+
+        assert diags == []
+
+    def test_silent_when_all_attested(self, tmp_path: pathlib.Path) -> None:
+        charm = _make_charm_with_deps(
+            tmp_path,
+            pyproject=(
+                '[project]\nname = "c"\nversion = "0.1"\ndependencies = ["requests", "pydantic"]\n'
+            ),
+        )
+        context = _context(charm)
+        rule = att_rules.DependencyMissingAttestation()
+
+        stub = _provenance_stub({})
+        with mock.patch("charmlint._pypi_attest.check_provenance", stub):
+            diags = rule.check(context)
+
+        assert diags == []

@@ -125,3 +125,15 @@ class MustHaveAttestationsMissing(Rule):
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return _run_checks(self, context, only_must_have=True)
+
+
+class DependencyMissingAttestation(Rule):
+    """A dependency is missing a PyPI attestation (advisory)."""
+
+    id = "ATT002"
+    name = "dependency-unattested"
+    description = "Dependency release has no PEP 740 attestation on PyPI."
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        return _run_checks(self, context, only_must_have=False)
