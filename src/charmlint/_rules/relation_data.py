@@ -8,8 +8,8 @@ import ast
 import pathlib
 import re
 
-from .. import _models as models  # noqa: F401  # used by the rule PRs that follow
-from . import Rule  # noqa: F401  # used by the rule PRs that follow
+from .. import _models as models
+from . import Rule
 
 # Direct subscript reads that can raise on None app/unit.
 _READ_APP_SUBSCRIPT = re.compile(r"\.relation\.data\[\s*event\.app\s*\]")
@@ -50,3 +50,44 @@ def _function_segments(
                 if segment:
                     out.append((path, node, segment))
     return out
+
+
+class RelationDataReadUnguarded(Rule):
+    """Flag handlers that subscript ``event.relation.data[event.app/unit]`` unguarded."""
+
+    id = "REL001"
+    name = "relation-data-read-unguarded"
+    description = "Reads event.relation.data[event.app] or [event.unit] without guarding the key"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for path, func, source in _function_segments(context.python_sources):
+            if _READ_APP_SUBSCRIPT.search(source) and not _APP_GUARD.search(source):
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Handler '{func.name}' reads event.relation.data[event.app] "
+                        "without guarding event.app — Juju may set event.app to None "
+                        "on some event shapes",
+                        path=str(path),
+                        line=func.lineno,
+                        fix_hint=(
+                            "Guard with `if event.app is None: return` or use "
+                            "`event.relation.data.get(event.app, {})`"
+                        ),
+                    )
+                )
+            if _READ_UNIT_SUBSCRIPT.search(source) and not _UNIT_GUARD.search(source):
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Handler '{func.name}' reads event.relation.data[event.unit] "
+                        "without guarding event.unit",
+                        path=str(path),
+                        line=func.lineno,
+                        fix_hint=(
+                            "Guard with `if event.unit is None: return` or use "
+                            "`event.relation.data.get(event.unit, {})`"
+                        ),
+                    )
+                )
+        return diagnostics
