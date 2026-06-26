@@ -1,6 +1,6 @@
 """Tests for charmlint rules.
 
-Only METADATA-001-relevant tests live here during the rules-refactor; the
+Only METADATA-relevant tests live here during the rules-refactor; the
 other rule families are re-added alongside their PRs from
 ``RULES_TRACKER.md``.
 """
@@ -42,6 +42,70 @@ class TestMetadataRules:
         report = lint(tmp_charm)
         meta001 = [d for d in list(report) if d.rule_id == "METADATA-001"][0]
         assert meta001.path == "metadata.yaml"
+
+    def test_bare_metadata_fires_all_completeness_rules(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test-charm"})
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in list(report)}
+        for rid in (
+            "METADATA-002",
+            "METADATA-003",
+            "METADATA-004",
+            "METADATA-005",
+            "METADATA-006",
+            "METADATA-007",
+        ):
+            assert rid in ids, f"{rid} should fire when the field is missing"
+
+    def test_legacy_top_level_fields_satisfy_meta(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test-charm",
+                "display-name": "Test Charm",
+                "summary": "x",
+                "description": "x",
+                "docs": "https://example.com/docs",
+                "issues": "https://example.com/issues",
+                "source": "https://example.com/source",
+            },
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in list(report)}
+        for rid in (
+            "METADATA-002",
+            "METADATA-003",
+            "METADATA-004",
+            "METADATA-005",
+            "METADATA-006",
+            "METADATA-007",
+        ):
+            assert rid not in ids, f"{rid} should not fire for legacy metadata.yaml fields"
+
+    def test_modern_charmcraft_title_and_links_satisfy_meta(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test-charm",
+                "title": "Test Charm",
+                "summary": "x",
+                "description": "x",
+                "links": {
+                    "documentation": "https://example.com/docs",
+                    "issues": "https://example.com/issues",
+                    "source": "https://example.com/source",
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in list(report)}
+        for rid in (
+            "METADATA-002",
+            "METADATA-005",
+            "METADATA-006",
+            "METADATA-007",
+        ):
+            assert rid not in ids, f"{rid} should not fire for modern charmcraft.yaml"
 
 
 class TestFullCharm:

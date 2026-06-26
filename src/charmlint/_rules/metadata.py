@@ -1,8 +1,4 @@
-"""Metadata rules — charmcraft.yaml field completeness.
-
-Only METADATA-001 lives here during the rules-refactor; the other
-METADATA rules return via their own PRs from `RULES_TRACKER.md`.
-"""
+"""Metadata rules — charmcraft.yaml field completeness."""
 
 from typing import Any
 
@@ -21,6 +17,10 @@ def _resolve(metadata: dict[str, Any], dotted: str) -> Any:
     return cur
 
 
+def _any_present(metadata: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    return any(_resolve(metadata, k) for k in keys)
+
+
 class MissingName(Rule):
     category = "METADATA"
     number = 1
@@ -30,5 +30,87 @@ class MissingName(Rule):
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _resolve(context.metadata, "name"):
+            return []
+        return [self.diagnostic(self.description, path=context.metadata_source)]
+
+
+class MissingDisplayName(Rule):
+    category = "METADATA"
+    number = 2
+    name = "missing-display-name"
+    description = "Missing 'display-name'/'title' field"
+    default_severity = models.Severity.WARNING
+    _keys = ("title", "display-name")
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _any_present(context.metadata, self._keys):
+            return []
+        return [self.diagnostic(self.description, path=context.metadata_source)]
+
+
+class MissingSummary(Rule):
+    category = "METADATA"
+    number = 3
+    name = "missing-summary"
+    description = "Missing 'summary' field"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _resolve(context.metadata, "summary"):
+            return []
+        return [self.diagnostic(self.description, path=context.metadata_source)]
+
+
+class MissingDescription(Rule):
+    category = "METADATA"
+    number = 4
+    name = "missing-description"
+    description = "Missing 'description' field"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _resolve(context.metadata, "description"):
+            return []
+        return [self.diagnostic(self.description, path=context.metadata_source)]
+
+
+class MissingDocs(Rule):
+    category = "METADATA"
+    number = 5
+    name = "missing-docs"
+    description = "Missing 'docs' URL"
+    default_severity = models.Severity.INFO
+    _keys = ("links.documentation", "docs")
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _any_present(context.metadata, self._keys):
+            return []
+        return [self.diagnostic(self.description, path=context.metadata_source)]
+
+
+class MissingIssues(Rule):
+    category = "METADATA"
+    number = 6
+    name = "missing-issues"
+    description = "Missing 'issues' URL"
+    default_severity = models.Severity.INFO
+    _keys = ("links.issues", "issues")
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _any_present(context.metadata, self._keys):
+            return []
+        return [self.diagnostic(self.description, path=context.metadata_source)]
+
+
+class MissingSource(Rule):
+    category = "METADATA"
+    number = 7
+    name = "missing-source"
+    description = "Missing 'source' URL"
+    default_severity = models.Severity.INFO
+    _keys = ("links.source", "source")
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _any_present(context.metadata, self._keys):
             return []
         return [self.diagnostic(self.description, path=context.metadata_source)]
