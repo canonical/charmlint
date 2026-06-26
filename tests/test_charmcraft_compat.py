@@ -18,3 +18,41 @@ class TestDeprecatedSeries:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         report = lint(tmp_charm)
         assert "CC001" not in {d.rule_id for d in report.diagnostics}
+
+
+class TestNamingConventions:
+    """Tests for CC002 — hyphens vs underscores."""
+
+    def test_underscore_config(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {"options": {"my_option": {"type": "string"}}},
+            },
+        )
+        report = lint(tmp_charm)
+        cc002 = [d for d in report.diagnostics if d.rule_id == "CC002"]
+        assert len(cc002) >= 1
+        assert "my_option" in cc002[0].message
+
+    def test_hyphenated_config_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {"options": {"my-option": {"type": "string"}}},
+            },
+        )
+        report = lint(tmp_charm)
+        cc002 = [d for d in report.diagnostics if d.rule_id == "CC002"]
+        assert not cc002
+
+    def test_underscore_action(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"my_action": {"description": "Test"}}},
+        )
+        report = lint(tmp_charm)
+        cc002 = [d for d in report.diagnostics if d.rule_id == "CC002"]
+        assert any("my_action" in d.message for d in cc002)
