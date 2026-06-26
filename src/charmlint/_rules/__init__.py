@@ -67,6 +67,7 @@ from . import (  # noqa: E402, F401
     deprecated,
     documentation,
     libraries,
+    library_versions,
     metadata,
     observability,
     pebble,
