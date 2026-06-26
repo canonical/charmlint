@@ -39,9 +39,9 @@ dev = [
 charmlint = "charmlint._cli:cli_entry"
 
 [project.urls]
-Homepage = "https://github.com/tonyandrewmeyer/charmlint"
-Repository = "https://github.com/tonyandrewmeyer/charmlint"
-Issues = "https://github.com/tonyandrewmeyer/charmlint/issues"
+Homepage = "https://github.com/canonical/charmlint"
+Repository = "https://github.com/canonical/charmlint"
+Issues = "https://github.com/canonical/charmlint/issues"
 
 [build-system]
 requires = ["hatchling"]
