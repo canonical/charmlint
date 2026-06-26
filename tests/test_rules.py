@@ -532,6 +532,28 @@ class TestLibraryVersions:
         assert "LIB004" not in {d.rule_id for d in report.diagnostics}
 
 
+class TestSecurityRules:
+    """Tests for security rules."""
+
+    def test_secret_in_plain_config(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "config": {
+                    "options": {
+                        "admin-password": {
+                            "type": "string",
+                            "description": "Admin password",
+                        }
+                    }
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        assert "SEC001" in {d.rule_id for d in report.diagnostics}
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
