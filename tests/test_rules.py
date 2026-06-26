@@ -240,6 +240,14 @@ class TestActionRules:
         assert "ACT002" not in act_ids
         assert "ACT003" not in act_ids
 
+    def test_action_missing_description(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {}}},
+        )
+        report = lint(tmp_charm)
+        assert "ACT004" in {d.rule_id for d in report.diagnostics}
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""

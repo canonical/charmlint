@@ -1,7 +1,6 @@
 """Action rules — expected operational actions and action quality.
 
-ACT001–ACT003 (expected actions) live here; ACT004–ACT007 return in
-their own PRs.
+ACT001–ACT004 live here; ACT005–ACT007 return in their own PRs.
 """
 
 from .. import _models as models
@@ -54,3 +53,26 @@ def _make_action_rule(_id: str, _canonical: str, _aliases: list[str]) -> type[Ru
 
 for _rid, (_canonical, _aliases) in _EXPECTED_ACTIONS.items():
     _make_action_rule(_rid, _canonical, _aliases)
+
+
+class ActionMissingDescription(Rule):
+    """Check that all actions have descriptions."""
+
+    id = "ACT004"
+    name = "action-missing-description"
+    description = "Action is missing a description"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for action_name, action_def in context.actions.items():
+            if not isinstance(action_def, dict):
+                continue
+            if not action_def.get("description"):
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Action '{action_name}' is missing a description",
+                        path="charmcraft.yaml",
+                    )
+                )
+        return diagnostics
