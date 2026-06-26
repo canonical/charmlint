@@ -3,6 +3,8 @@
 STR001 lives here; STR002 and STR003 return in their own PRs.
 """
 
+import re
+
 from .. import _models as models
 from . import Rule
 
@@ -36,3 +38,25 @@ class NoIcon(Rule):
         if not (context.charm_dir / "icon.svg").exists():
             return [self.diagnostic("No icon.svg found")]
         return []
+
+
+class NoTypeAnnotations(Rule):
+    """Check that charm source uses type annotations."""
+
+    id = "STR003"
+    name = "no-type-annotations"
+    description = "No type annotations found in charm source"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        for path, content in context.python_sources.items():
+            if "lib" in path.parts:
+                continue
+            if re.search(r"def\s+\w+\([^)]*\)\s*->", content):
+                return []
+        return [
+            self.diagnostic(
+                "No type annotations found — add return-type hints to functions",
+                fix_hint="Add -> ReturnType annotations to function definitions",
+            )
+        ]
