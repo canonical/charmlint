@@ -22,3 +22,17 @@ class NoLicence(Rule):
         if not has_licence:
             return [self.diagnostic("No LICENSE/LICENCE file found")]
         return []
+
+
+class NoIcon(Rule):
+    """Check for an icon file."""
+
+    id = "STR002"
+    name = "no-icon"
+    description = "No icon.svg found"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if not (context.charm_dir / "icon.svg").exists():
+            return [self.diagnostic("No icon.svg found")]
+        return []
