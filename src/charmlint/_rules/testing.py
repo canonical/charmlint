@@ -19,3 +19,17 @@ class NoUnitTests(Rule):
         if not context.has_tests_unit:
             return [self.diagnostic(self.description, path="tests/")]
         return []
+
+
+class NoIntegrationTests(Rule):
+    """Check for the presence of integration tests."""
+
+    id = "TEST002"
+    name = "no-integration-tests"
+    description = "No integration tests found in tests/integration/"
+    default_severity = models.Severity.WARNING
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if not context.has_tests_integration:
+            return [self.diagnostic(self.description, path="tests/")]
+        return []
