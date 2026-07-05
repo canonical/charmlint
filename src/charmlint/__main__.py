@@ -2,4 +2,5 @@
 
 from . import _cli
 
-_cli.cli_entry()
+if __name__ == "__main__":
+    _cli.cli_entry()

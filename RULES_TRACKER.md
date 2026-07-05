@@ -63,4 +63,4 @@ Each row below must reach a green `PR #` before this refactor is finished.
 1. Strip PR (this branch) lands first.
 2. Every add-back branch is cut from `refactor/strip-rules`; once strip lands on `main`, GitHub auto-rebases the diffs.
 3. Each add-back PR restores: rule code (or factory entry), tests, `_rules/__init__.py` import if a whole module returns, and any `docs/` references.
-4. Locally verify each with `make test && make lint` before pushing (CI is disabled per repo policy).
+4. Locally verify each with `make test && make lint` before pushing; CI runs the same checks plus the test matrix on each PR.

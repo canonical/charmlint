@@ -14,6 +14,23 @@ class Severity(enum.StrEnum):
     WARNING = "warning"
     INFO = "info"
 
+    @property
+    def rank(self) -> int:
+        """Numeric rank for severity comparisons — lower is more severe.
+
+        ``StrEnum`` values compare alphabetically (``error < info <
+        warning``), which is not the severity order, so comparisons must
+        go through this property instead.
+        """
+        return _SEVERITY_RANK[self]
+
+
+_SEVERITY_RANK: dict[Severity, int] = {
+    Severity.ERROR: 0,
+    Severity.WARNING: 1,
+    Severity.INFO: 2,
+}
+
 
 @dataclasses.dataclass(frozen=True)
 class Diagnostic:
@@ -26,14 +43,22 @@ class Diagnostic:
     line: int | None = None
     fix_hint: str | None = None
 
-    def format_text(self, charm_dir: pathlib.Path | None = None) -> str:
-        """Format as a ruff-style single-line diagnostic."""
+    def location(self, charm_dir: pathlib.Path | None = None) -> str:
+        """Return the ``path:line`` location string, or "" if there is no path.
+
+        The path is shown relative to *charm_dir* when it is inside it.
+        """
         location = self.path or ""
         if charm_dir and self.path:
             with contextlib.suppress(ValueError):
                 location = str(pathlib.Path(self.path).relative_to(charm_dir))
         if self.line is not None:
             location = f"{location}:{self.line}"
+        return location
+
+    def format_text(self, charm_dir: pathlib.Path | None = None) -> str:
+        """Format as a ruff-style single-line diagnostic."""
+        location = self.location(charm_dir)
         prefix = f"{location}: " if location else ""
         return f"{prefix}{self.rule_id} {self.message}"
 
@@ -91,18 +116,30 @@ class LintReport:
         """Number of info-severity diagnostics."""
         return sum(1 for d in self.diagnostics if d.severity == Severity.INFO)
 
+    def count_labels(self) -> list[tuple[Severity, str]]:
+        """Nonzero severity counts as (severity, human label) pairs.
+
+        Ordered most severe first, e.g. ``[(ERROR, "2 errors"),
+        (INFO, "1 info")]``. Shared by :meth:`summary_line` and the CLI's
+        coloured summary so the pluralisation lives in one place.
+        """
+        counts = (
+            (Severity.ERROR, self.error_count, "errors"),
+            (Severity.WARNING, self.warning_count, "warnings"),
+            (Severity.INFO, self.info_count, "info"),
+        )
+        return [
+            (severity, f"{n} {plural if n != 1 else plural.removesuffix('s')}")
+            for severity, n, plural in counts
+            if n
+        ]
+
     def summary_line(self) -> str:
         """One-line summary of findings."""
         total = len(self.diagnostics)
         if total == 0:
             return "No issues found."
-        parts = []
-        if self.error_count:
-            parts.append(f"{self.error_count} error{'s' if self.error_count != 1 else ''}")
-        if self.warning_count:
-            parts.append(f"{self.warning_count} warning{'s' if self.warning_count != 1 else ''}")
-        if self.info_count:
-            parts.append(f"{self.info_count} info")
+        parts = [label for _, label in self.count_labels()]
         return f"Found {total} issue{'s' if total != 1 else ''} ({', '.join(parts)})"
 
     def to_dict(self) -> dict[str, Any]:

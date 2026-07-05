@@ -25,6 +25,12 @@ class Rule(abc.ABC):
         super().__init_subclass__(**kwargs)
         # Only register concrete rules (those with an id attribute).
         if hasattr(cls, "id") and not getattr(cls, "_abstract", False):
+            existing = _RULES.get(cls.id)
+            if existing is not None:
+                raise ValueError(
+                    f"Duplicate rule ID {cls.id!r}: {cls.__name__} conflicts with "
+                    f"{type(existing).__name__}"
+                )
             _RULES[cls.id] = cls()
 
     @abc.abstractmethod

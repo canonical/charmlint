@@ -11,29 +11,31 @@ where charmlint grew as an internal component of the Cantrip AI charm builder.
 
 ## Installation
 
+charmlint is not yet published to PyPI. Install from a checkout:
+
 ```bash
-uv sync --dev
+pip install .
 ```
 
 ## Usage
 
 ```bash
-uv run charmlint /path/to/charm
-uv run charmlint --format json /path/to/charm
-uv run charmlint --select COS,META /path/to/charm
-uv run charmlint --ignore ATT002 --strict /path/to/charm
-```
-
-Or install and run directly:
-
-```bash
-uv run pip install -e .
 charmlint /path/to/charm
+charmlint --format json /path/to/charm
+charmlint --select COS,META /path/to/charm
+charmlint --ignore ATT002 --strict /path/to/charm
 ```
 
-## Running tests
+> **Note**: the rule set is being re-landed one PR at a time after a
+> clean-core refactor — only `META001` currently ships. The rule IDs in
+> the examples here show intended usage; see
+> [RULES_TRACKER.md](RULES_TRACKER.md) for which rules have landed.
+
+## Development
 
 ```bash
+uv sync --dev
+uv run charmlint /path/to/charm
 uv run pytest tests/ -v
 ```
 
@@ -64,7 +66,7 @@ STR002 = "off"
 
 ## Bundled helper
 
-The `src/charmlint/_pypi_attest/` package is a small, stdlib-only helper
+The `src/charmlint/_pypi_attest.py` module is a small, stdlib-only helper
 (originally a separate package in cantrip) that checks PEP 740 attestation
 status on PyPI. It lives inside `charmlint` to keep the project
 dependency-free except for PyYAML.
