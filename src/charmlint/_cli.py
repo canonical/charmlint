@@ -1,8 +1,9 @@
 """Command-line interface for charmlint."""
 
 import argparse
-import contextlib
+import importlib.metadata
 import json
+import os
 import pathlib
 import sys
 
@@ -10,12 +11,13 @@ from . import _config, _linter
 from . import _models as models
 
 # ---------------------------------------------------------------------------
-# ANSI colour helpers — disabled when stdout is not a terminal or --no-colour
+# ANSI colour helpers
 # ---------------------------------------------------------------------------
 
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
 _DIM = "\033[2m"
+_GREEN = "\033[1;32m"
 
 _SEVERITY_STYLES: dict[models.Severity, str] = {
     models.Severity.ERROR: "\033[1;31m",  # bold red
@@ -23,58 +25,50 @@ _SEVERITY_STYLES: dict[models.Severity, str] = {
     models.Severity.INFO: "\033[1;36m",  # bold cyan
 }
 
-_use_colour = True
 
-
-def _styled(text: str, style: str) -> str:
-    """Wrap *text* in ANSI escape codes if colour is enabled."""
-    if not _use_colour:
+def _style(text: str, style: str, colour: bool) -> str:
+    """Wrap *text* in ANSI escape codes if *colour* is enabled."""
+    if not colour:
         return text
     return f"{style}{text}{_RESET}"
 
 
-def _format_diagnostic_colour(d: models.Diagnostic, charm_dir: pathlib.Path) -> str:
-    """Format a diagnostic with ANSI colours."""
-    # Location (dim).
-    location = d.path or ""
-    if charm_dir and d.path:
-        with contextlib.suppress(ValueError):
-            location = str(pathlib.Path(d.path).relative_to(charm_dir))
-    if d.line is not None:
-        location = f"{location}:{d.line}"
+def _colour_enabled(args: argparse.Namespace) -> bool:
+    """Resolve colour mode: flag > NO_COLOR > FORCE_COLOR > TTY detection.
 
-    parts: list[str] = []
-    if location:
-        parts.append(_styled(location, _DIM))
-
-    # Rule ID (severity colour).
-    sev_style = _SEVERITY_STYLES.get(d.severity, "")
-    parts.append(_styled(d.rule_id, sev_style))
-
-    # Message (default text).
-    parts.append(d.message)
-
-    return " ".join(parts)
+    ``NO_COLOR`` and ``FORCE_COLOR`` follow the informal convention of
+    https://no-color.org/ — any non-empty value counts, and an explicit
+    command-line flag beats both.
+    """
+    if args.no_colour or args.output_format == "json":
+        return False
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    return sys.stdout.isatty()
 
 
-def _format_summary_colour(total: int, errors: int, warnings: int, infos: int) -> str:
-    """Format the summary line with colours."""
+def _format_diagnostic(d: models.Diagnostic, charm_dir: pathlib.Path, *, colour: bool) -> str:
+    """Format a diagnostic as a ruff-style single line, optionally coloured."""
+    location = d.location(charm_dir)
+    prefix = f"{_style(location, _DIM, colour)}: " if location else ""
+    rule = _style(d.rule_id, _SEVERITY_STYLES.get(d.severity, ""), colour)
+    return f"{prefix}{rule} {d.message}"
+
+
+def _format_summary(report: models.LintReport, *, colour: bool) -> str:
+    """Format the summary line, optionally coloured."""
+    total = len(report.diagnostics)
     if total == 0:
-        return _styled("No issues found.", "\033[1;32m")  # bold green
+        return _style("No issues found.", _GREEN, colour)
 
-    pieces: list[str] = []
-    if errors:
-        label = f"{errors} error{'s' if errors != 1 else ''}"
-        pieces.append(_styled(label, _SEVERITY_STYLES[models.Severity.ERROR]))
-    if warnings:
-        label = f"{warnings} warning{'s' if warnings != 1 else ''}"
-        pieces.append(_styled(label, _SEVERITY_STYLES[models.Severity.WARNING]))
-    if infos:
-        label = f"{infos} info"
-        pieces.append(_styled(label, _SEVERITY_STYLES[models.Severity.INFO]))
-
+    pieces = [
+        _style(label, _SEVERITY_STYLES[severity], colour)
+        for severity, label in report.count_labels()
+    ]
     return (
-        _styled(f"Found {total} issue{'s' if total != 1 else ''}", _BOLD)
+        _style(f"Found {total} issue{'s' if total != 1 else ''}", _BOLD, colour)
         + f" ({', '.join(pieces)})"
     )
 
@@ -91,6 +85,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to the charm directory (default: current directory)",
     )
     parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {importlib.metadata.version('charmlint')}",
+    )
+    parser.add_argument(
         "--format",
         choices=["text", "json"],
         default="text",
@@ -99,7 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--select",
-        help="Comma-separated list of rule categories to enable (e.g. COS,META)",
+        help="Comma-separated list of rule categories or IDs to enable (e.g. COS,META001)",
     )
     parser.add_argument(
         "--ignore",
@@ -121,6 +120,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--no-colour",
+        "--no-color",
         action="store_true",
         help="Disable coloured output",
     )
@@ -129,13 +129,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """Run the charmlint CLI. Returns the exit code."""
-    global _use_colour  # noqa: PLW0603
-
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    # Determine colour mode: off if --no-colour, not a TTY, or JSON output.
-    _use_colour = not args.no_colour and sys.stdout.isatty() and args.output_format != "json"
+    colour = _colour_enabled(args)
 
     charm_dir = pathlib.Path(args.path).resolve()
     if not charm_dir.is_dir():
@@ -159,17 +156,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report.to_dict(), indent=2))
     else:
         for diagnostic in report.diagnostics:
-            print(_format_diagnostic_colour(diagnostic, charm_dir))
+            print(_format_diagnostic(diagnostic, charm_dir, colour=colour))
         if report.diagnostics:
             print()
-        print(
-            _format_summary_colour(
-                len(report.diagnostics),
-                report.error_count,
-                report.warning_count,
-                report.info_count,
-            )
-        )
+        print(_format_summary(report, colour=colour))
 
     # Exit codes.
     if report.error_count > 0:
