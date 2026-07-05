@@ -1,6 +1,7 @@
 """Core linter engine — loads charm context, discovers rules, runs them."""
 
 import contextlib
+import dataclasses
 import pathlib
 import re
 from typing import Any
@@ -172,16 +173,17 @@ def _should_run_rule(rule: _rules.Rule, config: _config.LintConfig) -> bool:
     rule_id = rule.id
     category = _category_of(rule_id)
 
-    # Explicit disable via severity override.
-    if config.severity_overrides.get(rule_id) == "off":
+    # Disable via severity override. A rule-level entry takes precedence
+    # over a category-level one, so e.g. ``META = "off"`` plus
+    # ``META001 = "error"`` keeps META001 running.
+    rule_override = config.severity_overrides.get(rule_id)
+    if rule_override == "off":
+        return False
+    if rule_override is None and config.severity_overrides.get(category) == "off":
         return False
 
-    # Category-level disable.
-    if config.severity_overrides.get(category) == "off":
-        return False
-
-    # If select is set, only run rules in those categories.
-    if config.select and category not in config.select:
+    # If select is set, only run rules named by ID or category.
+    if config.select and category not in config.select and rule_id not in config.select:
         return False
 
     # If ignore contains this specific rule or category, skip it.
@@ -189,9 +191,15 @@ def _should_run_rule(rule: _rules.Rule, config: _config.LintConfig) -> bool:
 
 
 def _effective_severity(rule: _rules.Rule, config: _config.LintConfig) -> models.Severity | None:
-    """Resolve the effective severity for a rule, applying config overrides."""
+    """Resolve the effective severity for a rule, applying config overrides.
+
+    Rule-level overrides take precedence over category-level ones,
+    mirroring :func:`_should_run_rule`.
+    """
     rule_id = rule.id
-    override = config.severity_overrides.get(rule_id)
+    override = config.severity_overrides.get(rule_id) or config.severity_overrides.get(
+        _category_of(rule_id)
+    )
     if override and override != "off":
         try:
             return models.Severity(override)
@@ -253,30 +261,18 @@ def lint(
         # Apply severity overrides.
         override = _effective_severity(rule, config)
         if override is not None:
-            diagnostics = [
-                models.Diagnostic(
-                    rule_id=d.rule_id,
-                    severity=override,
-                    message=d.message,
-                    path=d.path,
-                    line=d.line,
-                    fix_hint=d.fix_hint,
-                )
-                for d in diagnostics
-            ]
-
-        # Filter by minimum severity.
-        if config.min_severity:
-            severity_order = {
-                models.Severity.ERROR: 0,
-                models.Severity.WARNING: 1,
-                models.Severity.INFO: 2,
-            }
-            min_order = severity_order.get(config.min_severity, 2)
-            diagnostics = [
-                d for d in diagnostics if severity_order.get(d.severity, 2) <= min_order
-            ]
+            diagnostics = [dataclasses.replace(d, severity=override) for d in diagnostics]
 
         all_diagnostics.extend(diagnostics)
+
+    # Filter by minimum severity.
+    if config.min_severity is not None:
+        max_rank = config.min_severity.rank
+        all_diagnostics = [d for d in all_diagnostics if d.severity.rank <= max_rank]
+
+    # Sort by location rather than rule-registration order so output is
+    # stable and diff-friendly as rules are added. Diagnostics without a
+    # path (charm-level findings) sort first.
+    all_diagnostics.sort(key=lambda d: (d.path or "", d.line or 0, d.rule_id))
 
     return models.LintReport(charm_dir=charm_dir, diagnostics=all_diagnostics)

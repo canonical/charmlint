@@ -13,8 +13,9 @@ Lint selection lives under ``[tool.charmlint.lint]`` (mirroring ruff):
 
 - ``select`` / ``extend-select``: category prefixes or rule IDs to enable
 - ``ignore`` / ``extend-ignore``: category prefixes or rule IDs to skip
-- ``per-rule-severity``: per-rule severity overrides (e.g.
-  ``COS005 = "error"``, ``STR002 = "off"``) — charmlint-specific, no
+- ``per-rule-severity``: severity overrides keyed by rule ID or category
+  prefix (e.g. ``COS005 = "error"``, ``STR = "off"``); a rule-ID entry
+  takes precedence over a category entry — charmlint-specific, no
   direct ruff analogue
 """
 

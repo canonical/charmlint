@@ -7,9 +7,34 @@ other rule families are re-added alongside their PRs from
 
 import pathlib
 
+import pytest
+
 from charmlint._linter import lint
-from charmlint._models import Severity
+from charmlint._models import CharmContext, Diagnostic, Severity
+from charmlint._rules import Rule, get_all_rules
 from tests.conftest import make_full_charm, write_charmcraft_yaml
+
+
+class TestRuleRegistry:
+    """Tests for the rule registration mechanism."""
+
+    def test_duplicate_rule_id_rejected(self):
+        # 60 rules are being re-added one PR at a time; a copy-pasted ID
+        # must fail loudly instead of silently replacing an existing rule.
+        with pytest.raises(ValueError, match="META001"):
+
+            class DuplicateRule(Rule):
+                id = "META001"
+                name = "duplicate"
+                description = "Duplicate of an existing rule ID"
+                default_severity = Severity.INFO
+
+                def check(self, context: CharmContext) -> list[Diagnostic]:
+                    return []
+
+    def test_failed_registration_does_not_replace_original(self):
+        original = get_all_rules()["META001"]
+        assert type(original).__name__ == "MissingName"
 
 
 class TestMetadataRules:
