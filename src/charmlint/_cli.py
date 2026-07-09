@@ -2,10 +2,11 @@
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 
-from . import _config, _linter
+from . import __version__, _config, _linter
 from . import _models as models
 
 # ---------------------------------------------------------------------------
@@ -117,8 +118,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Comma-separated list of rule IDs or categories to skip",
     )
     parser.add_argument(
-        "--severity",
+        "--min-severity",
         choices=[s.value for s in models.Severity],
+        dest="min_severity",
         help="Minimum severity to report",
     )
     parser.add_argument(
@@ -139,14 +141,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--no-colour",
+        "--no-color",
         action="store_true",
-        help="Disable coloured output",
+        dest="no_colour",
+        help="Disable coloured output (also honours the NO_COLOR environment variable)",
     )
     parser.add_argument(
-        "-v",
+        "--quiet",
+        action="store_true",
+        help="Suppress the summary line. Diagnostics and errors still print.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print diagnostic details, including which config file was loaded",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"charmlint {__version__}",
     )
     return parser
 
@@ -156,21 +169,27 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    # Determine colour mode: off if --no-colour, not a TTY, or JSON output.
-    use_colour = not args.no_colour and sys.stdout.isatty() and args.output_format != "json"
+    # Determine colour mode: off if --no-colour, NO_COLOR env var, not a TTY, or JSON output.
+    no_color_env = os.environ.get("NO_COLOR", "") != ""
+    use_colour = (
+        not args.no_colour
+        and not no_color_env
+        and sys.stdout.isatty()
+        and args.output_format != "json"
+    )
 
     charm_dir = pathlib.Path(args.path).resolve()
     if not charm_dir.is_dir():
-        print(f"Error: {args.path} is not a directory", file=sys.stderr)
-        return 1
+        print(f'error: cannot lint "{args.path}": not a directory', file=sys.stderr)
+        return 2
 
     # Load config from file, then overlay CLI flags.
     config_path = pathlib.Path(args.config) if args.config else None
     try:
         config = _config.load_config(charm_dir, config_path)
     except _config.ConfigError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if args.verbose and config.source_path is not None:
         print(f"Loaded config from {config.source_path}", file=sys.stderr)
 
@@ -178,8 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         config.select = [s.strip() for s in args.select.split(",")]
     if args.ignore:
         config.ignore.extend(s.strip() for s in args.ignore.split(","))
-    if args.severity:
-        config.min_severity = models.Severity(args.severity)
+    if args.min_severity:
+        config.min_severity = models.Severity(args.min_severity)
 
     report = _linter.lint(charm_dir, config)
 
@@ -190,17 +209,20 @@ def main(argv: list[str] | None = None) -> int:
         for diagnostic in report:
             print(_format_diagnostic_colour(diagnostic, charm_dir, use_colour=use_colour))
             any_diag = True
-        if any_diag:
-            print()
-        print(
-            _format_summary_colour(
+        if not args.quiet:
+            summary = _format_summary_colour(
                 len(report),
                 report.error_count,
                 report.warning_count,
                 report.info_count,
                 use_colour=use_colour,
             )
-        )
+            if any_diag:
+                print()
+                print(summary)
+            else:
+                # Empty-state message goes to stderr; exit code stays zero.
+                print(summary, file=sys.stderr)
 
     # Exit codes.
     if report.error_count > 0:

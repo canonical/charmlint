@@ -12,7 +12,7 @@ class TestCLI:
 
     def test_nonexistent_path(self):
         exit_code = main(["/nonexistent/path"])
-        assert exit_code == 1
+        assert exit_code == 2
 
     def test_no_metadata(self, tmp_path: pathlib.Path):
         exit_code = main([str(tmp_path)])
@@ -54,7 +54,7 @@ class TestCLI:
 
     def test_severity_filter(self, tmp_charm: pathlib.Path, capsys):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        main([str(tmp_charm), "--format", "json", "--severity", "error"])
+        main([str(tmp_charm), "--format", "json", "--min-severity", "error"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         for d in data["diagnostics"]:
