@@ -1,0 +1,61 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^tests/fixtures/
+      - id: end-of-file-fixer
+        exclude: ^tests/fixtures/
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: detect-private-key
+
+  # Local hooks run the tools through `uv run`, so the versions come from
+  # pyproject.toml's `dev` dependency group. This keeps pre-commit and CI on
+  # exactly the same tool versions.
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --group dev -- ruff check --fix --exit-non-zero-on-fix src tests
+        language: system
+        files: \.py$
+        pass_filenames: false
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --group dev -- ruff format src tests
+        language: system
+        files: \.py$
+        pass_filenames: false
+        require_serial: true
+
+      - id: ty
+        name: ty
+        entry: uv run --group dev -- ty check src tests
+        language: system
+        files: \.py$
+        pass_filenames: false
+        require_serial: true
+
+      - id: pytest
+        name: pytest
+        entry: uv run --group dev -- pytest --maxfail=1 -q
+        language: system
+        files: \.py$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: uv-lock-check
+        name: uv lock --check
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+        require_serial: true
