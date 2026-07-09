@@ -39,8 +39,8 @@ from charmlint._models import Severity
 # ``tmp_charm/charmcraft.yaml`` and touches no other state, so a shared
 # directory is equivalent to a fresh one per example. Suppress the
 # health check globally for the module. ``max_examples`` inherits from
-# the profile registered in ``tests/conftest.py`` (100 for dev, 500
-# for CI).
+# the profile registered in ``tests/unit/conftest.py`` (100 for dev,
+# 500 for CI).
 _charm_settings = settings(
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
 )

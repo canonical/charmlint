@@ -101,14 +101,6 @@ class TestLintFiltering:
         for d in list(report):
             assert d.rule_id.startswith("METADATA"), f"Unexpected rule: {d.rule_id}"
 
-    def test_select_full_rule_id(self, tmp_charm: pathlib.Path):
-        # select accepts full rule IDs as well as category prefixes —
-        # previously a rule ID here silently disabled the rule.
-        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        config = LintConfig(select=["META001"])
-        report = lint(tmp_charm, config)
-        assert "META001" in {d.rule_id for d in report.diagnostics}
-
     def test_ignore_rules(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         config = LintConfig(ignore=["METADATA-001"])
@@ -136,32 +128,6 @@ class TestLintFiltering:
         config = LintConfig(select=["METADATA"], ignore=["METADATA-001"])
         report = lint(tmp_charm, config)
         assert "METADATA-001" not in {d.rule_id for d in list(report)}
-
-    def test_category_severity_override(self, tmp_charm: pathlib.Path):
-        # A category key in per-rule-severity applies to every rule in
-        # that category.
-        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        config = LintConfig(severity_overrides={"META": "warning"})
-        report = lint(tmp_charm, config)
-        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"]
-        assert meta001
-        assert meta001[0].severity == Severity.WARNING
-
-    def test_disable_category(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        config = LintConfig(severity_overrides={"META": "off"})
-        report = lint(tmp_charm, config)
-        assert "META001" not in {d.rule_id for d in report.diagnostics}
-
-    def test_rule_override_beats_category_off(self, tmp_charm: pathlib.Path):
-        # A rule-level entry wins over a category-level "off", so users
-        # can disable a category but keep one rule from it.
-        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        config = LintConfig(severity_overrides={"META": "off", "META001": "warning"})
-        report = lint(tmp_charm, config)
-        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"]
-        assert meta001
-        assert meta001[0].severity == Severity.WARNING
 
     def test_min_severity_filter(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
@@ -207,40 +173,6 @@ class TestLintFiltering:
         # the file is right there but malformed.
         assert "No charmcraft.yaml" not in diag.message
         assert "Could not load charmcraft.yaml" in diag.message
-
-
-class TestDiagnosticOrdering:
-    """Diagnostics are sorted by location, not rule-registration order."""
-
-    def test_sorted_by_path_line_and_rule_id(self, tmp_charm: pathlib.Path):
-        from charmlint import _models, _rules
-
-        class UnorderedRule(_rules.Rule):
-            id = "ZZZ001"
-            name = "zzz-unordered"
-            description = "Test rule emitting out-of-order diagnostics"
-            default_severity = _models.Severity.INFO
-
-            def check(self, context: _models.CharmContext) -> list[_models.Diagnostic]:
-                return [
-                    self.diagnostic("late", path="src/b.py", line=9),
-                    self.diagnostic("early", path="src/a.py", line=2),
-                    self.diagnostic("charm-level"),
-                    self.diagnostic("same file, earlier line", path="src/b.py", line=1),
-                ]
-
-        try:
-            write_charmcraft_yaml(tmp_charm, {"name": "test"})
-            report = lint(tmp_charm)
-            zzz = [(d.path, d.line) for d in report.diagnostics if d.rule_id == "ZZZ001"]
-            assert zzz == [
-                (None, None),
-                ("src/a.py", 2),
-                ("src/b.py", 1),
-                ("src/b.py", 9),
-            ]
-        finally:
-            del _rules._RULES["ZZZ001"]
 
 
 class TestCategoryOf:

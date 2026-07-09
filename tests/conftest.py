@@ -1,19 +1,10 @@
 """Shared fixtures for charmlint tests."""
 
-import os
 import pathlib
 from typing import Any
 
 import pytest
 import yaml
-from hypothesis import settings
-
-# Property-based tests fuzz more deeply in CI, where the extra wall-clock
-# time is cheap, and stay fast for the local edit-test loop. GitHub
-# Actions sets ``CI=true``.
-settings.register_profile("ci", max_examples=500)
-settings.register_profile("dev", max_examples=100)
-settings.load_profile("ci" if os.environ.get("CI") else "dev")
 
 
 @pytest.fixture
