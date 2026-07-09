@@ -57,7 +57,10 @@ class TestMetadataRules:
         ):
             assert rid in ids, f"{rid} should fire when the field is missing"
 
-    def test_legacy_top_level_fields_satisfy_meta(self, tmp_charm: pathlib.Path):
+    def test_legacy_fields_in_charmcraft_yaml_do_not_satisfy_meta(self, tmp_charm: pathlib.Path):
+        # Legacy metadata.yaml key names in charmcraft.yaml are the wrong spelling
+        # for that file — the checks should still fire even though the info is
+        # technically present.
         write_charmcraft_yaml(
             tmp_charm,
             {
@@ -69,6 +72,41 @@ class TestMetadataRules:
                 "issues": "https://example.com/issues",
                 "source": "https://example.com/source",
             },
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in list(report)}
+        for rid in ("METADATA-002", "METADATA-005", "METADATA-006", "METADATA-007"):
+            assert rid in ids, f"{rid} should fire — key belongs in metadata.yaml, not here"
+        for rid in ("METADATA-003", "METADATA-004"):
+            assert rid not in ids, f"{rid} accepts the same key in both files"
+
+    def test_modern_fields_in_metadata_yaml_do_not_satisfy_meta(self, tmp_charm: pathlib.Path):
+        # Modern charmcraft.yaml key names in metadata.yaml are the wrong spelling
+        # for that file — the checks should still fire.
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: test-charm\n"
+            "title: Test Charm\n"
+            "summary: x\n"
+            "description: x\n"
+            "links:\n"
+            "  documentation: https://example.com/docs\n"
+            "  issues: https://example.com/issues\n"
+            "  source: https://example.com/source\n"
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in list(report)}
+        for rid in ("METADATA-002", "METADATA-005", "METADATA-006", "METADATA-007"):
+            assert rid in ids, f"{rid} should fire — key belongs in charmcraft.yaml, not here"
+
+    def test_legacy_fields_in_metadata_yaml_satisfy_meta(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: test-charm\n"
+            "display-name: Test Charm\n"
+            "summary: x\n"
+            "description: x\n"
+            "docs: https://example.com/docs\n"
+            "issues: https://example.com/issues\n"
+            "source: https://example.com/source\n"
         )
         report = lint(tmp_charm)
         ids = {d.rule_id for d in list(report)}

@@ -1,4 +1,11 @@
-"""Metadata rules — charmcraft.yaml field completeness."""
+"""Metadata rules — charmcraft.yaml / metadata.yaml field completeness.
+
+Each rule checks the key spelling that belongs in the file the charm
+actually uses: modern charmcraft.yaml uses `title` and `links.*`; legacy
+metadata.yaml uses `display-name`, `docs`, `issues`, `source` at top
+level. Accepting the wrong spelling in the wrong file would silently
+paper over a real misplacement.
+"""
 
 from typing import Any
 
@@ -17,8 +24,8 @@ def _resolve(metadata: dict[str, Any], dotted: str) -> Any:
     return cur
 
 
-def _any_present(metadata: dict[str, Any], keys: tuple[str, ...]) -> bool:
-    return any(_resolve(metadata, k) for k in keys)
+def _is_charmcraft(context: models.CharmContext) -> bool:
+    return context.metadata_source == "charmcraft.yaml"
 
 
 # https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-name
@@ -42,12 +49,12 @@ class MissingDisplayName(Rule):
     name = "missing-display-name"
     description = "Missing 'display-name'/'title' field"
     default_severity = models.Severity.WARNING
-    _keys = ("title", "display-name")
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        if _any_present(context.metadata, self._keys):
+        key = "title" if _is_charmcraft(context) else "display-name"
+        if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(self.description, path=context.metadata_source)]
+        return [self.diagnostic(f"Missing '{key}' field", path=context.metadata_source)]
 
 
 # https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-summary
@@ -85,12 +92,12 @@ class MissingDocs(Rule):
     name = "missing-docs"
     description = "Missing 'docs' URL"
     default_severity = models.Severity.INFO
-    _keys = ("links.documentation", "docs")
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        if _any_present(context.metadata, self._keys):
+        key = "links.documentation" if _is_charmcraft(context) else "docs"
+        if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(self.description, path=context.metadata_source)]
+        return [self.diagnostic(f"Missing '{key}' URL", path=context.metadata_source)]
 
 
 # https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-issues
@@ -100,12 +107,12 @@ class MissingIssues(Rule):
     name = "missing-issues"
     description = "Missing 'issues' URL"
     default_severity = models.Severity.INFO
-    _keys = ("links.issues", "issues")
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        if _any_present(context.metadata, self._keys):
+        key = "links.issues" if _is_charmcraft(context) else "issues"
+        if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(self.description, path=context.metadata_source)]
+        return [self.diagnostic(f"Missing '{key}' URL", path=context.metadata_source)]
 
 
 # https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-source
@@ -115,9 +122,9 @@ class MissingSource(Rule):
     name = "missing-source"
     description = "Missing 'source' URL"
     default_severity = models.Severity.INFO
-    _keys = ("links.source", "source")
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        if _any_present(context.metadata, self._keys):
+        key = "links.source" if _is_charmcraft(context) else "source"
+        if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(self.description, path=context.metadata_source)]
+        return [self.diagnostic(f"Missing '{key}' URL", path=context.metadata_source)]
