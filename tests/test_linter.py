@@ -96,10 +96,10 @@ class TestLintFiltering:
 
     def test_select_categories(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        config = LintConfig(select=["META"])
+        config = LintConfig(select=["METADATA"])
         report = lint(tmp_charm, config)
         for d in report.diagnostics:
-            assert d.rule_id.startswith("META"), f"Unexpected rule: {d.rule_id}"
+            assert d.rule_id.startswith("METADATA"), f"Unexpected rule: {d.rule_id}"
 
     def test_select_full_rule_id(self, tmp_charm: pathlib.Path):
         # select accepts full rule IDs as well as category prefixes —
@@ -111,23 +111,23 @@ class TestLintFiltering:
 
     def test_ignore_rules(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        config = LintConfig(ignore=["META001"])
+        config = LintConfig(ignore=["METADATA-001"])
         report = lint(tmp_charm, config)
-        assert "META001" not in {d.rule_id for d in report.diagnostics}
+        assert "METADATA-001" not in {d.rule_id for d in report.diagnostics}
 
     def test_severity_override(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        config = LintConfig(severity_overrides={"META001": "warning"})
+        config = LintConfig(severity_overrides={"METADATA-001": "warning"})
         report = lint(tmp_charm, config)
-        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"]
+        meta001 = [d for d in report.diagnostics if d.rule_id == "METADATA-001"]
         assert meta001
         assert meta001[0].severity == Severity.WARNING
 
     def test_disable_rule(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        config = LintConfig(severity_overrides={"META001": "off"})
+        config = LintConfig(severity_overrides={"METADATA-001": "off"})
         report = lint(tmp_charm, config)
-        assert "META001" not in {d.rule_id for d in report.diagnostics}
+        assert "METADATA-001" not in {d.rule_id for d in report.diagnostics}
 
     def test_category_severity_override(self, tmp_charm: pathlib.Path):
         # A category key in per-rule-severity applies to every rule in
@@ -180,11 +180,11 @@ class TestLintFiltering:
 
     def test_ignore_long_category_does_not_match_short_prefix(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        # ``META`` is a real category; ``METAA`` must not match it.
+        # ``METADATA`` is a real category; ``METADATAA`` must not match it.
         # Confirms exact-string category matching, not prefix matching.
-        config = LintConfig(ignore=["METAA"])
+        config = LintConfig(ignore=["METADATAA"])
         report = lint(tmp_charm, config)
-        assert any(d.rule_id.startswith("META") for d in report.diagnostics)
+        assert any(d.rule_id.startswith("METADATA") for d in report.diagnostics)
 
     def test_malformed_charmcraft_yaml_returns_parse_error(self, tmp_path: pathlib.Path):
         charm_dir = tmp_path / "broken"
@@ -241,11 +241,11 @@ class TestCategoryOf:
     @pytest.mark.parametrize(
         ("rule_id", "expected"),
         [
-            ("COS001", "COS"),
-            ("CC005", "CC"),
-            ("TEST003", "TEST"),
-            ("ATT001", "ATT"),
-            ("ACT007", "ACT"),
+            ("OBSERVABILITY-001", "OBSERVABILITY"),
+            ("CHARMCRAFT-005", "CHARMCRAFT"),
+            ("TESTING-003", "TESTING"),
+            ("ATTESTATION-001", "ATTESTATION"),
+            ("ACTIONS-007", "ACTIONS"),
         ],
     )
     def test_well_formed_ids(self, rule_id: str, expected: str):
@@ -256,19 +256,18 @@ class TestCategoryOf:
         [
             # No trailing digits.
             "FOO",
-            # Embedded digit followed by trailing letter — would have
-            # been mishandled by the old rstrip-based parser, which
-            # stripped only the trailing digits and produced a category
-            # that depended on what happened to be at the end.
-            "COS5G",
-            # Mixed digits and letters — same hazard.
-            "COS01A",
+            # Missing separator.
+            "COS001",
+            # Trailing letter after the digits.
+            "COS-5G",
+            # Digits before the dash.
+            "COS9-001",
             # Digit prefix.
             "123",
             # Empty string.
             "",
             # Lowercase prefix — ID convention is uppercase only.
-            "cos001",
+            "cos-001",
         ],
     )
     def test_unrecognised_ids_round_trip(self, rule_id: str):

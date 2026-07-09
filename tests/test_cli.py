@@ -28,7 +28,7 @@ class TestCLI:
     def test_bad_charm_returns_error(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         exit_code = main([str(tmp_charm)])
-        # Missing ``name`` triggers META001 (error severity).
+        # Missing ``name`` triggers METADATA-001 (error severity).
         assert exit_code == 1
 
     def test_good_charm_returns_zero(self, tmp_charm: pathlib.Path):
@@ -46,17 +46,17 @@ class TestCLI:
 
     def test_select_filter(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        exit_code = main([str(tmp_charm), "--select", "META"])
-        # Name is present so META001 doesn't fire; with only META selected,
+        exit_code = main([str(tmp_charm), "--select", "METADATA"])
+        # Name is present so METADATA-001 doesn't fire; with only METADATA selected,
         # no diagnostics → exit 0.
         assert exit_code == 0
 
     def test_ignore_filter(self, tmp_charm: pathlib.Path, capsys):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        main([str(tmp_charm), "--format", "json", "--ignore", "META001"])
+        main([str(tmp_charm), "--format", "json", "--ignore", "METADATA-001"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
-        meta_diags = [d for d in data["diagnostics"] if d["rule_id"] == "META001"]
+        meta_diags = [d for d in data["diagnostics"] if d["rule_id"] == "METADATA-001"]
         assert not meta_diags
 
     def test_severity_filter(self, tmp_charm: pathlib.Path, capsys):

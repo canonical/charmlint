@@ -1,7 +1,6 @@
 """Core linter engine — loads charm context, discovers rules, runs them."""
 
 import contextlib
-import dataclasses
 import pathlib
 import re
 from typing import Any
@@ -15,16 +14,17 @@ from . import _models as models
 # the pure-Python SafeLoader and matches what ops does internally.
 _SafeLoader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
-# Rule IDs follow ``<UPPERCASE LETTERS><DIGITS>`` (e.g. ``COS001``,
-# ``TEST003``). The category prefix is the leading letter run.
-_RULE_ID_PATTERN = re.compile(r"^([A-Z]+)([0-9]+)$")
+# Rule IDs follow ``<UPPERCASE-CATEGORY>-<DIGITS>`` (e.g.
+# ``METADATA-001``, ``SECURITY-003``). The category is everything before
+# the final dash-and-digits.
+_RULE_ID_PATTERN = re.compile(r"^([A-Z]+)-([0-9]+)$")
 
 
 def _category_of(rule_id: str) -> str:
     """Return the category prefix for a rule ID.
 
     Falls back to *rule_id* itself when the ID does not match the
-    ``<LETTERS><DIGITS>`` convention so an unrecognised ID never
+    ``<CATEGORY>-<DIGITS>`` convention so an unrecognised ID never
     accidentally matches a category in ``select`` / ``ignore``.
     """
     match = _RULE_ID_PATTERN.match(rule_id)
@@ -33,13 +33,13 @@ def _category_of(rule_id: str) -> str:
     return match.group(1)
 
 
-class _YamlParseError(Exception):
-    """Raised when a YAML file exists but cannot be parsed.
+class _FileLoadError(Exception):
+    """Raised when a required file exists but cannot be loaded.
 
-    Distinct from the absent-file case so the linter can tell the user
-    which file is broken instead of falsely claiming the manifest is
-    missing. Carries the original ``yaml.YAMLError`` message so the
-    diagnostic surfaces the parser's line/column hint.
+    Covers YAML syntax errors, OS-level read failures, and any other
+    failure to turn a present file into usable data. Distinct from the
+    absent-file case so the linter can tell the user which file is
+    broken instead of falsely claiming the manifest is missing.
     """
 
     def __init__(self, path: pathlib.Path, reason: str) -> None:
@@ -49,15 +49,13 @@ class _YamlParseError(Exception):
 
 
 def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
-    """Load a YAML file, returning an empty dict on failure.
+    """Load a YAML file.
 
-    Raises :class:`_YamlParseError` when *path* exists but the parser
-    rejects it — a malformed manifest is fundamentally different from
-    a missing one, and silently coercing to ``{}`` would have us
-    report ``FATAL: No charmcraft.yaml or metadata.yaml found`` for a
-    file that is right there but has a typo. ``OSError`` still maps
-    to an empty dict because an unreadable file is closer to "not
-    there" than to "broken syntax".
+    Returns an empty dict only when *path* does not exist. Every other
+    failure (unreadable file, YAML syntax error, top-level value that
+    isn't a mapping) is surfaced via :class:`_FileLoadError` — a file
+    that is there but broken should never be silently reported as
+    missing.
     """
     if not path.exists():
         return {}
@@ -65,10 +63,12 @@ def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
         with path.open() as f:
             data = yaml.load(f, Loader=_SafeLoader)
     except yaml.YAMLError as exc:
-        raise _YamlParseError(path, str(exc)) from exc
-    except OSError:
-        return {}
-    return data if isinstance(data, dict) else {}
+        raise _FileLoadError(path, str(exc)) from exc
+    except OSError as exc:
+        raise _FileLoadError(path, f"could not read: {exc}") from exc
+    if not isinstance(data, dict):
+        raise _FileLoadError(path, "top-level YAML value is not a mapping")
+    return data
 
 
 def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
@@ -92,8 +92,10 @@ def _read_python_sources(python_files: list[pathlib.Path]) -> dict[pathlib.Path,
     """
     sources: dict[pathlib.Path, str] = {}
     for path in python_files:
-        with contextlib.suppress(OSError):
+        try:
             sources[path] = path.read_text(errors="replace")
+        except OSError as exc:
+            raise _FileLoadError(path, f"could not read: {exc}") from exc
     return sources
 
 
@@ -169,38 +171,32 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
 
 
 def _should_run_rule(rule: _rules.Rule, config: _config.LintConfig) -> bool:
-    """Determine whether a rule should run given the config."""
+    """Determine whether a rule should run given the config.
+
+    Precedence: more-specific directives win over less-specific ones.
+    A rule ID beats a category, so ``select=["FOO001"]`` runs even when
+    ``ignore=["FOO"]`` — the user was more specific about running FOO001
+    than about ignoring FOO.
+    """
     rule_id = rule.id
-    category = _category_of(rule_id)
+    category = rule.category
 
-    # Disable via severity override. A rule-level entry takes precedence
-    # over a category-level one, so e.g. ``META = "off"`` plus
-    # ``META001 = "error"`` keeps META001 running.
-    rule_override = config.severity_overrides.get(rule_id)
-    if rule_override == "off":
+    if rule_id in config.ignore:
         return False
-    if rule_override is None and config.severity_overrides.get(category) == "off":
+    if rule_id in config.select:
+        return True
+    if category in config.ignore:
         return False
-
-    # If select is set, only run rules named by ID or category.
-    if config.select and category not in config.select and rule_id not in config.select:
-        return False
-
-    # If ignore contains this specific rule or category, skip it.
-    return not (rule_id in config.ignore or category in config.ignore)
+    if config.select:
+        return category in config.select
+    return True
 
 
 def _effective_severity(rule: _rules.Rule, config: _config.LintConfig) -> models.Severity | None:
-    """Resolve the effective severity for a rule, applying config overrides.
-
-    Rule-level overrides take precedence over category-level ones,
-    mirroring :func:`_should_run_rule`.
-    """
+    """Resolve the effective severity for a rule, applying config overrides."""
     rule_id = rule.id
-    override = config.severity_overrides.get(rule_id) or config.severity_overrides.get(
-        _category_of(rule_id)
-    )
-    if override and override != "off":
+    override = config.severity_overrides.get(rule_id)
+    if override:
         try:
             return models.Severity(override)
         except ValueError:
@@ -221,14 +217,14 @@ def lint(
 
     try:
         context = build_context(charm_dir)
-    except _YamlParseError as exc:
-        return models.LintReport(
+    except _FileLoadError as exc:
+        return models.LintReport.from_diagnostics(
             charm_dir=charm_dir,
             diagnostics=[
                 models.Diagnostic(
                     rule_id="FATAL",
                     severity=models.Severity.ERROR,
-                    message=f"Could not parse {exc.path.name}: {exc.reason}",
+                    message=f"Could not load {exc.path.name}: {exc.reason}",
                     path=str(exc.path.relative_to(charm_dir))
                     if exc.path.is_relative_to(charm_dir)
                     else str(exc.path),
@@ -237,7 +233,7 @@ def lint(
         )
 
     if not context.metadata:
-        return models.LintReport(
+        return models.LintReport.from_diagnostics(
             charm_dir=charm_dir,
             diagnostics=[
                 models.Diagnostic(
@@ -261,18 +257,30 @@ def lint(
         # Apply severity overrides.
         override = _effective_severity(rule, config)
         if override is not None:
-            diagnostics = [dataclasses.replace(d, severity=override) for d in diagnostics]
+            diagnostics = [
+                models.Diagnostic(
+                    rule_id=d.rule_id,
+                    severity=override,
+                    message=d.message,
+                    path=d.path,
+                    line=d.line,
+                    fix_hint=d.fix_hint,
+                )
+                for d in diagnostics
+            ]
+
+        # Filter by minimum severity.
+        if config.min_severity:
+            severity_order = {
+                models.Severity.ERROR: 0,
+                models.Severity.WARNING: 1,
+                models.Severity.INFO: 2,
+            }
+            min_order = severity_order.get(config.min_severity, 2)
+            diagnostics = [
+                d for d in diagnostics if severity_order.get(d.severity, 2) <= min_order
+            ]
 
         all_diagnostics.extend(diagnostics)
 
-    # Filter by minimum severity.
-    if config.min_severity is not None:
-        max_rank = config.min_severity.rank
-        all_diagnostics = [d for d in all_diagnostics if d.severity.rank <= max_rank]
-
-    # Sort by location rather than rule-registration order so output is
-    # stable and diff-friendly as rules are added. Diagnostics without a
-    # path (charm-level findings) sort first.
-    all_diagnostics.sort(key=lambda d: (d.path or "", d.line or 0, d.rule_id))
-
-    return models.LintReport(charm_dir=charm_dir, diagnostics=all_diagnostics)
+    return models.LintReport.from_diagnostics(charm_dir=charm_dir, diagnostics=all_diagnostics)
