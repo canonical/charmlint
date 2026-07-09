@@ -128,6 +128,18 @@ class TestLoadConfig:
         assert config.select == ["COS"]
         assert "Warning" in capsys.readouterr().err
 
+    def test_pyproject_charmlint_not_a_table_raises(self, tmp_path: pathlib.Path):
+        config_file = tmp_path / "pyproject.toml"
+        config_file.write_text("[tool]\ncharmlint = 42\n")
+        with pytest.raises(ConfigError, match="not a table"):
+            load_config(tmp_path, config_path=config_file)
+
+    def test_select_and_ignore_overlap_raises(self, tmp_path: pathlib.Path):
+        config_file = tmp_path / "charmlint.toml"
+        config_file.write_text('select = ["FOO"]\nignore = ["FOO"]\n')
+        with pytest.raises(ConfigError, match="select and ignore both contain"):
+            load_config(tmp_path)
+
     def test_malformed_explicit_config_raises(self, tmp_path: pathlib.Path):
         config_file = tmp_path / "custom.toml"
         config_file.write_text("not = valid = toml\n")

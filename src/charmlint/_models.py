@@ -14,23 +14,6 @@ class Severity(enum.StrEnum):
     WARNING = "warning"
     INFO = "info"
 
-    @property
-    def rank(self) -> int:
-        """Numeric rank for severity comparisons — lower is more severe.
-
-        ``StrEnum`` values compare alphabetically (``error < info <
-        warning``), which is not the severity order, so comparisons must
-        go through this property instead.
-        """
-        return _SEVERITY_RANK[self]
-
-
-_SEVERITY_RANK: dict[Severity, int] = {
-    Severity.ERROR: 0,
-    Severity.WARNING: 1,
-    Severity.INFO: 2,
-}
-
 
 @dataclasses.dataclass(frozen=True)
 class Diagnostic:
@@ -43,22 +26,14 @@ class Diagnostic:
     line: int | None = None
     fix_hint: str | None = None
 
-    def location(self, charm_dir: pathlib.Path | None = None) -> str:
-        """Return the ``path:line`` location string, or "" if there is no path.
-
-        The path is shown relative to *charm_dir* when it is inside it.
-        """
+    def format_text(self, charm_dir: pathlib.Path | None = None) -> str:
+        """Format as a ruff-style single-line diagnostic."""
         location = self.path or ""
         if charm_dir and self.path:
             with contextlib.suppress(ValueError):
                 location = str(pathlib.Path(self.path).relative_to(charm_dir))
         if self.line is not None:
             location = f"{location}:{self.line}"
-        return location
-
-    def format_text(self, charm_dir: pathlib.Path | None = None) -> str:
-        """Format as a ruff-style single-line diagnostic."""
-        location = self.location(charm_dir)
         prefix = f"{location}: " if location else ""
         return f"{prefix}{self.rule_id} {self.message}"
 
@@ -96,59 +71,53 @@ class CharmContext:
 
 @dataclasses.dataclass
 class LintReport:
-    """Aggregated lint results."""
+    """Aggregated lint results, bucketed by severity for O(1) counts."""
 
     charm_dir: pathlib.Path
-    diagnostics: list[Diagnostic] = dataclasses.field(default_factory=list)
+    by_severity: dict[Severity, list[Diagnostic]] = dataclasses.field(
+        default_factory=lambda: {s: [] for s in Severity}
+    )
+
+    @classmethod
+    def from_diagnostics(
+        cls, charm_dir: pathlib.Path, diagnostics: list[Diagnostic]
+    ) -> "LintReport":
+        """Build a report from a flat list of diagnostics."""
+        report = cls(charm_dir=charm_dir)
+        for d in diagnostics:
+            report.by_severity[d.severity].append(d)
+        return report
+
+    def __iter__(self):
+        """Yield every diagnostic in severity order (error, warning, info)."""
+        for severity in Severity:
+            yield from self.by_severity[severity]
+
+    def __len__(self) -> int:
+        return sum(len(bucket) for bucket in self.by_severity.values())
 
     @property
     def error_count(self) -> int:
         """Number of error-severity diagnostics."""
-        return sum(1 for d in self.diagnostics if d.severity == Severity.ERROR)
+        return len(self.by_severity[Severity.ERROR])
 
     @property
     def warning_count(self) -> int:
         """Number of warning-severity diagnostics."""
-        return sum(1 for d in self.diagnostics if d.severity == Severity.WARNING)
+        return len(self.by_severity[Severity.WARNING])
 
     @property
     def info_count(self) -> int:
         """Number of info-severity diagnostics."""
-        return sum(1 for d in self.diagnostics if d.severity == Severity.INFO)
-
-    def count_labels(self) -> list[tuple[Severity, str]]:
-        """Nonzero severity counts as (severity, human label) pairs.
-
-        Ordered most severe first, e.g. ``[(ERROR, "2 errors"),
-        (INFO, "1 info")]``. Shared by :meth:`summary_line` and the CLI's
-        coloured summary so the pluralisation lives in one place.
-        """
-        counts = (
-            (Severity.ERROR, self.error_count, "errors"),
-            (Severity.WARNING, self.warning_count, "warnings"),
-            (Severity.INFO, self.info_count, "info"),
-        )
-        return [
-            (severity, f"{n} {plural if n != 1 else plural.removesuffix('s')}")
-            for severity, n, plural in counts
-            if n
-        ]
-
-    def summary_line(self) -> str:
-        """One-line summary of findings."""
-        total = len(self.diagnostics)
-        if total == 0:
-            return "No issues found."
-        parts = [label for _, label in self.count_labels()]
-        return f"Found {total} issue{'s' if total != 1 else ''} ({', '.join(parts)})"
+        return len(self.by_severity[Severity.INFO])
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the full report to a JSON-friendly dict."""
         return {
             "charm_dir": str(self.charm_dir),
-            "total": len(self.diagnostics),
+            "total": len(self),
             "errors": self.error_count,
             "warnings": self.warning_count,
             "info": self.info_count,
-            "diagnostics": [d.to_dict() for d in self.diagnostics],
+            "diagnostics": [d.to_dict() for d in self],
         }

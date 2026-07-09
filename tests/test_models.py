@@ -77,10 +77,9 @@ class TestLintReport:
         assert report.error_count == 0
         assert report.warning_count == 0
         assert report.info_count == 0
-        assert report.summary_line() == "No issues found."
 
     def test_counts(self):
-        report = LintReport(
+        report = LintReport.from_diagnostics(
             charm_dir=pathlib.Path("/tmp/charm"),
             diagnostics=[
                 Diagnostic("E1", Severity.ERROR, "err1"),
@@ -92,8 +91,6 @@ class TestLintReport:
         assert report.error_count == 2
         assert report.warning_count == 1
         assert report.info_count == 1
-        assert "4 issues" in report.summary_line()
-        assert "2 errors" in report.summary_line()
 
     def test_count_labels(self):
         report = LintReport(
@@ -119,7 +116,7 @@ class TestLintReport:
         assert report.count_labels() == [(Severity.INFO, "1 info")]
 
     def test_to_dict(self):
-        report = LintReport(
+        report = LintReport.from_diagnostics(
             charm_dir=pathlib.Path("/tmp/charm"),
             diagnostics=[Diagnostic("E1", Severity.ERROR, "err")],
         )

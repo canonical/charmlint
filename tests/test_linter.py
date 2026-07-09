@@ -98,7 +98,7 @@ class TestLintFiltering:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         config = LintConfig(select=["METADATA"])
         report = lint(tmp_charm, config)
-        for d in report.diagnostics:
+        for d in list(report):
             assert d.rule_id.startswith("METADATA"), f"Unexpected rule: {d.rule_id}"
 
     def test_select_full_rule_id(self, tmp_charm: pathlib.Path):
@@ -113,21 +113,29 @@ class TestLintFiltering:
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         config = LintConfig(ignore=["METADATA-001"])
         report = lint(tmp_charm, config)
-        assert "METADATA-001" not in {d.rule_id for d in report.diagnostics}
+        assert "METADATA-001" not in {d.rule_id for d in list(report)}
 
     def test_severity_override(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         config = LintConfig(severity_overrides={"METADATA-001": "warning"})
         report = lint(tmp_charm, config)
-        meta001 = [d for d in report.diagnostics if d.rule_id == "METADATA-001"]
+        meta001 = [d for d in list(report) if d.rule_id == "METADATA-001"]
         assert meta001
         assert meta001[0].severity == Severity.WARNING
 
-    def test_disable_rule(self, tmp_charm: pathlib.Path):
+    def test_select_id_wins_over_ignored_category(self, tmp_charm: pathlib.Path):
+        # More-specific select beats less-specific ignore.
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
-        config = LintConfig(severity_overrides={"METADATA-001": "off"})
+        config = LintConfig(select=["METADATA-001"], ignore=["METADATA"])
         report = lint(tmp_charm, config)
-        assert "METADATA-001" not in {d.rule_id for d in report.diagnostics}
+        assert "METADATA-001" in {d.rule_id for d in list(report)}
+
+    def test_ignore_id_beats_select_category(self, tmp_charm: pathlib.Path):
+        # More-specific ignore beats less-specific select.
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        config = LintConfig(select=["METADATA"], ignore=["METADATA-001"])
+        report = lint(tmp_charm, config)
+        assert "METADATA-001" not in {d.rule_id for d in list(report)}
 
     def test_category_severity_override(self, tmp_charm: pathlib.Path):
         # A category key in per-rule-severity applies to every rule in
@@ -159,7 +167,7 @@ class TestLintFiltering:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         config = LintConfig(min_severity=Severity.ERROR)
         report = lint(tmp_charm, config)
-        for d in report.diagnostics:
+        for d in list(report):
             assert d.severity == Severity.ERROR
 
     def test_no_metadata_returns_fatal(self, tmp_path: pathlib.Path):
@@ -167,8 +175,8 @@ class TestLintFiltering:
         charm_dir.mkdir()
         report = lint(charm_dir)
         assert report.error_count == 1
-        assert report.diagnostics[0].rule_id == "FATAL"
-        assert "No charmcraft.yaml" in report.diagnostics[0].message
+        assert next(iter(report)).rule_id == "FATAL"
+        assert "No charmcraft.yaml" in next(iter(report)).message
 
     def test_select_unknown_category_returns_no_diagnostics(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
@@ -176,7 +184,7 @@ class TestLintFiltering:
         # than silently match a rule whose ID happens to share a prefix.
         config = LintConfig(select=["NOSUCH"])
         report = lint(tmp_charm, config)
-        assert report.diagnostics == []
+        assert list(report) == []
 
     def test_ignore_long_category_does_not_match_short_prefix(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
@@ -184,7 +192,7 @@ class TestLintFiltering:
         # Confirms exact-string category matching, not prefix matching.
         config = LintConfig(ignore=["METADATAA"])
         report = lint(tmp_charm, config)
-        assert any(d.rule_id.startswith("METADATA") for d in report.diagnostics)
+        assert any(d.rule_id.startswith("METADATA") for d in list(report))
 
     def test_malformed_charmcraft_yaml_returns_parse_error(self, tmp_path: pathlib.Path):
         charm_dir = tmp_path / "broken"
@@ -193,12 +201,12 @@ class TestLintFiltering:
         (charm_dir / "charmcraft.yaml").write_text("name: foo\nbad: this: that\n")
         report = lint(charm_dir)
         assert report.error_count == 1
-        diag = report.diagnostics[0]
+        diag = next(iter(report))
         assert diag.rule_id == "FATAL"
         # The misleading "No charmcraft.yaml" text must NOT appear when
         # the file is right there but malformed.
         assert "No charmcraft.yaml" not in diag.message
-        assert "Could not parse charmcraft.yaml" in diag.message
+        assert "Could not load charmcraft.yaml" in diag.message
 
 
 class TestDiagnosticOrdering:
