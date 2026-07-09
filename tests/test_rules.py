@@ -145,6 +145,19 @@ class TestMetadataRules:
         ):
             assert rid not in ids, f"{rid} should not fire for modern charmcraft.yaml"
 
+    def test_bundle_skips_metadata_rules(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"type": "bundle", "name": "my-bundle"})
+        report = lint(tmp_charm)
+        meta_ids = {d.rule_id for d in list(report) if d.rule_id.startswith("METADATA")}
+        assert not meta_ids
+
+    def test_legacy_bundle_yaml_skips_metadata_rules(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "bundle.yaml").write_text("applications: {}\n")
+        write_charmcraft_yaml(tmp_charm, {})
+        report = lint(tmp_charm)
+        meta_ids = {d.rule_id for d in list(report) if d.rule_id.startswith("METADATA")}
+        assert not meta_ids
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""

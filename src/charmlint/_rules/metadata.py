@@ -28,6 +28,15 @@ def _is_charmcraft(context: models.CharmContext) -> bool:
     return context.metadata_source == "charmcraft.yaml"
 
 
+def _is_bundle(context: models.CharmContext) -> bool:
+    # Bundles declare `type: bundle` in charmcraft.yaml, or use the legacy
+    # top-level bundle.yaml layout. Neither shape needs the charm-metadata
+    # fields these rules check for.
+    if context.metadata.get("type") == "bundle":
+        return True
+    return (context.charm_dir / "bundle.yaml").is_file()
+
+
 # https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-name
 class MissingName(Rule):
     category = "METADATA"
@@ -37,6 +46,8 @@ class MissingName(Rule):
     default_severity = models.Severity.ERROR
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _is_bundle(context):
+            return []
         if _resolve(context.metadata, "name"):
             return []
         return [self.diagnostic(self.description, path=context.metadata_source)]
@@ -51,6 +62,8 @@ class MissingDisplayName(Rule):
     default_severity = models.Severity.WARNING
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _is_bundle(context):
+            return []
         key = "title" if _is_charmcraft(context) else "display-name"
         if _resolve(context.metadata, key):
             return []
@@ -66,6 +79,8 @@ class MissingSummary(Rule):
     default_severity = models.Severity.ERROR
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _is_bundle(context):
+            return []
         if _resolve(context.metadata, "summary"):
             return []
         return [self.diagnostic(self.description, path=context.metadata_source)]
@@ -80,6 +95,8 @@ class MissingDescription(Rule):
     default_severity = models.Severity.ERROR
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _is_bundle(context):
+            return []
         if _resolve(context.metadata, "description"):
             return []
         return [self.diagnostic(self.description, path=context.metadata_source)]
@@ -94,6 +111,8 @@ class MissingDocs(Rule):
     default_severity = models.Severity.INFO
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _is_bundle(context):
+            return []
         key = "links.documentation" if _is_charmcraft(context) else "docs"
         if _resolve(context.metadata, key):
             return []
@@ -109,6 +128,8 @@ class MissingIssues(Rule):
     default_severity = models.Severity.INFO
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _is_bundle(context):
+            return []
         key = "links.issues" if _is_charmcraft(context) else "issues"
         if _resolve(context.metadata, key):
             return []
@@ -124,6 +145,8 @@ class MissingSource(Rule):
     default_severity = models.Severity.INFO
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _is_bundle(context):
+            return []
         key = "links.source" if _is_charmcraft(context) else "source"
         if _resolve(context.metadata, key):
             return []
