@@ -21,6 +21,7 @@ def _any_present(metadata: dict[str, Any], keys: tuple[str, ...]) -> bool:
     return any(_resolve(metadata, k) for k in keys)
 
 
+# https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/charmcraft-yaml-file/#name
 class MissingName(Rule):
     category = "METADATA"
     number = 1
@@ -34,6 +35,7 @@ class MissingName(Rule):
         return [self.diagnostic(self.description, path=context.metadata_source)]
 
 
+# https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/charmcraft-yaml-file/#title
 class MissingDisplayName(Rule):
     category = "METADATA"
     number = 2
@@ -48,6 +50,7 @@ class MissingDisplayName(Rule):
         return [self.diagnostic(self.description, path=context.metadata_source)]
 
 
+# https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/charmcraft-yaml-file/#summary
 class MissingSummary(Rule):
     category = "METADATA"
     number = 3
@@ -61,6 +64,7 @@ class MissingSummary(Rule):
         return [self.diagnostic(self.description, path=context.metadata_source)]
 
 
+# https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/charmcraft-yaml-file/#description
 class MissingDescription(Rule):
     category = "METADATA"
     number = 4
@@ -74,6 +78,7 @@ class MissingDescription(Rule):
         return [self.diagnostic(self.description, path=context.metadata_source)]
 
 
+# https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/charmcraft-yaml-file/#links
 class MissingDocs(Rule):
     category = "METADATA"
     number = 5
@@ -88,6 +93,7 @@ class MissingDocs(Rule):
         return [self.diagnostic(self.description, path=context.metadata_source)]
 
 
+# https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/charmcraft-yaml-file/#links
 class MissingIssues(Rule):
     category = "METADATA"
     number = 6
@@ -102,6 +108,7 @@ class MissingIssues(Rule):
         return [self.diagnostic(self.description, path=context.metadata_source)]
 
 
+# https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/charmcraft-yaml-file/#links
 class MissingSource(Rule):
     category = "METADATA"
     number = 7
