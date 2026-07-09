@@ -1,13 +1,13 @@
 """Metadata rules — charmcraft.yaml field completeness.
 
-Only META001 lives here during the rules-refactor; the other META rules
-return via their own PRs from `RULES_TRACKER.md`.
+Only METADATA-001 lives here during the rules-refactor; the other
+METADATA rules return via their own PRs from `RULES_TRACKER.md`.
 """
 
 from typing import Any
 
 from .. import _models as models
-from . import Rule
+from ._base import Rule
 
 
 def _resolve(metadata: dict[str, Any], dotted: str) -> Any:
@@ -15,14 +15,15 @@ def _resolve(metadata: dict[str, Any], dotted: str) -> Any:
     for part in dotted.split("."):
         if not isinstance(cur, dict):
             return None
-        cur = cur.get(part)
-        if cur is None:
+        if part not in cur:
             return None
+        cur = cur[part]
     return cur
 
 
 class MissingName(Rule):
-    id = "META001"
+    category = "METADATA"
+    number = 1
     name = "missing-name"
     description = "Missing 'name' field in charm metadata"
     default_severity = models.Severity.ERROR

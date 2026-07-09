@@ -1,23 +1,11 @@
 """charmlint — a deterministic linter for Juju charms.
 
-Public API::
-
-    from charmlint import lint, Diagnostic, Severity, LintReport, LintConfig
-
-    report = lint(Path("/path/to/charm"))
-    for d in report.diagnostics:
-        print(d.format_text())
+Use the ``charmlint`` CLI. This package has no stable Python API.
 """
 
-# Re-exports for the public API.
-from charmlint._config import LintConfig
-from charmlint._linter import lint
-from charmlint._models import Diagnostic, LintReport, Severity
+from importlib.metadata import PackageNotFoundError, version
 
-__all__ = [
-    "Diagnostic",
-    "LintConfig",
-    "LintReport",
-    "Severity",
-    "lint",
-]
+try:
+    __version__ = version("charmlint")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"

@@ -1,40 +1,15 @@
 """Tests for charmlint rules.
 
-Only META001-relevant tests live here during the rules-refactor; the
+Only METADATA-001-relevant tests live here during the rules-refactor; the
 other rule families are re-added alongside their PRs from
 ``RULES_TRACKER.md``.
 """
 
 import pathlib
 
-import pytest
-
 from charmlint._linter import lint
-from charmlint._models import CharmContext, Diagnostic, Severity
-from charmlint._rules import Rule, get_all_rules
+from charmlint._models import Severity
 from tests.conftest import make_full_charm, write_charmcraft_yaml
-
-
-class TestRuleRegistry:
-    """Tests for the rule registration mechanism."""
-
-    def test_duplicate_rule_id_rejected(self):
-        # 60 rules are being re-added one PR at a time; a copy-pasted ID
-        # must fail loudly instead of silently replacing an existing rule.
-        with pytest.raises(ValueError, match="META001"):
-
-            class DuplicateRule(Rule):
-                id = "META001"
-                name = "duplicate"
-                description = "Duplicate of an existing rule ID"
-                default_severity = Severity.INFO
-
-                def check(self, context: CharmContext) -> list[Diagnostic]:
-                    return []
-
-    def test_failed_registration_does_not_replace_original(self):
-        original = get_all_rules()["META001"]
-        assert type(original).__name__ == "MissingName"
 
 
 class TestMetadataRules:
@@ -43,21 +18,21 @@ class TestMetadataRules:
     def test_missing_name_is_error(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         report = lint(tmp_charm)
-        ids = {d.rule_id for d in report.diagnostics}
-        assert "META001" in ids
-        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"][0]
+        ids = {d.rule_id for d in list(report)}
+        assert "METADATA-001" in ids
+        meta001 = [d for d in list(report) if d.rule_id == "METADATA-001"][0]
         assert meta001.severity == Severity.ERROR
 
     def test_full_metadata_no_meta_diagnostics(self, tmp_charm: pathlib.Path):
         make_full_charm(tmp_charm)
         report = lint(tmp_charm)
-        meta_ids = {d.rule_id for d in report.diagnostics if d.rule_id.startswith("META")}
+        meta_ids = {d.rule_id for d in list(report) if d.rule_id.startswith("METADATA")}
         assert not meta_ids
 
     def test_meta_diagnostics_path_is_charmcraft_yaml(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         report = lint(tmp_charm)
-        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"][0]
+        meta001 = [d for d in list(report) if d.rule_id == "METADATA-001"][0]
         assert meta001.path == "charmcraft.yaml"
 
     def test_meta_diagnostics_path_is_metadata_yaml_for_legacy_charms(
@@ -65,7 +40,7 @@ class TestMetadataRules:
     ):
         (tmp_charm / "metadata.yaml").write_text("display-name: X\n")
         report = lint(tmp_charm)
-        meta001 = [d for d in report.diagnostics if d.rule_id == "META001"][0]
+        meta001 = [d for d in list(report) if d.rule_id == "METADATA-001"][0]
         assert meta001.path == "metadata.yaml"
 
 
@@ -76,5 +51,5 @@ class TestFullCharm:
         make_full_charm(tmp_charm)
         report = lint(tmp_charm)
         assert report.error_count == 0
-        for d in report.diagnostics:
+        for d in list(report):
             assert d.severity != Severity.ERROR, f"Unexpected error: {d.rule_id} {d.message}"

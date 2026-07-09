@@ -12,7 +12,7 @@ PEP 740 support.
 This module never downloads or cryptographically re-verifies the
 attestation; for that, see the upstream ``pypi-attestations`` CLI. The
 goal here is a fast, check-at-build-time signal that deters unsigned
-dependencies in the hot paths where Cantrip packs charms.
+dependencies in charm builds.
 
 Must-have packages
 ------------------
@@ -65,7 +65,7 @@ def is_must_have(name: str) -> bool:
     if normalised in MUST_HAVE_PATTERNS:
         return True
     for pattern in MUST_HAVE_PATTERNS:
-        if pattern.endswith("-*") and normalised.startswith(pattern[:-1]):
+        if pattern.endswith("-*") and normalised.startswith(pattern.removesuffix("*")):
             return True
     return False
 
@@ -87,7 +87,9 @@ class ProvenanceResult:
 
     name: str
     status: ProvenanceStatus
-    version: str | None = None  # Version we actually consulted (latest if unspecified).
+    # ``None`` means we consulted whichever version PyPI's simple index
+    # returned first — the latest at query time.
+    version: str | None = None
     provenance_url: str | None = None
     detail: str | None = None  # Free-text reason for UNKNOWN / UNATTESTED.
 
@@ -128,12 +130,6 @@ def check_provenance(
     return result
 
 
-def clear_cache() -> None:
-    """Reset the process-wide cache — only useful in tests."""
-    with _CACHE_LOCK:
-        _CACHE.clear()
-
-
 def _check_provenance_uncached(
     name: str,
     version: str | None,
@@ -170,6 +166,11 @@ def _check_provenance_uncached(
             detail=f"invalid JSON from PyPI: {exc}",
         )
 
+    # UNKNOWN (not UNATTESTED) when the PyPI response is shaped in a way
+    # we can't interpret — a missing ``files`` key or a requested version
+    # that isn't there means we never got to *see* whether provenance
+    # exists. UNATTESTED is reserved for the case where the release is
+    # present and simply lacks attestations.
     files = data.get("files")
     if not isinstance(files, list) or not files:
         return ProvenanceResult(

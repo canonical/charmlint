@@ -35,3 +35,4 @@ htmlcov/
 # Claude Code (personal/local only; commit shared settings explicitly)
 .claude/settings.local.json
 .claude/worktrees/
+.claude/scratch/

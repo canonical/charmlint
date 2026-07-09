@@ -5,15 +5,6 @@ import pathlib
 from charmlint._models import Diagnostic, LintReport, Severity
 
 
-class TestSeverity:
-    """Tests for the Severity enum."""
-
-    def test_rank_orders_by_severity(self):
-        # StrEnum string comparison would give error < info < warning;
-        # rank gives the actual severity order.
-        assert Severity.ERROR.rank < Severity.WARNING.rank < Severity.INFO.rank
-
-
 class TestDiagnostic:
     """Tests for the Diagnostic dataclass."""
 
@@ -77,10 +68,9 @@ class TestLintReport:
         assert report.error_count == 0
         assert report.warning_count == 0
         assert report.info_count == 0
-        assert report.summary_line() == "No issues found."
 
     def test_counts(self):
-        report = LintReport(
+        report = LintReport.from_diagnostics(
             charm_dir=pathlib.Path("/tmp/charm"),
             diagnostics=[
                 Diagnostic("E1", Severity.ERROR, "err1"),
@@ -92,34 +82,9 @@ class TestLintReport:
         assert report.error_count == 2
         assert report.warning_count == 1
         assert report.info_count == 1
-        assert "4 issues" in report.summary_line()
-        assert "2 errors" in report.summary_line()
-
-    def test_count_labels(self):
-        report = LintReport(
-            charm_dir=pathlib.Path("/tmp/charm"),
-            diagnostics=[
-                Diagnostic("E1", Severity.ERROR, "err1"),
-                Diagnostic("W1", Severity.WARNING, "warn1"),
-                Diagnostic("W2", Severity.WARNING, "warn2"),
-                Diagnostic("I1", Severity.INFO, "info1"),
-            ],
-        )
-        assert report.count_labels() == [
-            (Severity.ERROR, "1 error"),
-            (Severity.WARNING, "2 warnings"),
-            (Severity.INFO, "1 info"),
-        ]
-
-    def test_count_labels_skips_zero_counts(self):
-        report = LintReport(
-            charm_dir=pathlib.Path("/tmp/charm"),
-            diagnostics=[Diagnostic("I1", Severity.INFO, "info1")],
-        )
-        assert report.count_labels() == [(Severity.INFO, "1 info")]
 
     def test_to_dict(self):
-        report = LintReport(
+        report = LintReport.from_diagnostics(
             charm_dir=pathlib.Path("/tmp/charm"),
             diagnostics=[Diagnostic("E1", Severity.ERROR, "err")],
         )

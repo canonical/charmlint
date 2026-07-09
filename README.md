@@ -11,39 +11,37 @@ where charmlint grew as an internal component of the Cantrip AI charm builder.
 
 ## Installation
 
-charmlint is not yet published to PyPI. Install from a checkout:
-
 ```bash
-pip install .
+uv sync --dev
 ```
 
 ## Usage
 
 ```bash
-charmlint /path/to/charm
-charmlint --format json /path/to/charm
-charmlint --select COS,META /path/to/charm
-charmlint --ignore ATT002 --strict /path/to/charm
+uv run charmlint /path/to/charm
+uv run charmlint --format json /path/to/charm
+uv run charmlint --select COS,META /path/to/charm
+uv run charmlint --ignore ATT002 --strict /path/to/charm
 ```
 
-> **Note**: the rule set is being re-landed one PR at a time after a
-> clean-core refactor — only `META001` currently ships. The rule IDs in
-> the examples here show intended usage; see
-> [RULES_TRACKER.md](RULES_TRACKER.md) for which rules have landed.
-
-## Development
+Or install and run directly:
 
 ```bash
-uv sync --dev
-uv run charmlint /path/to/charm
+uv run pip install -e .
+charmlint /path/to/charm
+```
+
+## Running tests
+
+```bash
 uv run pytest tests/ -v
 ```
 
 ## Rule catalogue
 
-Rule IDs follow `PREFIX###` (for example `SEC001`, `META003`). The prefix
-groups rules by lens. See [docs/id-scheme.md](docs/id-scheme.md) for the
-full prefix catalogue and naming rules.
+Rule IDs follow `CATEGORY-###` (for example `SECURITY-001`,
+`METADATA-003`). See [docs/id-scheme.md](docs/id-scheme.md) for the full
+category catalogue and naming rules.
 
 ## Configuration
 
@@ -54,29 +52,12 @@ directory, in the manner of ruff.
 ```toml
 [tool.charmlint]
 severity = "warning"  # minimum severity to report
+select = ["OBSERVABILITY", "METADATA"]
+ignore = ["ATTESTATION-002"]
 
-[tool.charmlint.lint]
-select = ["COS", "META"]
-ignore = ["ATT002"]
-
-[tool.charmlint.lint.per-rule-severity]
-COS005 = "error"
-STR002 = "off"
+[tool.charmlint.per-rule-severity]
+"OBSERVABILITY-005" = "error"
 ```
-
-## Bundled helper
-
-The `src/charmlint/_pypi_attest.py` module is a small, stdlib-only helper
-(originally a separate package in cantrip) that checks PEP 740 attestation
-status on PyPI. It lives inside `charmlint` to keep the project
-dependency-free except for PyYAML.
-
-## A future Rust implementation
-
-An earlier Rust implementation lived alongside the Python one but was removed:
-maintaining two implementations in lockstep was not sustainable at the current
-team size. A Rust port may return in the future for speed once the Python
-implementation has stabilised.
 
 ## License
 

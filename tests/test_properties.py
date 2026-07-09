@@ -39,8 +39,8 @@ from charmlint._models import Severity
 # ``tmp_charm/charmcraft.yaml`` and touches no other state, so a shared
 # directory is equivalent to a fresh one per example. Suppress the
 # health check globally for the module. ``max_examples`` inherits from
-# the profile registered in ``tests/conftest.py`` (100 for dev, 500
-# for CI).
+# the profile registered in ``tests/unit/conftest.py`` (100 for dev,
+# 500 for CI).
 _charm_settings = settings(
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
 )
@@ -176,8 +176,8 @@ class TestCharmlintProperties:
         """
         first = _write_and_lint(tmp_charm, metadata)
         second = lint(tmp_charm)
-        first_keys = sorted(_diagnostic_key(d) for d in first.diagnostics)
-        second_keys = sorted(_diagnostic_key(d) for d in second.diagnostics)
+        first_keys = sorted(_diagnostic_key(d) for d in list(first))
+        second_keys = sorted(_diagnostic_key(d) for d in list(second))
         assert first_keys == second_keys
 
     @_charm_settings
@@ -193,7 +193,7 @@ class TestCharmlintProperties:
         line unreadable, so pin this down across the whole rule set.
         """
         report = _write_and_lint(tmp_charm, metadata)
-        for diag in report.diagnostics:
+        for diag in list(report):
             assert diag.rule_id, "Diagnostic missing rule_id"
             assert isinstance(diag.severity, Severity), (
                 f"Diagnostic severity is not a Severity: {diag.severity!r}"
