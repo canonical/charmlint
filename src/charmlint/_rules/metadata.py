@@ -56,7 +56,7 @@ class MissingSummary(Rule):
     number = 3
     name = "missing-summary"
     description = "Missing 'summary' field"
-    default_severity = models.Severity.WARNING
+    default_severity = models.Severity.ERROR
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _resolve(context.metadata, "summary"):
@@ -70,7 +70,7 @@ class MissingDescription(Rule):
     number = 4
     name = "missing-description"
     description = "Missing 'description' field"
-    default_severity = models.Severity.WARNING
+    default_severity = models.Severity.ERROR
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _resolve(context.metadata, "description"):
