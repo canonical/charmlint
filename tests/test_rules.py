@@ -7,6 +7,8 @@ other rule families are re-added alongside their PRs from
 
 import pathlib
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from tests.conftest import make_full_charm, write_charmcraft_yaml
@@ -52,11 +54,22 @@ class TestDocumentationRules:
         report = lint(tmp_charm)
         assert "DOCUMENTATION-001" in {d.rule_id for d in report}
 
-    def test_readme_present(self, tmp_charm: pathlib.Path):
+    @pytest.mark.parametrize(
+        "filename",
+        ["README.md", "README.txt", "README.rst", "readme.md", "Readme.MD", "README.RST"],
+    )
+    def test_readme_present(self, tmp_charm: pathlib.Path, filename: str):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        (tmp_charm / "README.md").write_text("# Hello\n")
+        (tmp_charm / filename).write_text("# Hello\n")
         report = lint(tmp_charm)
         assert "DOCUMENTATION-001" not in {d.rule_id for d in report}
+
+    @pytest.mark.parametrize("filename", ["README.org", "README", "README.markdown"])
+    def test_readme_unsupported_extension(self, tmp_charm: pathlib.Path, filename: str):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / filename).write_text("# Hello\n")
+        report = lint(tmp_charm)
+        assert "DOCUMENTATION-001" in {d.rule_id for d in report}
 
 
 class TestFullCharm:
