@@ -8,10 +8,17 @@ class NoReadme(Rule):
     category = "DOCUMENTATION"
     number = 1
     name = "no-readme"
-    description = "No README.md found"
+    description = "No README file found"
     default_severity = models.Severity.WARNING
 
+    _extensions = frozenset({".md", ".txt", ".rst"})
+
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        if not (context.charm_dir / "README.md").exists():
-            return [self.diagnostic(self.description)]
-        return []
+        for entry in context.charm_dir.iterdir():
+            if (
+                entry.is_file()
+                and entry.stem.lower() == "readme"
+                and entry.suffix.lower() in self._extensions
+            ):
+                return []
+        return [self.diagnostic(self.description)]
