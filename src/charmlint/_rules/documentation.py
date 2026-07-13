@@ -1,8 +1,4 @@
-"""Documentation rules — README and docs presence.
-
-DOC001 lives here; DOC002–DOC005 return in their own PRs (after the
-shared-docs-walker gating PR).
-"""
+"""Documentation rules — README and docs presence."""
 
 from .. import _models as models
 from ._base import Rule
