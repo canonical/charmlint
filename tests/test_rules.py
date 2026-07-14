@@ -7,6 +7,8 @@ other rule families are re-added alongside their PRs from
 
 import pathlib
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from tests.conftest import make_full_charm, write_charmcraft_yaml
@@ -157,6 +159,32 @@ class TestMetadataRules:
         report = lint(tmp_charm)
         meta_ids = {d.rule_id for d in list(report) if d.rule_id.startswith("METADATA")}
         assert not meta_ids
+
+
+class TestDocumentationRules:
+    """Tests for documentation presence rules."""
+
+    def test_no_readme(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "DOCUMENTATION-001" in {d.rule_id for d in report}
+
+    @pytest.mark.parametrize(
+        "filename",
+        ["README.md", "README.txt", "README.rst", "readme.md", "Readme.MD", "README.RST"],
+    )
+    def test_readme_present(self, tmp_charm: pathlib.Path, filename: str):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / filename).write_text("# Hello\n")
+        report = lint(tmp_charm)
+        assert "DOCUMENTATION-001" not in {d.rule_id for d in report}
+
+    @pytest.mark.parametrize("filename", ["README.org", "README", "README.markdown"])
+    def test_readme_unsupported_extension(self, tmp_charm: pathlib.Path, filename: str):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / filename).write_text("# Hello\n")
+        report = lint(tmp_charm)
+        assert "DOCUMENTATION-001" in {d.rule_id for d in report}
 
 
 class TestFullCharm:
