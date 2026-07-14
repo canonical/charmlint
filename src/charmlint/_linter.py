@@ -100,11 +100,18 @@ def _read_python_sources(python_files: list[pathlib.Path]) -> dict[pathlib.Path,
 
 
 def _check_tests(charm_dir: pathlib.Path) -> tuple[bool, bool]:
-    """Return (has_unit_tests, has_integration_tests)."""
-    unit_dir = charm_dir / "tests" / "unit"
+    """Return (has_unit_tests, has_integration_tests).
+
+    Accepts ``tests/unit/`` and the reactive-charm ``unit_tests/`` layout
+    for unit tests, and matches ``test_*.py`` at any depth so nested
+    suites (e.g. ``tests/unit/test_charm/test_charm.py``) count.
+    """
+    unit_roots = [charm_dir / "tests" / "unit", charm_dir / "unit_tests"]
+    has_unit = any(d.is_dir() and next(d.rglob("test_*.py"), None) is not None for d in unit_roots)
     integration_dir = charm_dir / "tests" / "integration"
-    has_unit = unit_dir.is_dir() and bool(list(unit_dir.glob("test_*.py")))
-    has_integration = integration_dir.is_dir() and bool(list(integration_dir.glob("test_*.py")))
+    has_integration = (
+        integration_dir.is_dir() and next(integration_dir.rglob("test_*.py"), None) is not None
+    )
     return has_unit, has_integration
 
 

@@ -233,6 +233,21 @@ class TestTestingRules:
         report = lint(tmp_charm)
         assert "TESTING-001" not in {d.rule_id for d in list(report)}
 
+    def test_reactive_unit_tests_layout_no_diagnostic(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test-charm"})
+        (tmp_charm / "unit_tests").mkdir()
+        (tmp_charm / "unit_tests" / "test_charm.py").write_text("def test_x(): pass\n")
+        report = lint(tmp_charm)
+        assert "TESTING-001" not in {d.rule_id for d in list(report)}
+
+    def test_nested_unit_tests_no_diagnostic(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test-charm"})
+        nested = tmp_charm / "tests" / "unit" / "test_workload"
+        nested.mkdir(parents=True)
+        (nested / "test_thing.py").write_text("def test_x(): pass\n")
+        report = lint(tmp_charm)
+        assert "TESTING-001" not in {d.rule_id for d in list(report)}
+
 
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
