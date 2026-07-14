@@ -10,6 +10,7 @@ class DeprecatedSeries(Rule):
     name = "deprecated-series"
     description = "Deprecated 'series' attribute in metadata"
     default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if "series" not in context.metadata:

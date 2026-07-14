@@ -6,12 +6,20 @@ other rule families are re-added alongside their PRs from
 """
 
 import pathlib
+import urllib.error
+import urllib.request
 
 import pytest
 
 from charmlint._linter import lint
 from charmlint._models import Severity
+from charmlint._rules._base import get_all_rules
 from tests.conftest import make_full_charm, write_charmcraft_yaml
+
+_RULES_WITH_URL = sorted(
+    (r for r in get_all_rules().values() if r.reference_url is not None),
+    key=lambda r: r.id,
+)
 
 
 class TestMetadataRules:
@@ -185,6 +193,26 @@ class TestDocumentationRules:
         (tmp_charm / filename).write_text("# Hello\n")
         report = lint(tmp_charm)
         assert "DOCUMENTATION-001" in {d.rule_id for d in report}
+
+
+class TestReferenceUrls:
+    """Every rule with a reference_url must point somewhere live."""
+
+    @pytest.mark.parametrize("rule", _RULES_WITH_URL, ids=lambda r: r.id)
+    def test_reference_url_resolves(self, rule):
+        assert rule.reference_url is not None
+        request = urllib.request.Request(rule.reference_url, method="HEAD")
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                status = response.status
+        except urllib.error.HTTPError as exc:
+            if exc.code == 405:
+                # HEAD not allowed — retry with GET.
+                with urllib.request.urlopen(rule.reference_url, timeout=10) as response:
+                    status = response.status
+            else:
+                raise
+        assert 200 <= status < 300, f"{rule.id}: {rule.reference_url} → HTTP {status}"
 
 
 class TestFullCharm:
