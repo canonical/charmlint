@@ -1,8 +1,4 @@
-"""Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``.
-
-CHARMCRAFT-001 lives here; the remaining CHARMCRAFT rules return via
-their own PRs — see ``RULES_TRACKER.md``.
-"""
+"""Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``."""
 
 from .. import _models as models
 from ._base import Rule
