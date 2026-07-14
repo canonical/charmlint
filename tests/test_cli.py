@@ -38,9 +38,9 @@ class TestCLI:
         assert data["total"] > 0
 
     def test_select_filter(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charmcraft_yaml(tmp_charm, {"type": "bundle", "name": "test"})
         exit_code = main([str(tmp_charm), "--select", "METADATA"])
-        # Name is present so METADATA-001 doesn't fire; with only METADATA selected,
+        # Bundles skip every METADATA rule, so with only METADATA selected,
         # no diagnostics → exit 0.
         assert exit_code == 0
 

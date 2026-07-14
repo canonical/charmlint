@@ -8,7 +8,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | Group | Rule IDs | Source module | Tests | PR | Status |
 |---|---|---|---|---|---|
 | (core kept) | META001 | `_rules/metadata.py` | `test_rules.py::TestMetadataRules`, `test_linter.py`, `test_properties.py` | — | kept |
-| META 002-007 | META002, META003, META004, META005, META006, META007 | `_rules/metadata.py` (factory) | `test_rules.py::TestMetadataRules` | | pending |
+| META 002-007 | META002, META003, META004, META005, META006, META007 | `_rules/metadata.py` | `test_rules.py::TestMetadataRules` | #95 | open |
 | COS 001-004 | COS001, COS002, COS003, COS004 | `_rules/observability.py` (factory) | `test_rules.py::TestObservabilityRules` | | pending |
 | COS005 | COS005 | `_rules/observability.py` | `test_rules.py::TestObservabilityRules` | | pending |
 | STS 001-003 | STS001, STS002, STS003 | `_rules/status.py` (factory) | `test_rules.py::TestStatusRules` | | pending |
