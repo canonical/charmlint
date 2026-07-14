@@ -8,12 +8,12 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | Group | Rule IDs | Source module | Tests | PR | Status |
 |---|---|---|---|---|---|
 | (core kept) | META001 | `_rules/metadata.py` | `test_rules.py::TestMetadataRules`, `test_linter.py`, `test_properties.py` | — | kept |
-| META 002-007 | META002, META003, META004, META005, META006, META007 | `_rules/metadata.py` | `test_rules.py::TestMetadataRules` | #95 | open |
+| META 002-007 | METADATA-002, METADATA-003, METADATA-004, METADATA-005, METADATA-006, METADATA-007 | `_rules/metadata.py` | `test_rules.py::TestMetadataRules` | #95 | merged |
 | COS 001-004 | COS001, COS002, COS003, COS004 | `_rules/observability.py` (factory) | `test_rules.py::TestObservabilityRules` | | pending |
 | COS005 | COS005 | `_rules/observability.py` | `test_rules.py::TestObservabilityRules` | | pending |
 | STS 001-003 | STS001, STS002, STS003 | `_rules/status.py` (factory) | `test_rules.py::TestStatusRules` | | pending |
 | DEP 001-004 | DEP001, DEP002, DEP003, DEP004 | `_rules/deprecated.py` (factory) | `test_rules.py::TestDeprecatedRules` | | pending |
-| CC001 | CC001 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
+| CC001 | CHARMCRAFT-001 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #106 | merged |
 | CC002 | CC002 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CC003 | CC003 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CC004 | CC004 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
@@ -33,7 +33,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | CFG003 | CFG003 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
 | CFG004 | CFG004 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
 | CFG005 | CFG005 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
-| DOC001 | DOC001 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
+| DOC001 | DOCUMENTATION-001 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | #123 | merged |
 | DOC002 | DOC002 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC003 | DOC003 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC004 | DOC004 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
@@ -48,7 +48,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | STR001 | STR001 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
 | STR002 | STR002 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
 | STR003 | STR003 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
-| TEST001 | TEST001 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
+| TEST001 | TESTING-001 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | in review |
 | TEST002 | TEST002 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
 | TEST003 | TEST003 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
 

@@ -215,6 +215,25 @@ class TestReferenceUrls:
         assert 200 <= status < 300, f"{rule.id}: {rule.reference_url} → HTTP {status}"
 
 
+class TestTestingRules:
+    """Tests for TESTING-001 — no unit tests found."""
+
+    def test_no_unit_tests_is_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test-charm"})
+        report = lint(tmp_charm)
+        testing = [d for d in list(report) if d.rule_id == "TESTING-001"]
+        assert len(testing) == 1
+        assert testing[0].severity == Severity.WARNING
+        assert testing[0].path == "tests/"
+
+    def test_unit_tests_present_no_diagnostic(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test-charm"})
+        (tmp_charm / "tests" / "unit").mkdir(parents=True)
+        (tmp_charm / "tests" / "unit" / "test_charm.py").write_text("def test_x(): pass\n")
+        report = lint(tmp_charm)
+        assert "TESTING-001" not in {d.rule_id for d in list(report)}
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
