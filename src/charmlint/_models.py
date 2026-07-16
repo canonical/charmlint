@@ -25,6 +25,7 @@ class Diagnostic:
     path: str | None = None
     line: int | None = None
     fix_hint: str | None = None
+    reference_url: str | None = None
 
     def format_text(self, charm_dir: pathlib.Path | None = None) -> str:
         """Format as a ruff-style single-line diagnostic."""
@@ -50,6 +51,8 @@ class Diagnostic:
             result["line"] = self.line
         if self.fix_hint is not None:
             result["fix_hint"] = self.fix_hint
+        if self.reference_url is not None:
+            result["reference_url"] = self.reference_url
         return result
 
 

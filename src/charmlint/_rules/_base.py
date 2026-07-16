@@ -29,6 +29,7 @@ class Rule(abc.ABC):
     name: str
     description: str
     default_severity: models.Severity
+    reference_url: str | None = None
 
     @property
     @abc.abstractmethod
@@ -81,6 +82,7 @@ class Rule(abc.ABC):
             path=path,
             line=line,
             fix_hint=fix_hint,
+            reference_url=self.reference_url,
         )
 
 
