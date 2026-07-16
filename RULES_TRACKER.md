@@ -45,7 +45,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | REL002 | REL002 | `_rules/relation_data.py` | `test_rules.py::TestRelationDataRules` | | pending |
 | SEC001 | SEC001 | `_rules/security.py` | `test_rules.py::TestSecurityRules` | | pending |
 | SEC002 | SEC002 | `_rules/security.py` | `test_rules.py::TestSecurityRules` | | pending |
-| STR001 | STR001 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
+| STR001 | STR001 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | #138 | in review |
 | STR002 | STR002 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
 | STR003 | STR003 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
 | TEST001 | TEST001 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
