@@ -215,6 +215,43 @@ class TestReferenceUrls:
         assert 200 <= status < 300, f"{rule.id}: {rule.reference_url} → HTTP {status}"
 
 
+class TestStructureRules:
+    """Tests for structure rules."""
+
+    def test_no_licence(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "STRUCTURE-001" in {d.rule_id for d in report}
+
+    @pytest.mark.parametrize("name", ["LICENSE", "LICENCE"])
+    def test_licence_present_no_diagnostic(self, tmp_charm: pathlib.Path, name: str):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / name).write_text("Apache-2.0\n")
+        report = lint(tmp_charm)
+        assert "STRUCTURE-001" not in {d.rule_id for d in report}
+
+    def test_both_licence_spellings_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "LICENSE").write_text("Apache-2.0\n")
+        (tmp_charm / "LICENCE").write_text("Apache-2.0\n")
+        report = lint(tmp_charm)
+        str001 = [d for d in report if d.rule_id == "STRUCTURE-001"]
+        assert len(str001) == 1
+        assert "both" in str001[0].message.lower()
+
+    def test_empty_licence_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "LICENSE").write_text("")
+        report = lint(tmp_charm)
+        assert "STRUCTURE-001" in {d.rule_id for d in report}
+
+    def test_licence_directory_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "LICENSE").mkdir()
+        report = lint(tmp_charm)
+        assert "STRUCTURE-001" in {d.rule_id for d in report}
+
+
 class TestTestingRules:
     """Tests for TESTING-001 — no unit tests found."""
 

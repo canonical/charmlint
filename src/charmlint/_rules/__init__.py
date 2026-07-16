@@ -3,6 +3,7 @@
 from . import charmcraft_compat as _charmcraft_compat  # noqa: F401  (import registers rules)
 from . import documentation as _documentation  # noqa: F401  (import registers rules)
 from . import metadata as _metadata  # noqa: F401  (import registers rules)
+from . import structure as _structure  # noqa: F401  (import registers rules)
 from . import testing as _testing  # noqa: F401  (import registers rules)
 from ._base import Rule, get_all_rules
 
