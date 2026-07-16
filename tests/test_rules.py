@@ -44,6 +44,15 @@ class TestMetadataRules:
         assert meta001.path == "metadata.yaml"
 
 
+class TestStructureRules:
+    """Tests for structure rules."""
+
+    def test_no_licence(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "STRUCTURE-001" in {d.rule_id for d in report}
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
