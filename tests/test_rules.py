@@ -224,7 +224,7 @@ class TestTestingRules:
         testing = [d for d in list(report) if d.rule_id == "TESTING-001"]
         assert len(testing) == 1
         assert testing[0].severity == Severity.WARNING
-        assert testing[0].path == "tests/"
+        assert testing[0].path == "tests/unit/"
 
     def test_unit_tests_present_no_diagnostic(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test-charm"})
