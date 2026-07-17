@@ -101,3 +101,16 @@ class TestNamingConventions:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
         assert "FATAL" not in {d.rule_id for d in list(report)}
+
+    def test_non_dict_action_def_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "actions": {"do-thing": None}})
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
+
+    def test_non_dict_action_params_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {"description": "Test", "params": None}}},
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
