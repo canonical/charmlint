@@ -88,3 +88,16 @@ class TestNamingConventions:
         assert len(diags) == 1
         assert "my_param" in diags[0].message
         assert "do-thing" in diags[0].message
+
+    def test_empty_config_options_does_not_crash(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "config.yaml").write_text("options:\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
+        assert "FATAL" not in {d.rule_id for d in list(report)}
+
+    def test_null_actions_does_not_crash(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "actions": None})
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
+        assert "FATAL" not in {d.rule_id for d in list(report)}
