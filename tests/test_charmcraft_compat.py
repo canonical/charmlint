@@ -61,16 +61,16 @@ class TestNamingConventions:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
 
-    def test_underscore_action(self, tmp_charm: pathlib.Path):
+    def test_underscore_action_name_is_ignored(self, tmp_charm: pathlib.Path):
+        # Juju/charmcraft reject these outright, so charmlint doesn't need to.
         write_charmcraft_yaml(
             tmp_charm,
             {"name": "test", "actions": {"my_action": {"description": "Test"}}},
         )
         report = lint(tmp_charm)
-        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-002"]
-        assert any("my_action" in d.message for d in diags)
+        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
 
-    def test_underscore_action_param(self, tmp_charm: pathlib.Path):
+    def test_underscore_action_param_is_ignored(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,
             {
@@ -84,10 +84,7 @@ class TestNamingConventions:
             },
         )
         report = lint(tmp_charm)
-        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-002"]
-        assert len(diags) == 1
-        assert "my_param" in diags[0].message
-        assert "do-thing" in diags[0].message
+        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
 
     def test_empty_config_options_does_not_crash(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
@@ -95,22 +92,3 @@ class TestNamingConventions:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
         assert "FATAL" not in {d.rule_id for d in list(report)}
-
-    def test_null_actions_does_not_crash(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test", "actions": None})
-        report = lint(tmp_charm)
-        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
-        assert "FATAL" not in {d.rule_id for d in list(report)}
-
-    def test_non_dict_action_def_is_skipped(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test", "actions": {"do-thing": None}})
-        report = lint(tmp_charm)
-        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
-
-    def test_non_dict_action_params_is_skipped(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(
-            tmp_charm,
-            {"name": "test", "actions": {"do-thing": {"description": "Test", "params": None}}},
-        )
-        report = lint(tmp_charm)
-        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
