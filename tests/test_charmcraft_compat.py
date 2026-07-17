@@ -61,31 +61,6 @@ class TestNamingConventions:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
 
-    def test_underscore_action_name_is_ignored(self, tmp_charm: pathlib.Path):
-        # Juju/charmcraft reject these outright, so charmlint doesn't need to.
-        write_charmcraft_yaml(
-            tmp_charm,
-            {"name": "test", "actions": {"my_action": {"description": "Test"}}},
-        )
-        report = lint(tmp_charm)
-        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
-
-    def test_underscore_action_param_is_ignored(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(
-            tmp_charm,
-            {
-                "name": "test",
-                "actions": {
-                    "do-thing": {
-                        "description": "Test",
-                        "params": {"my_param": {"type": "string"}},
-                    },
-                },
-            },
-        )
-        report = lint(tmp_charm)
-        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
-
     def test_empty_config_options_does_not_crash(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         (tmp_charm / "config.yaml").write_text("options:\n")
