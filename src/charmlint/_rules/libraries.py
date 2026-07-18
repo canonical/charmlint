@@ -9,33 +9,36 @@ from ._base import Rule
 #
 # 1. ``charms.operator_libs_linux.vN.<submodule>`` — each submodule ships
 #    as its own ``charmlibs-<submodule>`` package.
-# 2. ``charms.<name>_interface.vN.<lib>`` — the shared interface libs
-#    now live under ``charmlibs-interfaces-<name>``.
+# 2. ``charms.<owner>.vN.<lib>`` — a shared interface library. The
+#    ``<owner>`` charm varies by lib (tls-certificates-interface,
+#    hydra-operator, traefik-k8s, …), so we match on the ``<lib>``
+#    module name — that's the interface-contract identity, and it's
+#    stable across owners.
 #
-# The tables below are the source-of-truth for both cases. They are
-# regenerated from the PyPI ``charmlibs-*`` namespace by
-# ``tools/refresh_charmlibs_map.py``.
+# Both tables are refreshed against
+# https://canonical.com/juju/docs/charmlibs/reference/charmlibs-interfaces/
+# and pypi.org/simple/. ``tools/refresh_charmlibs_map.py`` lists the
+# live namespace.
 
-_OP_LIBS_LINUX_SUBMODULES: dict[str, tuple[str, str]] = {
-    "apt": ("charmlibs-apt", "from charmlibs import apt"),
-    "passwd": ("charmlibs-passwd", "from charmlibs import passwd"),
-    "snap": ("charmlibs-snap", "from charmlibs import snap"),
-    "sysctl": ("charmlibs-sysctl", "from charmlibs import sysctl"),
-    "systemd": ("charmlibs-systemd", "from charmlibs import systemd"),
-}
+_OP_LIBS_LINUX_SUBMODULES: frozenset[str] = frozenset(
+    {"apt", "passwd", "snap", "sysctl", "systemd"}
+)
 
-# Prefix (without the ``_interface`` suffix) → (pypi name, import hint).
-# Kept as a table rather than derived from the prefix, because the
-# fetch-libs charm name doesn't always follow ``<x>_interface``.
-_INTERFACE_PREFIXES: dict[str, tuple[str, str]] = {
-    "certificate_transfer_interface": (
-        "charmlibs-interfaces-certificate-transfer",
-        "from charmlibs.interfaces import certificate_transfer",
-    ),
-    "tls_certificates_interface": (
-        "charmlibs-interfaces-tls-certificates",
-        "from charmlibs.interfaces import tls_certificates",
-    ),
+# ``<lib module>`` → PyPI name for charmlibs-interfaces-*.
+_INTERFACE_LIBS: dict[str, str] = {
+    "certificate_transfer": "charmlibs-interfaces-certificate-transfer",
+    "forward_auth": "charmlibs-interfaces-forward-auth",
+    "gateway_metadata": "charmlibs-interfaces-gateway-metadata",
+    "istio_ingress_route": "charmlibs-interfaces-istio-ingress-route",
+    "istio_metadata": "charmlibs-interfaces-istio-metadata",
+    "istio_request_auth": "charmlibs-interfaces-istio-request-auth",
+    "k8s_backup_target": "charmlibs-interfaces-k8s-backup-target",
+    "oauth": "charmlibs-interfaces-oauth",
+    "openfga": "charmlibs-interfaces-openfga",
+    "otlp": "charmlibs-interfaces-otlp",
+    "service_mesh": "charmlibs-interfaces-service-mesh",
+    "sloth": "charmlibs-interfaces-sloth",
+    "tls_certificates": "charmlibs-interfaces-tls-certificates",
 }
 
 _IMPORT_RE = re.compile(r"from\s+charms\.(\w+)\.v\d+\.(\w+)")
@@ -44,8 +47,13 @@ _IMPORT_RE = re.compile(r"from\s+charms\.(\w+)\.v\d+\.(\w+)")
 def _resolve(prefix: str, submodule: str) -> tuple[str, str] | None:
     """Return ``(pypi_name, import_hint)`` for an import, or ``None``."""
     if prefix == "operator_libs_linux":
-        return _OP_LIBS_LINUX_SUBMODULES.get(submodule)
-    return _INTERFACE_PREFIXES.get(prefix)
+        if submodule in _OP_LIBS_LINUX_SUBMODULES:
+            return (f"charmlibs-{submodule}", f"from charmlibs import {submodule}")
+        return None
+    pypi_name = _INTERFACE_LIBS.get(submodule)
+    if pypi_name is None:
+        return None
+    return (pypi_name, f"from charmlibs.interfaces import {submodule}")
 
 
 class FetchLibsHasPyPI(Rule):

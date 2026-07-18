@@ -289,16 +289,40 @@ class TestTestingRules:
 class TestLibraryRules:
     """Tests for charm-library import rules."""
 
-    def test_tls_certificates_interface_flagged(self, tmp_charm: pathlib.Path):
+    @pytest.mark.parametrize(
+        ("import_line", "expected_pkg"),
+        [
+            (
+                "from charms.tls_certificates_interface.v3.tls_certificates import X\n",
+                "charmlibs-interfaces-tls-certificates",
+            ),
+            (
+                "from charms.hydra.v0.oauth import X\n",
+                "charmlibs-interfaces-oauth",
+            ),
+            (
+                "from charms.traefik_k8s.v2.forward_auth import X\n",
+                "charmlibs-interfaces-forward-auth",
+            ),
+            (
+                "from charms.openfga_k8s.v1.openfga import X\n",
+                "charmlibs-interfaces-openfga",
+            ),
+            (
+                "from charms.istio_beacon_k8s.v0.service_mesh import X\n",
+                "charmlibs-interfaces-service-mesh",
+            ),
+        ],
+    )
+    def test_interface_libs_flagged(
+        self, tmp_charm: pathlib.Path, import_line: str, expected_pkg: str
+    ):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        write_charm_source(
-            tmp_charm,
-            "from charms.tls_certificates_interface.v3.tls_certificates import X\n",
-        )
+        write_charm_source(tmp_charm, import_line)
         report = lint(tmp_charm)
         lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
         assert len(lib001) == 1
-        assert "charmlibs-interfaces-tls-certificates" in lib001[0].message
+        assert expected_pkg in lib001[0].message
         assert lib001[0].severity == Severity.WARNING
         assert lib001[0].line == 1
 
