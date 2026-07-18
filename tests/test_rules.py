@@ -14,7 +14,7 @@ import pytest
 from charmlint._linter import lint
 from charmlint._models import Severity
 from charmlint._rules._base import get_all_rules
-from tests.conftest import make_full_charm, write_charm_source, write_charmcraft_yaml
+from tests.conftest import make_full_charm, write_charmcraft_yaml
 
 _RULES_WITH_URL = sorted(
     (r for r in get_all_rules().values() if r.reference_url is not None),
@@ -286,52 +286,55 @@ class TestTestingRules:
         assert "TESTING-001" not in {d.rule_id for d in list(report)}
 
 
+def _vendor_lib(charm_dir: pathlib.Path, owner: str, version: str, lib: str) -> pathlib.Path:
+    """Simulate ``charmcraft fetch-lib`` by dropping a stub into lib/charms/."""
+    lib_dir = charm_dir / "lib" / "charms" / owner / version
+    lib_dir.mkdir(parents=True)
+    path = lib_dir / f"{lib}.py"
+    path.write_text('"""stub"""\n')
+    return path
+
+
 class TestLibraryRules:
-    """Tests for charm-library import rules."""
+    """Tests for vendored charm-library detection."""
 
     @pytest.mark.parametrize(
-        ("import_line", "expected_pkg"),
+        ("owner", "version", "lib", "expected_pkg"),
         [
             (
-                "from charms.tls_certificates_interface.v3.tls_certificates import X\n",
+                "tls_certificates_interface",
+                "v3",
+                "tls_certificates",
                 "charmlibs-interfaces-tls-certificates",
             ),
-            (
-                "from charms.hydra.v0.oauth import X\n",
-                "charmlibs-interfaces-oauth",
-            ),
-            (
-                "from charms.traefik_k8s.v2.forward_auth import X\n",
-                "charmlibs-interfaces-forward-auth",
-            ),
-            (
-                "from charms.openfga_k8s.v1.openfga import X\n",
-                "charmlibs-interfaces-openfga",
-            ),
-            (
-                "from charms.istio_beacon_k8s.v0.service_mesh import X\n",
-                "charmlibs-interfaces-service-mesh",
-            ),
+            ("hydra", "v0", "oauth", "charmlibs-interfaces-oauth"),
+            ("traefik_k8s", "v2", "forward_auth", "charmlibs-interfaces-forward-auth"),
+            ("openfga_k8s", "v1", "openfga", "charmlibs-interfaces-openfga"),
+            ("istio_beacon_k8s", "v0", "service_mesh", "charmlibs-interfaces-service-mesh"),
         ],
     )
     def test_interface_libs_flagged(
-        self, tmp_charm: pathlib.Path, import_line: str, expected_pkg: str
+        self,
+        tmp_charm: pathlib.Path,
+        owner: str,
+        version: str,
+        lib: str,
+        expected_pkg: str,
     ):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        write_charm_source(tmp_charm, import_line)
+        lib_path = _vendor_lib(tmp_charm, owner, version, lib)
         report = lint(tmp_charm)
         lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
         assert len(lib001) == 1
         assert expected_pkg in lib001[0].message
         assert lib001[0].severity == Severity.WARNING
-        assert lib001[0].line == 1
+        assert lib001[0].path == str(lib_path)
+        assert lib001[0].fix_hint is not None
+        assert f"uv add {expected_pkg}" in lib001[0].fix_hint
 
     def test_operator_libs_linux_submodule_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        write_charm_source(
-            tmp_charm,
-            "from charms.operator_libs_linux.v0.apt import add_package\n",
-        )
+        _vendor_lib(tmp_charm, "operator_libs_linux", "v0", "apt")
         report = lint(tmp_charm)
         lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
         assert len(lib001) == 1
@@ -339,31 +342,27 @@ class TestLibraryRules:
 
     def test_unknown_operator_libs_linux_submodule_not_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        write_charm_source(
-            tmp_charm,
-            "from charms.operator_libs_linux.v0.notreal import X\n",
-        )
+        _vendor_lib(tmp_charm, "operator_libs_linux", "v0", "notreal")
         report = lint(tmp_charm)
         assert "LIBRARY-001" not in {d.rule_id for d in report}
 
     def test_unmapped_charm_lib_not_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        write_charm_source(
-            tmp_charm,
-            "from charms.some_random_charm.v0.some_lib import X\n",
-        )
+        _vendor_lib(tmp_charm, "some_random_charm", "v0", "some_lib")
         report = lint(tmp_charm)
         assert "LIBRARY-001" not in {d.rule_id for d in report}
 
-    def test_duplicate_import_reported_once(self, tmp_charm: pathlib.Path):
+    def test_multiple_versions_reported_separately(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        write_charm_source(
-            tmp_charm,
-            "from charms.operator_libs_linux.v0.apt import add_package\n"
-            "from charms.operator_libs_linux.v0.apt import remove_package\n",
-        )
+        _vendor_lib(tmp_charm, "operator_libs_linux", "v0", "apt")
+        _vendor_lib(tmp_charm, "operator_libs_linux", "v1", "apt")
         report = lint(tmp_charm)
-        assert len([d for d in report if d.rule_id == "LIBRARY-001"]) == 1
+        assert len([d for d in report if d.rule_id == "LIBRARY-001"]) == 2
+
+    def test_no_lib_dir_no_diagnostics(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "LIBRARY-001" not in {d.rule_id for d in report}
 
 
 class TestFullCharm:

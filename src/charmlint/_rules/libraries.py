@@ -1,16 +1,15 @@
-"""Library rules — fetch-libs imports with PyPI equivalents."""
-
-import re
+"""Library rules — vendored fetch-libs copies with PyPI replacements."""
 
 from .. import _models as models
 from ._base import Rule
 
-# Two families of fetch-libs imports have known PyPI replacements:
+# Two families of ``charmcraft fetch-lib`` vendored libraries have known
+# PyPI replacements:
 #
-# 1. ``charms.operator_libs_linux.vN.<submodule>`` — each submodule ships
-#    as its own ``charmlibs-<submodule>`` package.
-# 2. ``charms.<owner>.vN.<lib>`` — a shared interface library. The
-#    ``<owner>`` charm varies by lib (tls-certificates-interface,
+# 1. ``lib/charms/operator_libs_linux/vN/<submodule>.py`` — each
+#    submodule ships as its own ``charmlibs-<submodule>`` package.
+# 2. ``lib/charms/<owner>/vN/<lib>.py`` — a shared interface library.
+#    The ``<owner>`` charm varies by lib (tls-certificates-interface,
 #    hydra-operator, traefik-k8s, …), so we match on the ``<lib>``
 #    module name — that's the interface-contract identity, and it's
 #    stable across owners.
@@ -41,57 +40,59 @@ _INTERFACE_LIBS: dict[str, str] = {
     "tls_certificates": "charmlibs-interfaces-tls-certificates",
 }
 
-_IMPORT_RE = re.compile(r"from\s+charms\.(\w+)\.v\d+\.(\w+)")
 
-
-def _resolve(prefix: str, submodule: str) -> tuple[str, str] | None:
-    """Return ``(pypi_name, import_hint)`` for an import, or ``None``."""
-    if prefix == "operator_libs_linux":
-        if submodule in _OP_LIBS_LINUX_SUBMODULES:
-            return (f"charmlibs-{submodule}", f"from charmlibs import {submodule}")
+def _resolve(owner: str, lib: str) -> str | None:
+    """Return the PyPI package name for a vendored lib, or ``None``."""
+    if owner == "operator_libs_linux":
+        if lib in _OP_LIBS_LINUX_SUBMODULES:
+            return f"charmlibs-{lib}"
         return None
-    pypi_name = _INTERFACE_LIBS.get(submodule)
-    if pypi_name is None:
-        return None
-    return (pypi_name, f"from charmlibs.interfaces import {submodule}")
+    return _INTERFACE_LIBS.get(lib)
 
 
 class FetchLibsHasPyPI(Rule):
-    """Detect fetch-libs imports that have known PyPI equivalents."""
+    """Detect vendored fetch-libs copies that have PyPI replacements."""
 
     category = "LIBRARY"
     number = 1
     name = "fetch-libs-has-pypi"
-    description = "Charm library import has a PyPI equivalent"
+    description = "Deprecated Charmhub library has PyPI replacement"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmlibs/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        # ``charmcraft fetch-lib`` writes to ``lib/charms/<owner>/vN/<lib>.py``.
+        # Walk that tree instead of parsing imports: it's the artefact
+        # the user needs to delete, and it works even when the vendored
+        # copy is no longer referenced from src/.
+        charms_root = context.charm_dir / "lib" / "charms"
+        if not charms_root.is_dir():
+            return []
+
         diagnostics: list[models.Diagnostic] = []
-        seen: set[tuple[str, str]] = set()
-
-        for path, content in context.python_sources.items():
-            for match in _IMPORT_RE.finditer(content):
-                prefix, submodule = match.group(1), match.group(2)
-                key = (prefix, submodule)
-                if key in seen:
+        for owner_dir in sorted(charms_root.iterdir()):
+            if not owner_dir.is_dir():
+                continue
+            owner = owner_dir.name
+            for version_dir in sorted(owner_dir.iterdir()):
+                if not (version_dir.is_dir() and version_dir.name.startswith("v")):
                     continue
-                seen.add(key)
-
-                resolved = _resolve(prefix, submodule)
-                if resolved is None:
-                    continue
-                pypi_name, import_hint = resolved
-                line = content[: match.start()].count("\n") + 1
-                diagnostics.append(
-                    self.diagnostic(
-                        (
-                            f"charms.{prefix}.v*.{submodule} — replace with PyPI package "
-                            f"'{pypi_name}' ({import_hint})"
-                        ),
-                        path=str(path),
-                        line=line,
-                        fix_hint=f"pip install {pypi_name}",
+                for lib_file in sorted(version_dir.glob("*.py")):
+                    lib = lib_file.stem
+                    pypi_name = _resolve(owner, lib)
+                    if pypi_name is None:
+                        continue
+                    diagnostics.append(
+                        self.diagnostic(
+                            (
+                                f"Vendored charm library {owner}.{version_dir.name}.{lib} "
+                                f"has a PyPI replacement: {pypi_name}"
+                            ),
+                            path=str(lib_file),
+                            fix_hint=(
+                                f"delete this file and add '{pypi_name}' to your "
+                                f"dependencies (for example: uv add {pypi_name})"
+                            ),
+                        )
                     )
-                )
         return diagnostics
