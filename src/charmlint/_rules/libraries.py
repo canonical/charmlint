@@ -3,27 +3,27 @@
 from .. import _models as models
 from ._base import Rule
 
-# Two families of ``charmcraft fetch-lib`` vendored libraries have known
+# Two families of `charmcraft fetch-lib` vendored libraries have known
 # PyPI replacements:
 #
-# 1. ``lib/charms/operator_libs_linux/vN/<submodule>.py`` — each
-#    submodule ships as its own ``charmlibs-<submodule>`` package.
-# 2. ``lib/charms/<owner>/vN/<lib>.py`` — a shared interface library.
-#    The ``<owner>`` charm varies by lib (tls-certificates-interface,
-#    hydra-operator, traefik-k8s, …), so we match on the ``<lib>``
+# 1. `lib/charms/operator_libs_linux/vN/<submodule>.py` — each
+#    submodule ships as its own `charmlibs-<submodule>` package.
+# 2. `lib/charms/<owner>/vN/<lib>.py` — a shared interface library.
+#    The `<owner>` charm varies by lib (tls-certificates-interface,
+#    hydra-operator, traefik-k8s, …), so we match on the `<lib>`
 #    module name — that's the interface-contract identity, and it's
 #    stable across owners.
 #
 # Both tables are refreshed against
 # https://canonical.com/juju/docs/charmlibs/reference/charmlibs-interfaces/
-# and pypi.org/simple/. ``tools/refresh_charmlibs_map.py`` lists the
+# and pypi.org/simple/. `tools/refresh_charmlibs_map.py` lists the
 # live namespace.
 
 _OP_LIBS_LINUX_SUBMODULES: frozenset[str] = frozenset(
     {"apt", "passwd", "snap", "sysctl", "systemd"}
 )
 
-# ``<lib module>`` → PyPI name for charmlibs-interfaces-*.
+# `<lib module>` → PyPI name for charmlibs-interfaces-*.
 _INTERFACE_LIBS: dict[str, str] = {
     "certificate_transfer": "charmlibs-interfaces-certificate-transfer",
     "forward_auth": "charmlibs-interfaces-forward-auth",
@@ -61,7 +61,7 @@ class FetchLibsHasPyPI(Rule):
     reference_url = "https://canonical.com/juju/docs/charmlibs/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        # ``charmcraft fetch-lib`` writes to ``lib/charms/<owner>/vN/<lib>.py``.
+        # `charmcraft fetch-lib` writes to `lib/charms/<owner>/vN/<lib>.py`.
         # Walk that tree instead of parsing imports: it's the artefact
         # the user needs to delete, and it works even when the vendored
         # copy is no longer referenced from src/.
