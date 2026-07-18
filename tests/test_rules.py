@@ -14,7 +14,7 @@ import pytest
 from charmlint._linter import lint
 from charmlint._models import Severity
 from charmlint._rules._base import get_all_rules
-from tests.conftest import make_full_charm, write_charmcraft_yaml
+from tests.conftest import make_full_charm, write_charm_source, write_charmcraft_yaml
 
 _RULES_WITH_URL = sorted(
     (r for r in get_all_rules().values() if r.reference_url is not None),
@@ -284,6 +284,62 @@ class TestTestingRules:
         (nested / "test_thing.py").write_text("def test_x(): pass\n")
         report = lint(tmp_charm)
         assert "TESTING-001" not in {d.rule_id for d in list(report)}
+
+
+class TestLibraryRules:
+    """Tests for charm-library import rules."""
+
+    def test_tls_certificates_interface_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from charms.tls_certificates_interface.v3.tls_certificates import X\n",
+        )
+        report = lint(tmp_charm)
+        lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
+        assert len(lib001) == 1
+        assert "charmlibs-interfaces-tls-certificates" in lib001[0].message
+        assert lib001[0].severity == Severity.WARNING
+        assert lib001[0].line == 1
+
+    def test_operator_libs_linux_submodule_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from charms.operator_libs_linux.v0.apt import add_package\n",
+        )
+        report = lint(tmp_charm)
+        lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
+        assert len(lib001) == 1
+        assert "charmlibs-apt" in lib001[0].message
+
+    def test_unknown_operator_libs_linux_submodule_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from charms.operator_libs_linux.v0.notreal import X\n",
+        )
+        report = lint(tmp_charm)
+        assert "LIBRARY-001" not in {d.rule_id for d in report}
+
+    def test_unmapped_charm_lib_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from charms.some_random_charm.v0.some_lib import X\n",
+        )
+        report = lint(tmp_charm)
+        assert "LIBRARY-001" not in {d.rule_id for d in report}
+
+    def test_duplicate_import_reported_once(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from charms.operator_libs_linux.v0.apt import add_package\n"
+            "from charms.operator_libs_linux.v0.apt import remove_package\n",
+        )
+        report = lint(tmp_charm)
+        assert len([d for d in report if d.rule_id == "LIBRARY-001"]) == 1
 
 
 class TestFullCharm:

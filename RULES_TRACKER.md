@@ -38,7 +38,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | DOC003 | DOC003 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC004 | DOC004 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC005 | DOC005 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
-| LIB001 | LIB001 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | | pending |
+| LIBRARY-001 | LIBRARY-001 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | | in review |
 | LIB002 | LIB002 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | | pending |
 | LIB003/LIB004 | LIB003, LIB004 | `_rules/library_versions.py` (shared parser) | `test_rules.py::TestLibraryVersions` | | pending |
 | REL001 | REL001 | `_rules/relation_data.py` | `test_rules.py::TestRelationDataRules` | | pending |
