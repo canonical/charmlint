@@ -16,7 +16,25 @@ def _action_from_event_expr(node: ast.AST) -> str | None:
     * ``self.on['<action>'].action`` — subscript returns a
       ``PrefixedEvents`` wrapper whose ``.action`` is the same
       ``BoundEvent`` as the attribute form.
+    * ``getattr(self.on, '<action>_action')`` — dynamic attribute
+      lookup; common in charms that build the event reference from
+      a constant.
     """
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) >= 2
+    ):
+        target, key = node.args[0], node.args[1]
+        if (
+            isinstance(target, ast.Attribute)
+            and target.attr == "on"
+            and isinstance(key, ast.Constant)
+            and isinstance(key.value, str)
+            and key.value.endswith("_action")
+        ):
+            return key.value[: -len("_action")]
     if not isinstance(node, ast.Attribute):
         return None
     # Form 1: <...>.on.<name>_action
