@@ -7,14 +7,36 @@ from .. import _models as models
 from ._base import Rule
 
 
-def _event_attr_name(node: ast.AST) -> str | None:
-    """Pull ``X`` out of ``<...>.on.X`` attribute access, else ``None``."""
+def _action_from_event_expr(node: ast.AST) -> str | None:
+    """Return the underscored action name from an action-event expression, else ``None``.
+
+    Recognises both forms accepted by ops:
+
+    * ``self.on.<action>_action`` — plain attribute access.
+    * ``self.on['<action>'].action`` — subscript returns a
+      ``PrefixedEvents`` wrapper whose ``.action`` is the same
+      ``BoundEvent`` as the attribute form.
+    """
     if not isinstance(node, ast.Attribute):
         return None
+    # Form 1: <...>.on.<name>_action
     parent = node.value
-    if not (isinstance(parent, ast.Attribute) and parent.attr == "on"):
+    if isinstance(parent, ast.Attribute) and parent.attr == "on":
+        if node.attr.endswith("_action"):
+            return node.attr[: -len("_action")]
         return None
-    return node.attr
+    # Form 2: <...>.on['<name>'].action
+    if node.attr != "action":
+        return None
+    if not isinstance(parent, ast.Subscript):
+        return None
+    grandparent = parent.value
+    if not (isinstance(grandparent, ast.Attribute) and grandparent.attr == "on"):
+        return None
+    key = parent.slice
+    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+        return key.value.replace("-", "_")
+    return None
 
 
 def _self_method_name(node: ast.AST) -> str | None:
@@ -36,11 +58,10 @@ def _walk_observe_calls(tree: ast.AST) -> list[tuple[str, str | None]]:
             continue
         if node.func.attr != "observe" or len(node.args) < 2:
             continue
-        event = _event_attr_name(node.args[0])
-        if event is None or not event.endswith("_action"):
+        action = _action_from_event_expr(node.args[0])
+        if action is None:
             continue
         handler = _self_method_name(node.args[1])
-        action = event[: -len("_action")]
         found.append((action, handler))
     return found
 
