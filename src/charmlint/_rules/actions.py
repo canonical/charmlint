@@ -118,9 +118,9 @@ class ActionMissingObserver(Rule):
             diagnostics.append(
                 self.diagnostic(
                     f"Action '{action_name}' has no observer "
-                    f"(expected `self.framework.observe(self.on.{normalised}_action, ...)`)",
+                    f"(expected `framework.observe(self.on.{normalised}_action, ...)`)",
                     fix_hint=(
-                        f"Add `self.framework.observe(self.on.{normalised}_action, "
+                        f"Add `framework.observe(self.on.{normalised}_action, "
                         f"self._on_{normalised})` in __init__ and a matching handler"
                     ),
                 )

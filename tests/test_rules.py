@@ -340,6 +340,18 @@ class TestActionRules:
         report = lint(tmp_charm)
         assert "ACTIONS-001" not in {d.rule_id for d in report}
 
+    def test_legacy_actions_yaml_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "actions.yaml").write_text("do-thing:\n  description: x\n")
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nclass C(ops.CharmBase):\n    pass\n",
+        )
+        report = lint(tmp_charm)
+        actions = [d for d in report if d.rule_id == "ACTIONS-001"]
+        assert len(actions) == 1
+        assert "do-thing" in actions[0].message
+
     def test_no_actions_declared_no_diagnostic(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         report = lint(tmp_charm)
