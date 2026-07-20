@@ -322,6 +322,24 @@ class TestActionRules:
         report = lint(tmp_charm)
         assert "ACTIONS-001" not in {d.rule_id for d in report}
 
+    def test_bare_framework_observe_recognised(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {"description": "x"}}},
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\n"
+            "class C(ops.CharmBase):\n"
+            "    def __init__(self, framework):\n"
+            "        super().__init__(framework)\n"
+            "        framework.observe(self.on.do_thing_action, self._on_do_thing)\n"
+            "    def _on_do_thing(self, event):\n"
+            "        pass\n",
+        )
+        report = lint(tmp_charm)
+        assert "ACTIONS-001" not in {d.rule_id for d in report}
+
     def test_subscript_observer_form_recognised(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,
