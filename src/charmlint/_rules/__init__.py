@@ -1,5 +1,6 @@
 """Rule package — re-exports the base class and triggers rule registration."""
 
+from . import actions as _actions  # noqa: F401  (import registers rules)
 from . import charmcraft_compat as _charmcraft_compat  # noqa: F401  (import registers rules)
 from . import documentation as _documentation  # noqa: F401  (import registers rules)
 from . import metadata as _metadata  # noqa: F401  (import registers rules)
