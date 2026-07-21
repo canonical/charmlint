@@ -135,7 +135,8 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
                 metadata[key] = metadata_fallback[key]
 
     # Load actions (charmcraft.yaml or actions.yaml).
-    actions: dict[str, Any] = metadata.get("actions", {})
+    actions_raw = metadata.get("actions") or {}
+    actions: dict[str, Any] = actions_raw if isinstance(actions_raw, dict) else {}
     if not actions:
         actions_data = _load_yaml(charm_dir / "actions.yaml")
         actions = actions_data if isinstance(actions_data, dict) else {}
@@ -149,6 +150,8 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
     else:
         config_data = _load_yaml(charm_dir / "config.yaml")
         config_options = config_data.get("options", config_data) if config_data else {}
+    if not isinstance(config_options, dict):
+        config_options = {}
 
     # Collect Python files and read their contents.
     python_files = _collect_python_files(charm_dir)
