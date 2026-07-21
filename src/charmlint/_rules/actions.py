@@ -7,10 +7,12 @@ from .. import _models as models
 from ._base import Rule
 
 
-def _action_from_event_expr(node: ast.AST) -> str | None:
-    """Return the underscored action name from an action-event expression, else ``None``.
+def _action_from_event_expr(event_expr: ast.AST) -> str | None:
+    """Return the hyphenated action name from an action-event expression, else ``None``.
 
-    Recognises both forms accepted by ops:
+    ``event_expr`` is whatever expression node appears as the first
+    argument to a ``framework.observe(...)`` call. Recognises the
+    three forms accepted by ops:
 
     * ``self.on.<action>_action`` — plain attribute access.
     * ``self.on['<action>'].action`` — subscript returns a
@@ -19,14 +21,19 @@ def _action_from_event_expr(node: ast.AST) -> str | None:
     * ``getattr(self.on, '<action>_action')`` — dynamic attribute
       lookup; common in charms that build the event reference from
       a constant.
+
+    Only literal string keys in Form 2 are recognised — a named-constant
+    reference like ``self.on[FOO_ACTION].action`` won't match, because the
+    AST sees an ``ast.Name``, not ``ast.Constant``.
     """
+    # Form 0: getattr(<...>.on, '<name>_action')
     if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "getattr"
-        and len(node.args) >= 2
+        isinstance(event_expr, ast.Call)
+        and isinstance(event_expr.func, ast.Name)
+        and event_expr.func.id == "getattr"
+        and len(event_expr.args) >= 2
     ):
-        target, key = node.args[0], node.args[1]
+        target, key = event_expr.args[0], event_expr.args[1]
         if (
             isinstance(target, ast.Attribute)
             and target.attr == "on"
@@ -34,17 +41,21 @@ def _action_from_event_expr(node: ast.AST) -> str | None:
             and isinstance(key.value, str)
             and key.value.endswith("_action")
         ):
-            return key.value[: -len("_action")]
-    if not isinstance(node, ast.Attribute):
+            return key.value[: -len("_action")].replace("_", "-")
         return None
+    # Forms 1 and 2 are attribute access on some parent — either
+    # `parent.<name>_action` (Form 1) or `parent.action` where the
+    # parent is a subscript (Form 2). Anything else can't be an event.
+    if not isinstance(event_expr, ast.Attribute):
+        return None
+    parent = event_expr.value
     # Form 1: <...>.on.<name>_action
-    parent = node.value
     if isinstance(parent, ast.Attribute) and parent.attr == "on":
-        if node.attr.endswith("_action"):
-            return node.attr[: -len("_action")]
+        if event_expr.attr.endswith("_action"):
+            return event_expr.attr[: -len("_action")].replace("_", "-")
         return None
     # Form 2: <...>.on['<name>'].action
-    if node.attr != "action":
+    if event_expr.attr != "action":
         return None
     if not isinstance(parent, ast.Subscript):
         return None
@@ -53,7 +64,7 @@ def _action_from_event_expr(node: ast.AST) -> str | None:
         return None
     key = parent.slice
     if isinstance(key, ast.Constant) and isinstance(key.value, str):
-        return key.value.replace("-", "_")
+        return key.value
     return None
 
 
@@ -69,7 +80,7 @@ def _self_method_name(node: ast.AST) -> str | None:
 
 
 def _walk_observe_calls(tree: ast.AST) -> list[tuple[str, str | None]]:
-    """Yield ``(action_name_underscored, handler_method_or_None)`` per observe call."""
+    """Yield ``(action_name_hyphenated, handler_method_or_None)`` per observe call."""
     found: list[tuple[str, str | None]] = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
@@ -116,7 +127,13 @@ def _gather_action_observers(
 
 
 class ActionMissingObserver(Rule):
-    """Every declared action must have a ``framework.observe`` registration."""
+    """Every declared action must have a ``framework.observe`` registration.
+
+    Only observe calls in the charm's own ``src/`` are considered.
+    Charms whose observe calls live in an external base class (installed
+    as a pip dependency, not vendored under ``src/`` or ``lib/``) will
+    hit false positives — disable ACTIONS-001 in that case.
+    """
 
     category = "ACTIONS"
     number = 1
@@ -130,16 +147,16 @@ class ActionMissingObserver(Rule):
         observers = _gather_action_observers(context.python_sources)
         diagnostics: list[models.Diagnostic] = []
         for action_name in context.actions:
-            normalised = action_name.replace("-", "_")
-            if normalised in observers:
+            if action_name in observers:
                 continue
+            handler = "_on_" + action_name.replace("-", "_")
             diagnostics.append(
                 self.diagnostic(
                     f"Action '{action_name}' has no observer "
-                    f"(expected `framework.observe(self.on.{normalised}_action, ...)`)",
+                    f"(expected `framework.observe(self.on['{action_name}'].action, ...)`)",
                     fix_hint=(
-                        f"Add `framework.observe(self.on.{normalised}_action, "
-                        f"self._on_{normalised})` in __init__ and a matching handler"
+                        f"Add `framework.observe(self.on['{action_name}'].action, "
+                        f"self.{handler})` in __init__ and a matching handler"
                     ),
                 )
             )

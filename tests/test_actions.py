@@ -1,6 +1,7 @@
 """Tests for ACTIONS-### rules."""
 
 import pathlib
+import textwrap
 
 from charmlint._linter import lint
 from charmlint._models import Severity
@@ -17,7 +18,12 @@ class TestActionMissingObserver:
         )
         write_charm_source(
             tmp_charm,
-            "import ops\n\nclass C(ops.CharmBase):\n    pass\n",
+            textwrap.dedent("""\
+                import ops
+
+                class C(ops.CharmBase):
+                    pass
+            """),
         )
         report = lint(tmp_charm)
         actions = [d for d in report if d.rule_id == "ACTIONS-001"]
@@ -32,13 +38,16 @@ class TestActionMissingObserver:
         )
         write_charm_source(
             tmp_charm,
-            "import ops\n\n"
-            "class C(ops.CharmBase):\n"
-            "    def __init__(self, *args):\n"
-            "        super().__init__(*args)\n"
-            "        self.framework.observe(self.on.do_thing_action, self._on_do_thing)\n"
-            "    def _on_do_thing(self, event):\n"
-            "        pass\n",
+            textwrap.dedent("""\
+                import ops
+
+                class C(ops.CharmBase):
+                    def __init__(self, *args):
+                        super().__init__(*args)
+                        self.framework.observe(self.on.do_thing_action, self._on_do_thing)
+                    def _on_do_thing(self, event):
+                        pass
+            """),
         )
         report = lint(tmp_charm)
         assert "ACTIONS-001" not in {d.rule_id for d in report}
@@ -50,13 +59,16 @@ class TestActionMissingObserver:
         )
         write_charm_source(
             tmp_charm,
-            "import ops\n\n"
-            "class C(ops.CharmBase):\n"
-            "    def __init__(self, framework):\n"
-            "        super().__init__(framework)\n"
-            "        framework.observe(self.on.do_thing_action, self._on_do_thing)\n"
-            "    def _on_do_thing(self, event):\n"
-            "        pass\n",
+            textwrap.dedent("""\
+                import ops
+
+                class C(ops.CharmBase):
+                    def __init__(self, framework):
+                        super().__init__(framework)
+                        framework.observe(self.on.do_thing_action, self._on_do_thing)
+                    def _on_do_thing(self, event):
+                        pass
+            """),
         )
         report = lint(tmp_charm)
         assert "ACTIONS-001" not in {d.rule_id for d in report}
@@ -68,13 +80,16 @@ class TestActionMissingObserver:
         )
         write_charm_source(
             tmp_charm,
-            "import ops\n\n"
-            "class C(ops.CharmBase):\n"
-            "    def __init__(self, *args):\n"
-            "        super().__init__(*args)\n"
-            "        self.framework.observe(self.on['do-thing'].action, self._on_do_thing)\n"
-            "    def _on_do_thing(self, event):\n"
-            "        pass\n",
+            textwrap.dedent("""\
+                import ops
+
+                class C(ops.CharmBase):
+                    def __init__(self, *args):
+                        super().__init__(*args)
+                        self.framework.observe(self.on['do-thing'].action, self._on_do_thing)
+                    def _on_do_thing(self, event):
+                        pass
+            """),
         )
         report = lint(tmp_charm)
         assert "ACTIONS-001" not in {d.rule_id for d in report}
@@ -86,15 +101,18 @@ class TestActionMissingObserver:
         )
         write_charm_source(
             tmp_charm,
-            "import ops\n\n"
-            "class C(ops.CharmBase):\n"
-            "    def __init__(self, *args):\n"
-            "        super().__init__(*args)\n"
-            "        self.framework.observe(\n"
-            "            getattr(self.on, 'do_thing_action'), self._on_do_thing\n"
-            "        )\n"
-            "    def _on_do_thing(self, event):\n"
-            "        pass\n",
+            textwrap.dedent("""\
+                import ops
+
+                class C(ops.CharmBase):
+                    def __init__(self, *args):
+                        super().__init__(*args)
+                        self.framework.observe(
+                            getattr(self.on, 'do_thing_action'), self._on_do_thing
+                        )
+                    def _on_do_thing(self, event):
+                        pass
+            """),
         )
         report = lint(tmp_charm)
         assert "ACTIONS-001" not in {d.rule_id for d in report}
@@ -104,7 +122,12 @@ class TestActionMissingObserver:
         (tmp_charm / "actions.yaml").write_text("do-thing:\n  description: x\n")
         write_charm_source(
             tmp_charm,
-            "import ops\n\nclass C(ops.CharmBase):\n    pass\n",
+            textwrap.dedent("""\
+                import ops
+
+                class C(ops.CharmBase):
+                    pass
+            """),
         )
         report = lint(tmp_charm)
         actions = [d for d in report if d.rule_id == "ACTIONS-001"]
@@ -124,15 +147,22 @@ class TestActionMissingObserver:
         # Observer wired up inside lib/ shouldn't count — charm code lives in src/.
         (tmp_charm / "lib").mkdir()
         (tmp_charm / "lib" / "helper.py").write_text(
-            "class X:\n"
-            "    def __init__(self, charm):\n"
-            "        charm.framework.observe(charm.on.do_thing_action, self._h)\n"
-            "    def _h(self, event):\n"
-            "        pass\n",
+            textwrap.dedent("""\
+                class X:
+                    def __init__(self, charm):
+                        charm.framework.observe(charm.on.do_thing_action, self._h)
+                    def _h(self, event):
+                        pass
+            """),
         )
         write_charm_source(
             tmp_charm,
-            "import ops\n\nclass C(ops.CharmBase):\n    pass\n",
+            textwrap.dedent("""\
+                import ops
+
+                class C(ops.CharmBase):
+                    pass
+            """),
         )
         report = lint(tmp_charm)
         assert "ACTIONS-001" in {d.rule_id for d in report}
