@@ -1,5 +1,7 @@
 """Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``."""
 
+import re
+
 from .. import _models as models
 from ._base import Rule
 
@@ -39,7 +41,7 @@ class NamingConventions(Rule):
         diagnostics: list[models.Diagnostic] = []
         for opt_name in context.config_options:
             if "_" in opt_name:
-                hyphenated = opt_name.replace("_", "-")
+                hyphenated = re.sub(r"[-_]+", "-", opt_name)
                 diagnostics.append(
                     self.diagnostic(
                         f"Config option '{opt_name}' uses underscores — prefer hyphens ('{hyphenated}')",
