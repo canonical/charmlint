@@ -107,11 +107,9 @@ def _collect_methods(tree: ast.AST) -> dict[str, ast.FunctionDef]:
     return methods
 
 
-def _gather_action_observers(
-    sources: dict[pathlib.Path, str],
-) -> dict[str, tuple[str | None, ast.FunctionDef | None, pathlib.Path]]:
-    """Return ``{action: (handler_name, handler_node, source_path)}`` for charm sources."""
-    out: dict[str, tuple[str | None, ast.FunctionDef | None, pathlib.Path]] = {}
+def _gather_action_observers(sources: dict[pathlib.Path, str]) -> set[str]:
+    """Return the set of action names observed by charm sources."""
+    out: set[str] = set()
     for path, content in sources.items():
         if "lib" in path.parts:
             continue
@@ -119,10 +117,8 @@ def _gather_action_observers(
             tree = ast.parse(content)
         except SyntaxError:
             continue
-        methods = _collect_methods(tree)
-        for action, handler_name in _walk_observe_calls(tree):
-            handler_node = methods.get(handler_name) if handler_name else None
-            out.setdefault(action, (handler_name, handler_node, path))
+        for action, _handler in _walk_observe_calls(tree):
+            out.add(action)
     return out
 
 
