@@ -43,8 +43,8 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | LIB003/LIB004 | LIB003, LIB004 | `_rules/library_versions.py` (shared parser) | `test_rules.py::TestLibraryVersions` | | pending |
 | REL001 | REL001 | `_rules/relation_data.py` | `test_rules.py::TestRelationDataRules` | | pending |
 | REL002 | REL002 | `_rules/relation_data.py` | `test_rules.py::TestRelationDataRules` | | pending |
-| SEC001 | SEC001 | `_rules/security.py` | `test_rules.py::TestSecurityRules` | | pending |
-| SEC002 | SEC002 | `_rules/security.py` | `test_rules.py::TestSecurityRules` | | pending |
+| SECURITY-001 | SECURITY-001 | `_rules/security.py` | `test_security.py` | #136 | in review |
+| SEC002 | SEC002 | `_rules/security.py` | `test_security.py` | | pending |
 | STR001 | STR001 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | #138 | in review |
 | STR002 | STR002 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
 | STR003 | STR003 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
