@@ -14,7 +14,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | STS 001-003 | STS001, STS002, STS003 | `_rules/status.py` (factory) | `test_rules.py::TestStatusRules` | | pending |
 | DEP 001-004 | DEP001, DEP002, DEP003, DEP004 | `_rules/deprecated.py` (factory) | `test_rules.py::TestDeprecatedRules` | | pending |
 | CHARMCRAFT-001 | CHARMCRAFT-001 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #106 | merged |
-| CC002 | CC002 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
+| CHARMCRAFT-002 | CHARMCRAFT-002 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #107 | in review |
 | CC003 | CC003 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CC004 | CC004 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CC005/CC006 | CC005, CC006 | `_rules/unknown_fields.py` (shared known-field tables) | `test_unknown_fields.py` | | pending |
@@ -38,13 +38,13 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | DOC003 | DOC003 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC004 | DOC004 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC005 | DOC005 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
-| LIB001 | LIB001 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | | pending |
+| LIBRARY-001 | LIBRARY-001 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | #130 | in review |
 | LIB002 | LIB002 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | | pending |
 | LIB003/LIB004 | LIB003, LIB004 | `_rules/library_versions.py` (shared parser) | `test_rules.py::TestLibraryVersions` | | pending |
 | REL001 | REL001 | `_rules/relation_data.py` | `test_rules.py::TestRelationDataRules` | | pending |
 | REL002 | REL002 | `_rules/relation_data.py` | `test_rules.py::TestRelationDataRules` | | pending |
-| SEC001 | SEC001 | `_rules/security.py` | `test_rules.py::TestSecurityRules` | | pending |
-| SEC002 | SEC002 | `_rules/security.py` | `test_rules.py::TestSecurityRules` | | pending |
+| SECURITY-001 | SECURITY-001 | `_rules/security.py` | `test_security.py` | #136 | in review |
+| SEC002 | SEC002 | `_rules/security.py` | `test_security.py` | | pending |
 | STR001 | STR001 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | #138 | in review |
 | STR002 | STR002 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
 | STR003 | STR003 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |

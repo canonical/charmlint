@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from . import _config, _rules
+from . import _config, _noqa, _rules
 from . import _models as models
 
 # Use the libyaml-backed C loader when available — it's ~10× faster than
@@ -69,6 +69,51 @@ def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise _FileLoadError(path, "top-level YAML value is not a mapping")
     return data
+
+
+def _mapping_items(node: Any) -> list[tuple[str, Any]]:
+    """Yield ``(scalar-key, value-node)`` pairs of a YAML MappingNode."""
+    if not isinstance(node, yaml.MappingNode):
+        return []
+    return [(key.value, value) for key, value in node.value if isinstance(key, yaml.ScalarNode)]
+
+
+def _config_option_lines(path: pathlib.Path) -> dict[str, int]:
+    """Map each config option name to its 1-based line in *path*.
+
+    Composes the YAML to read node positions rather than re-implementing
+    a parser, so the line numbers stay correct through comments, block
+    scalars, and anchors. Returns an empty map when the file is absent,
+    unreadable, malformed, or has no options block — ``noqa`` line
+    matching simply won't apply, and file-level directives still work.
+    """
+    if not path.exists():
+        return {}
+    try:
+        with path.open() as f:
+            root = yaml.compose(f, Loader=_SafeLoader)
+    except (OSError, yaml.YAMLError):
+        return {}
+    top = dict(_mapping_items(root))
+    # charmcraft.yaml nests options under ``config``; config.yaml has a
+    # top-level ``options`` (or is bare options at the root).
+    options_node = None
+    config_node = top.get("config")
+    if config_node is not None:
+        options_node = dict(_mapping_items(config_node)).get("options")
+    if options_node is None:
+        options_node = top.get("options")
+    source = options_node if options_node is not None else root
+    if not isinstance(source, yaml.MappingNode):
+        return {}
+    # Anchor on the key node: a ``noqa`` comment sits on the option's own line
+    # (``admin-password:``), whereas the value's nested mapping begins on
+    # the following line.
+    return {
+        key.value: key.start_mark.line + 1
+        for key, _ in source.value
+        if isinstance(key, yaml.ScalarNode)
+    }
 
 
 def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
@@ -135,20 +180,29 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
                 metadata[key] = metadata_fallback[key]
 
     # Load actions (charmcraft.yaml or actions.yaml).
-    actions: dict[str, Any] = metadata.get("actions", {})
+    actions_raw = metadata.get("actions") or {}
+    actions: dict[str, Any] = actions_raw if isinstance(actions_raw, dict) else {}
     if not actions:
         actions_data = _load_yaml(charm_dir / "actions.yaml")
         actions = actions_data if isinstance(actions_data, dict) else {}
 
-    # Load config options (charmcraft.yaml or config.yaml).
+    # Load config options (charmcraft.yaml or config.yaml). Track which
+    # file the options came from so diagnostics anchor to the right file
+    # and its per-option line numbers can be resolved for ``noqa``.
     config_section = metadata.get("config", {})
     if isinstance(config_section, dict) and config_section.get("options"):
         config_options = config_section["options"]
+        config_source = metadata_source
     elif isinstance(config_section, dict) and config_section:
         config_options = config_section
+        config_source = metadata_source
     else:
         config_data = _load_yaml(charm_dir / "config.yaml")
         config_options = config_data.get("options", config_data) if config_data else {}
+        config_source = "config.yaml"
+    if not isinstance(config_options, dict):
+        config_options = {}
+    config_option_lines = _config_option_lines(charm_dir / config_source)
 
     # Collect Python files and read their contents.
     python_files = _collect_python_files(charm_dir)
@@ -169,6 +223,8 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
         metadata=metadata,
         actions=actions,
         config_options=config_options,
+        config_source=config_source,
+        config_option_lines=config_option_lines,
         python_files=python_files,
         python_sources=python_sources,
         readme_content=readme_content,
@@ -290,4 +346,44 @@ def lint(
 
         all_diagnostics.extend(diagnostics)
 
+    all_diagnostics = _apply_noqa(charm_dir, all_diagnostics)
+
     return models.LintReport.from_diagnostics(charm_dir=charm_dir, diagnostics=all_diagnostics)
+
+
+# YAML files are the only ones scanned for ``noqa`` directives.
+_NOQA_SUFFIXES = frozenset({".yaml", ".yml"})
+
+
+def _apply_noqa(
+    charm_dir: pathlib.Path, diagnostics: list[models.Diagnostic]
+) -> list[models.Diagnostic]:
+    """Drop diagnostics silenced by a ``noqa`` directive in their file.
+
+    Only YAML files are scanned. A diagnostic with no path, or one in a
+    non-YAML or unreadable file, is always kept.
+    """
+    cache: dict[str, _noqa.FileNoqa | None] = {}
+
+    def noqa_for(rel_path: str) -> _noqa.FileNoqa | None:
+        if rel_path not in cache:
+            file = charm_dir / rel_path
+            if file.suffix.lower() not in _NOQA_SUFFIXES:
+                cache[rel_path] = None
+            else:
+                try:
+                    cache[rel_path] = _noqa.parse(file.read_text(errors="replace"))
+                except OSError:
+                    cache[rel_path] = None
+        return cache[rel_path]
+
+    kept: list[models.Diagnostic] = []
+    for d in diagnostics:
+        if d.path is None:
+            kept.append(d)
+            continue
+        file_noqa = noqa_for(d.path)
+        if file_noqa is not None and file_noqa.suppresses(d.rule_id, d.line):
+            continue
+        kept.append(d)
+    return kept

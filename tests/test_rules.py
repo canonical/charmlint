@@ -286,6 +286,95 @@ class TestTestingRules:
         assert "TESTING-001" not in {d.rule_id for d in list(report)}
 
 
+def _vendor_lib(charm_dir: pathlib.Path, owner: str, version: str, lib: str) -> pathlib.Path:
+    """Simulate ``charmcraft fetch-lib`` by dropping a stub into lib/charms/."""
+    lib_dir = charm_dir / "lib" / "charms" / owner / version
+    lib_dir.mkdir(parents=True)
+    path = lib_dir / f"{lib}.py"
+    path.write_text('"""stub"""\n')
+    return path
+
+
+class TestLibraryRules:
+    """Tests for vendored charm-library detection."""
+
+    @pytest.mark.parametrize(
+        ("owner", "version", "lib", "expected_pkg"),
+        [
+            (
+                "tls_certificates_interface",
+                "v3",
+                "tls_certificates",
+                "charmlibs-interfaces-tls-certificates",
+            ),
+            ("hydra", "v0", "oauth", "charmlibs-interfaces-oauth"),
+            ("traefik_k8s", "v2", "forward_auth", "charmlibs-interfaces-forward-auth"),
+            ("openfga_k8s", "v1", "openfga", "charmlibs-interfaces-openfga"),
+            ("istio_beacon_k8s", "v0", "service_mesh", "charmlibs-interfaces-service-mesh"),
+        ],
+    )
+    def test_interface_libs_flagged(
+        self,
+        tmp_charm: pathlib.Path,
+        owner: str,
+        version: str,
+        lib: str,
+        expected_pkg: str,
+    ):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        lib_path = _vendor_lib(tmp_charm, owner, version, lib)
+        report = lint(tmp_charm)
+        lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
+        assert len(lib001) == 1
+        assert expected_pkg in lib001[0].message
+        assert lib001[0].severity == Severity.WARNING
+        assert lib001[0].path == str(lib_path)
+        assert lib001[0].fix_hint is not None
+        assert f"uv add {expected_pkg}" in lib001[0].fix_hint
+
+    def test_operator_libs_linux_submodule_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        _vendor_lib(tmp_charm, "operator_libs_linux", "v0", "apt")
+        report = lint(tmp_charm)
+        lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
+        assert len(lib001) == 1
+        assert "charmlibs-apt" in lib001[0].message
+
+    def test_general_lib_flagged_regardless_of_owner(self, tmp_charm: pathlib.Path):
+        # rollingops ships under the rolling_ops charm, not operator_libs_linux,
+        # so it exercises the owner-agnostic general mapping.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        _vendor_lib(tmp_charm, "rolling_ops", "v0", "rollingops")
+        report = lint(tmp_charm)
+        lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
+        assert len(lib001) == 1
+        assert "charmlibs-rollingops" in lib001[0].message
+
+    def test_unknown_operator_libs_linux_submodule_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        _vendor_lib(tmp_charm, "operator_libs_linux", "v0", "notreal")
+        report = lint(tmp_charm)
+        assert "LIBRARY-001" not in {d.rule_id for d in report}
+
+    def test_unmapped_charm_lib_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        _vendor_lib(tmp_charm, "some_random_charm", "v0", "some_lib")
+        report = lint(tmp_charm)
+        assert "LIBRARY-001" not in {d.rule_id for d in report}
+
+    def test_multiple_versions_reported_separately(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        _vendor_lib(tmp_charm, "operator_libs_linux", "v0", "apt")
+        _vendor_lib(tmp_charm, "operator_libs_linux", "v1", "apt")
+        report = lint(tmp_charm)
+        assert len([d for d in report if d.rule_id == "LIBRARY-001"]) == 2
+
+    def test_no_lib_dir_no_diagnostics(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "LIBRARY-001" not in {d.rule_id for d in report}
+
+
 class TestFullCharm:
     """Integration test — a well-formed charm should have minimal diagnostics."""
 
