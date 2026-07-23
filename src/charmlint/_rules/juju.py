@@ -7,8 +7,14 @@ from .. import _models as models
 from ._base import Rule
 
 _OPS_DEP_RE = re.compile(
-    r"^\s*ops(?:\s*\[[^\]]*\])?\s*(?P<spec>[^#;]*)",
-    re.IGNORECASE,
+    r"""
+    ^\s*
+    ops                     # the distribution name
+    (?:\s*\[[^\]]*\])?      # optional [extras], e.g. ops[tracing]
+    \s*
+    (?P<spec>[^#;]*)        # everything up to a comment or PEP 508 marker
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
 
 _QUOTED_RE = re.compile(r"""(['"])([^'"]*)\1""")
