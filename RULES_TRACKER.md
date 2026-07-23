@@ -26,7 +26,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | ACT 001-003 | ACT001, ACT002, ACT003 | `_rules/actions.py` (factory, shared `_EXPECTED_ACTIONS`) | `test_rules.py::TestActionRules` | | pending |
 | ACT004 | ACT004 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | ACT005 | ACT005 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
-| ACT006 | ACT006 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
+| ACTIONS-001 | ACTIONS-001 (was ACT006 pre-renumber) | `_rules/actions.py` | `test_actions.py` | | in review |
 | ACT007 | ACT007 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | CFG001 | CFG001 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
 | CFG002 | CFG002 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
