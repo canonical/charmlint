@@ -119,22 +119,25 @@ def _find_defers(
 
 
 class DeferWithoutReturn(Rule):
-    """Flag ``event.defer()`` not immediately followed by ``return`` or ``raise``."""
+    """Flag ``event.defer()`` not immediately followed by ``return``."""
 
     category = "CORRECTNESS"
     number = 1
     name = "defer-without-return"
-    description = "event.defer() not immediately followed by return or raise"
+    description = "event.defer() not immediately followed by return"
     default_severity = models.Severity.WARNING
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         def followed_by(nxt: ast.stmt | None) -> bool:
+            # A following `raise` is a defer that never persists; that case
+            # is reported by CORRECTNESS-002, so exclude it here rather than
+            # emit a second diagnostic on the same line.
             return nxt is not None and not isinstance(nxt, ast.Return | ast.Raise)
 
         return [
             self.diagnostic(
                 "event.defer() is not immediately followed by "
-                "`return` or `raise` — the handler keeps "
+                "`return` — the handler keeps "
                 "executing after deferring, so any subsequent "
                 "side effects run both now and on the "
                 "deferred retry",

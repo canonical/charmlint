@@ -31,6 +31,9 @@ class TestDeferWithoutReturn:
         assert not [d for d in list(report) if d.rule_id == "CORRECTNESS-001"]
 
     def test_defer_then_raise_not_flagged(self, tmp_charm: pathlib.Path):
+        # A following raise is not acceptable - it just belongs to
+        # CORRECTNESS-002, so CORRECTNESS-001 stays silent to avoid a
+        # duplicate diagnostic on the same line.
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
         write_charm_source(
             tmp_charm,
