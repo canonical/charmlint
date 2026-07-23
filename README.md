@@ -59,6 +59,13 @@ ignore = ["ATTESTATION-002"]
 "OBSERVABILITY-005" = "error"
 ```
 
+## Versioning
+
+charmlint follows a ruff-style versioning scheme: the minor version carries
+breaking changes (such as new or sharpened rules being enabled by default)
+and the patch version carries bug fixes and preview-gated additions. See
+[docs/versioning.md](docs/versioning.md) for the full policy.
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
