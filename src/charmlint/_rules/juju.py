@@ -9,16 +9,14 @@ from typing import Any
 from .. import _models as models
 from ._base import Rule
 
-# Leading distribution name, optional `[extras]`, then whatever remains
-# (the version specifier and/or a PEP 508 marker).
 _PEP508_RE = re.compile(
     r"""
     ^\s*
-    (?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)
+    (?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)   # the distribution name
     \s*
-    (?:\[[^\]]*\])?
+    (?:\[[^\]]*\])?                        # optional [extras], e.g. ops[tracing]
     \s*
-    (?P<rest>.*)
+    (?P<rest>.*)                           # the version specifier and/or a PEP 508 marker
     """,
     re.VERBOSE | re.DOTALL,
 )
