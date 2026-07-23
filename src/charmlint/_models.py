@@ -65,6 +65,8 @@ class CharmContext:
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
     actions: dict[str, Any] = dataclasses.field(default_factory=dict)
     config_options: dict[str, Any] = dataclasses.field(default_factory=dict)
+    config_source: str = "charmcraft.yaml"
+    config_option_lines: dict[str, int] = dataclasses.field(default_factory=dict)
     python_files: list[pathlib.Path] = dataclasses.field(default_factory=list)
     python_sources: dict[pathlib.Path, str] = dataclasses.field(default_factory=dict)
     readme_content: str = ""
