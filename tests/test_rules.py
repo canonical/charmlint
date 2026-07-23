@@ -340,6 +340,16 @@ class TestLibraryRules:
         assert len(lib001) == 1
         assert "charmlibs-apt" in lib001[0].message
 
+    def test_general_lib_flagged_regardless_of_owner(self, tmp_charm: pathlib.Path):
+        # rollingops ships under the rolling_ops charm, not operator_libs_linux,
+        # so it exercises the owner-agnostic general mapping.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        _vendor_lib(tmp_charm, "rolling_ops", "v0", "rollingops")
+        report = lint(tmp_charm)
+        lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
+        assert len(lib001) == 1
+        assert "charmlibs-rollingops" in lib001[0].message
+
     def test_unknown_operator_libs_linux_submodule_not_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         _vendor_lib(tmp_charm, "operator_libs_linux", "v0", "notreal")
