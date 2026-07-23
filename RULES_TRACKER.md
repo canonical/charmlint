@@ -18,6 +18,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | CC003 | CC003 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CC004 | CC004 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CHARMCRAFT-004/005 | CHARMCRAFT-004, CHARMCRAFT-005 (were CC005/CC006 pre-renumber) | `_rules/charmcraft_compat.py` (shared known-field tables) | `test_charmcraft_compat.py` | #110 | in review |
+| CORRECTNESS-003 | CORRECTNESS-003 | `_rules/correctness.py` | `test_correctness.py::TestExecResultNotConsumed` | #40 | in review |
 | ATT001 | ATT001 | `_rules/attestations.py` | `test_attestations.py` | | pending |
 | ATT002 | ATT002 | `_rules/attestations.py` | `test_attestations.py` | | pending |
 | PEB001 | PEB001 | `_rules/pebble.py` | `test_rules.py::TestPebbleRules` | | pending |
@@ -58,6 +59,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 - 61 rule IDs total across 17 modules
 - 1 kept in core (META001)
 - 60 to re-land via 40 PRs (shared-module groups collapsed: META 6→1, COS 4→1, STS 3→1, DEP 4→1, ACT001-003 3→1, ACT004/005 2→1, CONFIG 001-003 3→1, CC005/006 2→1, LIB003/004 2→1)
+- Plus CORRECTNESS-003 (PR #40), added new rather than part of the original strip set
 
 ## Process
 
