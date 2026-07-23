@@ -49,6 +49,26 @@ class ExecResultNotConsumed(Rule):
                     and call.func.attr == "exec"
                 ):
                     continue
+                # Only ops.Container.exec() (Pebble) is non-blocking and needs a
+                # trailing .wait*(). Charms conventionally name that receiver
+                # ``container`` (e.g. ``container``, ``self.container``,
+                # ``self._container``). The data-platform ``WorkloadBase.exec()``
+                # wrapper — ``self.workload.exec(...)``, ``self.exec(...)`` — blocks
+                # internally (subprocess, or an internal ``.wait_output()``) and
+                # returns a str, so discarding its result is correct. Gating on the
+                # receiver name keeps those wrappers from being flagged. This can
+                # miss a container bound to an unconventional name, but that trade
+                # avoids a large volume of false positives on the wrapper idiom.
+                receiver = call.func.value
+                if isinstance(receiver, ast.Attribute):
+                    name = receiver.attr
+                elif isinstance(receiver, ast.Name):
+                    name = receiver.id
+                else:
+                    continue
+                lname = name.lower()
+                if not (lname == "container" or lname.endswith("_container")):
+                    continue
                 diagnostics.append(
                     self.diagnostic(
                         "container.exec() result not consumed — the process runs "
