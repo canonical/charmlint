@@ -39,7 +39,8 @@ class SecretInPlainConfig(Rule):
             self.diagnostic(
                 f"Config option '{name}' looks like a secret "
                 f"— use Juju secrets instead of plain-text config",
-                path=context.metadata_source,
+                path=context.config_source,
+                line=context.config_option_lines.get(name),
                 fix_hint="Use the Juju secrets API for sensitive data",
             )
             for name in secret_options
