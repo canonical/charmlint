@@ -1,5 +1,6 @@
 """JUJU rules — Juju-ness / idiomatic ops conventions."""
 
+import functools
 import pathlib
 import re
 
@@ -20,16 +21,14 @@ _OPS_DEP_RE = re.compile(
 _QUOTED_RE = re.compile(r"""(['"])([^'"]*)\1""")
 
 
-def _iter_dep_lines(charm_dir: pathlib.Path) -> list[tuple[str, str]]:
-    """Return ``(source_path, raw_line)`` for every dependency-looking line.
+def _iter_candidate_lines(charm_dir: pathlib.Path):
+    """Yield ``(source_path, raw_line)`` for every dependency-looking line.
 
     Quoted strings are pulled from ``pyproject.toml`` and bare lines
     from ``requirements.txt``. No TOML/PEP-508 parsing is attempted —
     the rules only need to spot the ``ops`` name and what immediately
     follows it.
     """
-    lines: list[tuple[str, str]] = []
-
     pyproject = charm_dir / "pyproject.toml"
     if pyproject.is_file():
         try:
@@ -39,7 +38,7 @@ def _iter_dep_lines(charm_dir: pathlib.Path) -> list[tuple[str, str]]:
         for match in _QUOTED_RE.finditer(text):
             inner = match.group(2)
             if inner:
-                lines.append((str(pyproject), inner))
+                yield str(pyproject), inner
 
     requirements = charm_dir / "requirements.txt"
     if requirements.is_file():
@@ -50,18 +49,29 @@ def _iter_dep_lines(charm_dir: pathlib.Path) -> list[tuple[str, str]]:
         for raw in text.splitlines():
             stripped = raw.split("#", 1)[0].strip()
             if stripped and not stripped.startswith("-"):
-                lines.append((str(requirements), stripped))
-
-    return lines
+                yield str(requirements), stripped
 
 
-def _classify_ops_spec(spec: str) -> str | None:
-    """Return ``"unpinned"``, ``"exact"``, or ``None`` for an ``ops`` spec."""
-    s = spec.strip()
-    if not s:
-        return "unpinned"
-    if s.startswith("=="):
-        return "exact"
+@functools.cache
+def _find_ops_dep(charm_dir: pathlib.Path) -> tuple[str, str] | None:
+    """Return ``(source, kind)`` for the first ``ops`` dep found, or ``None``.
+
+    ``kind`` is ``"unpinned"`` if no version specifier is present,
+    ``"exact"`` if pinned with ``==``, or ``"ok"`` for anything else
+    (range, ``>=``, etc.). Both JUJU rules share this scan so we walk
+    the files once per lint and stop at the first hit — a charm should
+    only declare ``ops`` in one place.
+    """
+    for source, line in _iter_candidate_lines(charm_dir):
+        match = _OPS_DEP_RE.match(line)
+        if match is None:
+            continue
+        spec = match.group("spec").strip()
+        if not spec:
+            return source, "unpinned"
+        if spec.startswith("=="):
+            return source, "exact"
+        return source, "ok"
     return None
 
 
@@ -75,23 +85,18 @@ class OpsDependencyUnpinned(Rule):
     default_severity = models.Severity.WARNING
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        diagnostics: list[models.Diagnostic] = []
-        for source, line in _iter_dep_lines(context.charm_dir):
-            match = _OPS_DEP_RE.match(line)
-            if match is None:
-                continue
-            if _classify_ops_spec(match.group("spec")) != "unpinned":
-                continue
-            diagnostics.append(
-                self.diagnostic(
-                    "ops dependency has no version specifier — "
-                    "charms should pin a supported range so dependency "
-                    "resolvers do not silently pull a major bump",
-                    path=source,
-                    fix_hint="Add a version range, e.g. `ops>=2.17,<4`",
-                )
+        found = _find_ops_dep(context.charm_dir)
+        if found is None or found[1] != "unpinned":
+            return []
+        return [
+            self.diagnostic(
+                "ops dependency has no version specifier — "
+                "charms should pin a supported range so dependency "
+                "resolvers do not silently pull a major bump",
+                path=found[0],
+                fix_hint="Add a version range, e.g. `ops>=2.17,<4`",
             )
-        return diagnostics
+        ]
 
 
 class OpsDependencyExactlyPinned(Rule):
@@ -104,20 +109,15 @@ class OpsDependencyExactlyPinned(Rule):
     default_severity = models.Severity.INFO
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        diagnostics: list[models.Diagnostic] = []
-        for source, line in _iter_dep_lines(context.charm_dir):
-            match = _OPS_DEP_RE.match(line)
-            if match is None:
-                continue
-            if _classify_ops_spec(match.group("spec")) != "exact":
-                continue
-            diagnostics.append(
-                self.diagnostic(
-                    "ops dependency is exactly pinned (`==`) — "
-                    "prefer a version range so security fixes flow in "
-                    "without a manual bump",
-                    path=source,
-                    fix_hint="Replace the `==` pin with a range, e.g. `ops>=2.17,<4`",
-                )
+        found = _find_ops_dep(context.charm_dir)
+        if found is None or found[1] != "exact":
+            return []
+        return [
+            self.diagnostic(
+                "ops dependency is exactly pinned (`==`) — "
+                "prefer a version range so security fixes flow in "
+                "without a manual bump",
+                path=found[0],
+                fix_hint="Replace the `==` pin with a range, e.g. `ops>=2.17,<4`",
             )
-        return diagnostics
+        ]
