@@ -63,7 +63,7 @@ def _walk_pep508_list(entries: Any):
             yield entry
 
 
-def _find_ops_in_pyproject(pyproject: pathlib.Path) -> tuple[str, str] | None:
+def _find_ops_in_pyproject(pyproject: pathlib.Path) -> tuple[str, str, int | None] | None:
     """Look for an ``ops`` dependency across the common pyproject.toml layouts.
 
     Returns ``(source, kind)`` where ``source`` is the pyproject path
@@ -84,14 +84,14 @@ def _find_ops_in_pyproject(pyproject: pathlib.Path) -> tuple[str, str] | None:
         for entry in _walk_pep508_list(project.get("dependencies")):
             kind = _classify_pep508(entry)
             if kind is not None:
-                return source, kind
+                return source, kind, None
         optional = project.get("optional-dependencies")
         if isinstance(optional, dict):
             for entries in optional.values():
                 for entry in _walk_pep508_list(entries):
                     kind = _classify_pep508(entry)
                     if kind is not None:
-                        return source, kind
+                        return source, kind, None
 
     # PEP 735 — [dependency-groups.*]
     groups = data.get("dependency-groups")
@@ -100,7 +100,7 @@ def _find_ops_in_pyproject(pyproject: pathlib.Path) -> tuple[str, str] | None:
             for entry in _walk_pep508_list(entries):
                 kind = _classify_pep508(entry)
                 if kind is not None:
-                    return source, kind
+                    return source, kind, None
 
     # Poetry — [tool.poetry.dependencies], legacy [tool.poetry.dev-dependencies],
     # and [tool.poetry.group.<name>.dependencies].
@@ -113,7 +113,7 @@ def _find_ops_in_pyproject(pyproject: pathlib.Path) -> tuple[str, str] | None:
                 if isinstance(deps, dict):
                     for name, value in deps.items():
                         if _normalize(name) == "ops":
-                            return source, _classify_poetry(value)
+                            return source, _classify_poetry(value), None
             poetry_groups = poetry.get("group")
             if isinstance(poetry_groups, dict):
                 for group in poetry_groups.values():
@@ -123,35 +123,39 @@ def _find_ops_in_pyproject(pyproject: pathlib.Path) -> tuple[str, str] | None:
                     if isinstance(deps, dict):
                         for name, value in deps.items():
                             if _normalize(name) == "ops":
-                                return source, _classify_poetry(value)
+                                return source, _classify_poetry(value), None
 
     return None
 
 
-def _find_ops_in_requirements(requirements: pathlib.Path) -> tuple[str, str] | None:
+def _find_ops_in_requirements(
+    requirements: pathlib.Path,
+) -> tuple[str, str, int | None] | None:
     """Look for an ``ops`` line in a ``requirements.txt``-style file."""
     try:
         text = requirements.read_text()
     except OSError:
         return None
-    for raw in text.splitlines():
+    for lineno, raw in enumerate(text.splitlines(), start=1):
         stripped = raw.split("#", 1)[0].strip()
         if not stripped or stripped.startswith("-"):
             continue
         kind = _classify_pep508(stripped)
         if kind is not None:
-            return str(requirements), kind
+            return str(requirements), kind, lineno
     return None
 
 
 @functools.cache
-def _find_ops_dep(charm_dir: pathlib.Path) -> tuple[str, str] | None:
-    """Return ``(source, kind)`` for the first ``ops`` dep found, or ``None``.
+def _find_ops_dep(charm_dir: pathlib.Path) -> tuple[str, str, int | None] | None:
+    """Return ``(source, kind, line)`` for the first ``ops`` dep found, or ``None``.
 
     Both JUJU rules share this scan so we parse each source once per
     lint and stop at the first hit — a charm should only declare
     ``ops`` in one place. ``pyproject.toml`` wins over
-    ``requirements.txt`` when both are present.
+    ``requirements.txt`` when both are present. ``line`` is 1-based
+    for ``requirements.txt`` matches and ``None`` for
+    ``pyproject.toml`` matches (``tomllib`` discards positions).
     """
     pyproject = charm_dir / "pyproject.toml"
     if pyproject.is_file():
@@ -181,12 +185,14 @@ class OpsDependencyUnpinned(Rule):
         found = _find_ops_dep(context.charm_dir)
         if found is None or found[1] != "unpinned":
             return []
+        source, _kind, line = found
         return [
             self.diagnostic(
                 "ops dependency has no version specifier — "
                 "charms should pin a supported range so dependency "
                 "resolvers do not silently pull a major bump",
-                path=found[0],
+                path=source,
+                line=line,
                 fix_hint="Add a version range, e.g. `ops>=2.17,<4`",
             )
         ]
@@ -205,12 +211,14 @@ class OpsDependencyExactlyPinned(Rule):
         found = _find_ops_dep(context.charm_dir)
         if found is None or found[1] != "exact":
             return []
+        source, _kind, line = found
         return [
             self.diagnostic(
                 "ops dependency is exactly pinned (`==`) — "
                 "prefer a version range so security fixes flow in "
                 "without a manual bump",
-                path=found[0],
+                path=source,
+                line=line,
                 fix_hint="Replace the `==` pin with a range, e.g. `ops>=2.17,<4`",
             )
         ]

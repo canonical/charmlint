@@ -46,7 +46,16 @@ class TestJujuRules:
         hits = [d for d in report if d.rule_id == "JUJU-004"]
         assert len(hits) == 1
         assert hits[0].severity == Severity.INFO
+        assert hits[0].line == 1
         assert not [d for d in report if d.rule_id == "JUJU-003"]
+
+    def test_requirements_line_number_is_reported(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "requirements.txt").write_text("# a comment\nrequests>=2.0\n\nops==3.7.1\n")
+        report = lint(tmp_charm)
+        hits = [d for d in report if d.rule_id == "JUJU-004"]
+        assert len(hits) == 1
+        assert hits[0].line == 4
 
     def test_juju004_exact_pin_in_pyproject_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
