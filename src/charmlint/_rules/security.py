@@ -14,17 +14,8 @@ _SECRET_KEYWORD_RE = re.compile(
 )
 
 # A secret is always a string; 'inject-password: boolean' is a feature
-# flag, not a credential.
+# flag, not a credential. 'type: secret' is a Juju secret already.
 _NON_SECRET_TYPES = frozenset({"boolean", "int", "float", "secret"})
-
-# Any of these in the charm source is taken as evidence that the charm
-# already knows about Juju secrets.
-_JUJU_SECRETS_RE = re.compile(
-    r"juju.*secret"
-    r"|\b(?:add_secret|get_secret)\b"
-    r"|\bSecret(?:Changed|Rotate|Remove|Expired)\b"
-    r"|\bops\.Secret\b",
-)
 
 
 class SecretInPlainConfig(Rule):
@@ -44,16 +35,6 @@ class SecretInPlainConfig(Rule):
             if not (isinstance(spec, dict) and spec.get("type") in _NON_SECRET_TYPES)
             and _SECRET_KEYWORD_RE.search(name)
         ]
-        if not secret_options:
-            return []
-
-        # Charm libraries are vendored, so only the charm's own code counts.
-        own_source = "\n".join(
-            content for path, content in context.python_sources.items() if "lib" not in path.parts
-        )
-        if _JUJU_SECRETS_RE.search(own_source):
-            return []
-
         return [
             self.diagnostic(
                 f"Config option '{name}' looks like a secret "

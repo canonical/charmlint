@@ -52,21 +52,16 @@ class TestSecretInPlainConfig:
         report = lint(tmp_charm)
         assert "SECURITY-001" not in {d.rule_id for d in list(report)}
 
-    def test_charm_using_juju_secrets_not_flagged(self, tmp_charm: pathlib.Path):
+    def test_charm_using_juju_secrets_still_flagged(self, tmp_charm: pathlib.Path):
+        # A charm that uses Juju secrets elsewhere can still expose an
+        # unrelated credential as a plain-text config option, so the
+        # finding stands regardless of the charm's secrets usage.
         _write_charm(tmp_charm, "admin-password")
         write_charm_source(
             tmp_charm,
             "import ops\n\n\ndef get(charm: ops.CharmBase) -> ops.Secret:\n"
             "    return charm.model.get_secret(label='admin')\n",
         )
-        report = lint(tmp_charm)
-        assert "SECURITY-001" not in {d.rule_id for d in list(report)}
-
-    def test_secrets_use_in_vendored_lib_does_not_count(self, tmp_charm: pathlib.Path):
-        _write_charm(tmp_charm, "admin-password")
-        lib_dir = tmp_charm / "lib" / "charms" / "example" / "v0"
-        lib_dir.mkdir(parents=True)
-        (lib_dir / "example.py").write_text("def f(charm):\n    return charm.model.get_secret()\n")
         report = lint(tmp_charm)
         assert "SECURITY-001" in {d.rule_id for d in list(report)}
 
