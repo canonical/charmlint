@@ -68,20 +68,9 @@ def _action_from_event_expr(event_expr: ast.AST) -> str | None:
     return None
 
 
-def _self_method_name(node: ast.AST) -> str | None:
-    """Pull ``X`` out of ``self.X`` attribute access, else ``None``."""
-    if (
-        isinstance(node, ast.Attribute)
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "self"
-    ):
-        return node.attr
-    return None
-
-
-def _walk_observe_calls(tree: ast.AST) -> list[tuple[str, str | None]]:
-    """Yield ``(action_name_hyphenated, handler_method_or_None)`` per observe call."""
-    found: list[tuple[str, str | None]] = []
+def _walk_observe_calls(tree: ast.AST) -> list[str]:
+    """Yield the hyphenated action name for each observe call."""
+    found: list[str] = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
             continue
@@ -90,21 +79,8 @@ def _walk_observe_calls(tree: ast.AST) -> list[tuple[str, str | None]]:
         action = _action_from_event_expr(node.args[0])
         if action is None:
             continue
-        handler = _self_method_name(node.args[1])
-        found.append((action, handler))
+        found.append(action)
     return found
-
-
-def _collect_methods(tree: ast.AST) -> dict[str, ast.FunctionDef]:
-    """Map every class-method name in the tree to its ``FunctionDef`` node."""
-    methods: dict[str, ast.FunctionDef] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
-        for item in node.body:
-            if isinstance(item, ast.FunctionDef):
-                methods[item.name] = item
-    return methods
 
 
 def _gather_action_observers(sources: dict[pathlib.Path, str]) -> set[str]:
@@ -117,8 +93,7 @@ def _gather_action_observers(sources: dict[pathlib.Path, str]) -> set[str]:
             tree = ast.parse(content)
         except SyntaxError:
             continue
-        for action, _handler in _walk_observe_calls(tree):
-            out.add(action)
+        out.update(_walk_observe_calls(tree))
     return out
 
 
