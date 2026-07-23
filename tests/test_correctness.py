@@ -70,6 +70,28 @@ class TestDeferWithoutReturn:
         hits = [d for d in list(report) if d.rule_id == "CORRECTNESS-001"]
         assert len(hits) == 1
 
+    def test_defer_in_if_with_stmt_after_block_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "def handler(self, event):\n"
+            "    if not self.ready:\n"
+            "        event.defer()\n"
+            "    self.do_more_work()\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in list(report) if d.rule_id == "CORRECTNESS-001"]
+        assert len(hits) == 1
+
+    def test_defer_last_in_nested_function_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "def handler(self, event):\n    def inner():\n        event.defer()\n    inner()\n",
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in list(report) if d.rule_id == "CORRECTNESS-001"]
+
     def test_ignores_lib_directory(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
         lib = tmp_charm / "lib" / "charms" / "other" / "v0"
@@ -103,6 +125,19 @@ class TestDeferBeforeRaise:
             "    if not self.ready:\n"
             "        event.defer()\n"
             "        raise RuntimeError('nope')\n",
+        )
+        report = lint(tmp_charm)
+        hits = [d for d in list(report) if d.rule_id == "CORRECTNESS-002"]
+        assert len(hits) == 1
+
+    def test_defer_in_if_with_raise_after_block_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        write_charm_source(
+            tmp_charm,
+            "def handler(self, event):\n"
+            "    if not self.ready:\n"
+            "        event.defer()\n"
+            "    raise RuntimeError('nope')\n",
         )
         report = lint(tmp_charm)
         hits = [d for d in list(report) if d.rule_id == "CORRECTNESS-002"]
