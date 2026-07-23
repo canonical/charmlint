@@ -3,75 +3,170 @@
 import functools
 import pathlib
 import re
+import tomllib
+from typing import Any
 
 from .. import _models as models
 from ._base import Rule
 
-_OPS_DEP_RE = re.compile(
+# Leading distribution name, optional `[extras]`, then whatever remains
+# (the version specifier and/or a PEP 508 marker).
+_PEP508_RE = re.compile(
     r"""
     ^\s*
-    ops                     # the distribution name
-    (?:\s*\[[^\]]*\])?      # optional [extras], e.g. ops[tracing]
+    (?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)
     \s*
-    (?P<spec>[^#;]*)        # everything up to a comment or PEP 508 marker
+    (?:\[[^\]]*\])?
+    \s*
+    (?P<rest>.*)
     """,
-    re.IGNORECASE | re.VERBOSE,
+    re.VERBOSE | re.DOTALL,
 )
 
-_QUOTED_RE = re.compile(r"""(['"])([^'"]*)\1""")
+
+def _normalize(name: str) -> str:
+    """PEP 503 name normalisation — dashes/underscores/dots collapse and lowercase."""
+    return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def _iter_candidate_lines(charm_dir: pathlib.Path):
-    """Yield ``(source_path, raw_line)`` for every dependency-looking line.
+def _classify_spec(spec: str) -> str:
+    """Return ``"unpinned"`` / ``"exact"`` / ``"ok"`` for a version specifier."""
+    s = spec.strip()
+    if not s or s == "*":
+        return "unpinned"
+    if s.startswith("=="):
+        return "exact"
+    return "ok"
 
-    Quoted strings are pulled from ``pyproject.toml`` and bare lines
-    from ``requirements.txt``. No TOML/PEP-508 parsing is attempted —
-    the rules only need to spot the ``ops`` name and what immediately
-    follows it.
+
+def _classify_pep508(entry: str) -> str | None:
+    """Classify a PEP 508 requirement string, returning ``None`` if it isn't ``ops``."""
+    match = _PEP508_RE.match(entry)
+    if match is None:
+        return None
+    if _normalize(match.group("name")) != "ops":
+        return None
+    spec = match.group("rest").split(";", 1)[0].strip()
+    return _classify_spec(spec)
+
+
+def _classify_poetry(value: Any) -> str:
+    """Classify a Poetry dependency value (bare string, or table with ``version``)."""
+    spec = str(value.get("version", "")) if isinstance(value, dict) else str(value)
+    return _classify_spec(spec)
+
+
+def _walk_pep508_list(entries: Any):
+    """Yield PEP 508 strings from a value that should be a list of requirements."""
+    if not isinstance(entries, list):
+        return
+    for entry in entries:
+        if isinstance(entry, str):
+            yield entry
+
+
+def _find_ops_in_pyproject(pyproject: pathlib.Path) -> tuple[str, str] | None:
+    """Look for an ``ops`` dependency across the common pyproject.toml layouts.
+
+    Returns ``(source, kind)`` where ``source`` is the pyproject path
+    (the section is folded into the diagnostic message elsewhere if we
+    ever need it) and ``kind`` is ``"unpinned"`` / ``"exact"`` / ``"ok"``.
+    ``None`` means no ``ops`` dependency appears in any known location.
     """
-    pyproject = charm_dir / "pyproject.toml"
-    if pyproject.is_file():
-        try:
-            text = pyproject.read_text()
-        except OSError:
-            text = ""
-        for match in _QUOTED_RE.finditer(text):
-            inner = match.group(2)
-            if inner:
-                yield str(pyproject), inner
+    try:
+        data = tomllib.loads(pyproject.read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
 
-    requirements = charm_dir / "requirements.txt"
-    if requirements.is_file():
-        try:
-            text = requirements.read_text()
-        except OSError:
-            text = ""
-        for raw in text.splitlines():
-            stripped = raw.split("#", 1)[0].strip()
-            if stripped and not stripped.startswith("-"):
-                yield str(requirements), stripped
+    source = str(pyproject)
+
+    # PEP 621 — [project.dependencies] and [project.optional-dependencies.*]
+    project = data.get("project")
+    if isinstance(project, dict):
+        for entry in _walk_pep508_list(project.get("dependencies")):
+            kind = _classify_pep508(entry)
+            if kind is not None:
+                return source, kind
+        optional = project.get("optional-dependencies")
+        if isinstance(optional, dict):
+            for entries in optional.values():
+                for entry in _walk_pep508_list(entries):
+                    kind = _classify_pep508(entry)
+                    if kind is not None:
+                        return source, kind
+
+    # PEP 735 — [dependency-groups.*]
+    groups = data.get("dependency-groups")
+    if isinstance(groups, dict):
+        for entries in groups.values():
+            for entry in _walk_pep508_list(entries):
+                kind = _classify_pep508(entry)
+                if kind is not None:
+                    return source, kind
+
+    # Poetry — [tool.poetry.dependencies], legacy [tool.poetry.dev-dependencies],
+    # and [tool.poetry.group.<name>.dependencies].
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        poetry = tool.get("poetry")
+        if isinstance(poetry, dict):
+            for key in ("dependencies", "dev-dependencies"):
+                deps = poetry.get(key)
+                if isinstance(deps, dict):
+                    for name, value in deps.items():
+                        if _normalize(name) == "ops":
+                            return source, _classify_poetry(value)
+            poetry_groups = poetry.get("group")
+            if isinstance(poetry_groups, dict):
+                for group in poetry_groups.values():
+                    if not isinstance(group, dict):
+                        continue
+                    deps = group.get("dependencies")
+                    if isinstance(deps, dict):
+                        for name, value in deps.items():
+                            if _normalize(name) == "ops":
+                                return source, _classify_poetry(value)
+
+    return None
+
+
+def _find_ops_in_requirements(requirements: pathlib.Path) -> tuple[str, str] | None:
+    """Look for an ``ops`` line in a ``requirements.txt``-style file."""
+    try:
+        text = requirements.read_text()
+    except OSError:
+        return None
+    for raw in text.splitlines():
+        stripped = raw.split("#", 1)[0].strip()
+        if not stripped or stripped.startswith("-"):
+            continue
+        kind = _classify_pep508(stripped)
+        if kind is not None:
+            return str(requirements), kind
+    return None
 
 
 @functools.cache
 def _find_ops_dep(charm_dir: pathlib.Path) -> tuple[str, str] | None:
     """Return ``(source, kind)`` for the first ``ops`` dep found, or ``None``.
 
-    ``kind`` is ``"unpinned"`` if no version specifier is present,
-    ``"exact"`` if pinned with ``==``, or ``"ok"`` for anything else
-    (range, ``>=``, etc.). Both JUJU rules share this scan so we walk
-    the files once per lint and stop at the first hit — a charm should
-    only declare ``ops`` in one place.
+    Both JUJU rules share this scan so we parse each source once per
+    lint and stop at the first hit — a charm should only declare
+    ``ops`` in one place. ``pyproject.toml`` wins over
+    ``requirements.txt`` when both are present.
     """
-    for source, line in _iter_candidate_lines(charm_dir):
-        match = _OPS_DEP_RE.match(line)
-        if match is None:
-            continue
-        spec = match.group("spec").strip()
-        if not spec:
-            return source, "unpinned"
-        if spec.startswith("=="):
-            return source, "exact"
-        return source, "ok"
+    pyproject = charm_dir / "pyproject.toml"
+    if pyproject.is_file():
+        found = _find_ops_in_pyproject(pyproject)
+        if found is not None:
+            return found
+
+    requirements = charm_dir / "requirements.txt"
+    if requirements.is_file():
+        found = _find_ops_in_requirements(requirements)
+        if found is not None:
+            return found
+
     return None
 
 

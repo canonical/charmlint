@@ -59,3 +59,84 @@ class TestJujuRules:
         (tmp_charm / "requirements.txt").write_text("requests>=2.0\n")
         report = lint(tmp_charm)
         assert not [d for d in report if d.rule_id in {"JUJU-003", "JUJU-004"}]
+
+    def test_pyproject_ops_in_keywords_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text(
+            "[project]\n"
+            'name = "ops"\n'
+            'keywords = ["ops", "charm"]\n'
+            'dependencies = ["ops>=2.17,<4"]\n'
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report if d.rule_id in {"JUJU-003", "JUJU-004"}]
+
+    def test_pyproject_optional_dependencies_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text(
+            "[project]\n"
+            'name = "x"\n'
+            "dependencies = []\n"
+            "\n"
+            "[project.optional-dependencies]\n"
+            'tracing = ["ops==3.7.1"]\n'
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "JUJU-004"]
+
+    def test_pyproject_dependency_groups_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text(
+            '[project]\nname = "x"\n\n[dependency-groups]\ndev = ["ops"]\n'
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "JUJU-003"]
+
+    def test_poetry_caret_pin_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text(
+            "[tool.poetry]\n"
+            'name = "x"\n'
+            "\n"
+            "[tool.poetry.dependencies]\n"
+            'python = "^3.10"\n'
+            'ops = "^2.17"\n'
+        )
+        report = lint(tmp_charm)
+        assert not [d for d in report if d.rule_id in {"JUJU-003", "JUJU-004"}]
+
+    def test_poetry_star_unpinned_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text('[tool.poetry.dependencies]\nops = "*"\n')
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "JUJU-003"]
+
+    def test_poetry_exact_pin_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text('[tool.poetry.dependencies]\nops = "==3.7.1"\n')
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "JUJU-004"]
+
+    def test_poetry_table_version_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text(
+            '[tool.poetry.dependencies]\nops = { version = "==3.7.1", extras = ["tracing"] }\n'
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "JUJU-004"]
+
+    def test_poetry_group_dependencies_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text(
+            '[tool.poetry.group.dev.dependencies]\nops = "==3.7.1"\n'
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "JUJU-004"]
+
+    def test_malformed_pyproject_does_not_crash(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text("this is [not valid toml\n")
+        (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
+        report = lint(tmp_charm)
+        # falls through to requirements.txt
+        assert [d for d in report if d.rule_id == "JUJU-004"]
