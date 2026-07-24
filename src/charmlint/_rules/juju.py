@@ -42,6 +42,7 @@ class RequiresMissingOptional(Rule):
     name = "requires-missing-optional"
     description = "requires endpoint missing explicit `optional` field"
     default_severity = models.Severity.INFO
+    reference_url = "https://canonical.com/juju/docs/charmcraft/4.3/reference/files/charmcraft-yaml-file/#endpoint-role-endpoint-name-optional"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return _missing_optional_diagnostics(
@@ -57,6 +58,7 @@ class ProvidesMissingOptional(Rule):
     name = "provides-missing-optional"
     description = "provides endpoint missing explicit `optional` field"
     default_severity = models.Severity.INFO
+    reference_url = "https://canonical.com/juju/docs/charmcraft/4.3/reference/files/charmcraft-yaml-file/#endpoint-role-endpoint-name-optional"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return _missing_optional_diagnostics(
