@@ -1,128 +1,13 @@
 """Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``."""
 
+import ast
 import os
 import pathlib
 import re
 
+from .. import _ast
 from .. import _models as models
 from ._base import Rule
-
-# Top-level keys valid in charmcraft.yaml (modern and legacy forms). A
-# separate set is kept for metadata.yaml below, because the two files accept
-# different top-level keys.
-# Kept deliberately broad — a false positive on a genuine field is far
-# worse than missing a truly unknown one.
-# The modern keys mirror charmcraft's published schema/charmcraft.json, plus
-# legacy keys the schema has dropped. Hand-maintained for now; see #174 for
-# validating against that schema directly instead.
-_KNOWN_CHARMCRAFT_FIELDS: frozenset[str] = frozenset(
-    {
-        # Identity / metadata.
-        "name",
-        "type",
-        "title",
-        "summary",
-        "description",
-        # Build / platform.
-        "base",
-        "build-base",
-        "bases",
-        "platforms",
-        "parts",
-        "extensions",
-        "adopt-info",
-        "package-repositories",
-        # Relations.
-        "requires",
-        "provides",
-        "peers",
-        "extra-bindings",
-        # Config / actions.
-        "config",
-        "actions",
-        # Workload.
-        "containers",
-        "resources",
-        "storage",
-        "devices",
-        # Charm libraries and dependencies.
-        "charm-libs",
-        # Workload run-as user (Kubernetes charms).
-        "charm-user",
-        # Links block (Charmhub) — nested form, e.g. links.documentation.
-        "links",
-        # Legacy top-level contact (now links.contact).
-        "contact",
-        # Subordinate / assumes.
-        "subordinate",
-        "assumes",
-        "terms",
-        # Legacy (deprecated but still accepted).
-        "series",
-        "min-juju-version",
-        "charmhub",
-        # Analysis / linting config inside the file.
-        "analysis",
-    }
-)
-
-# Keys that configure how the charm is *built*. These are meaningful only in
-# charmcraft.yaml, so they stay unknown in metadata.yaml.
-_BUILD_ONLY_FIELDS: frozenset[str] = frozenset(
-    {
-        "parts",
-        "base",
-        "build-base",
-        "extensions",
-        "adopt-info",
-        "package-repositories",
-        "analysis",
-        "charmhub",
-    }
-)
-
-# Keys valid in metadata.yaml but not charmcraft.yaml. metadata.yaml uses flat
-# top-level link fields instead of a nested links block, and
-# display-name/maintainers instead of title/links.contact.
-_METADATA_ONLY_FIELDS: frozenset[str] = frozenset(
-    {
-        "display-name",
-        # Top-level link fields (no nested links block).
-        "docs",
-        "issues",
-        "source",
-        "website",
-        # Both the list form and the singular string form are valid.
-        "maintainers",
-        "maintainer",
-        # Charmhub categorisation ('categories' predates 'tags').
-        "tags",
-        "categories",
-        # Kubernetes deployment block (type / service).
-        "deployment",
-        # Legacy (deprecated but still accepted).
-        "format",
-        "version",
-    }
-)
-
-# Top-level keys valid in metadata.yaml (the separate legacy metadata file).
-# Everything that describes the charm itself is valid in either file — a charm
-# that splits its metadata may put those keys on either side — so only the
-# build-only keys above are charmcraft.yaml-exclusive.
-_KNOWN_METADATA_FIELDS: frozenset[str] = _METADATA_ONLY_FIELDS | (
-    _KNOWN_CHARMCRAFT_FIELDS - _BUILD_ONLY_FIELDS
-)
-
-# Keys recognised inside a ``resources.<name>`` block.
-_KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset(
-    {
-        "type",
-        "description",
-        "filename",
-        "upstream-source",
-    }
-)
 
 
 class DeprecatedSeries(Rule):
@@ -374,6 +259,190 @@ class UnknownResourceField(Rule):
                         )
                     )
         return diagnostics
+
+
+class OpsMainCall(Rule):
+    """Check that a charm's entrypoint calls ``ops.main()``.
+
+    Only the single file charmcraft designates as the entrypoint is
+    examined — ``parts.charm.charm-entrypoint``, or ``src/charm.py``
+    when unset. That is the file ``dispatch`` runs, so it is the only
+    one whose module-level code Juju executes: an ``ops.main()`` call in
+    a sibling module never runs unless the entrypoint imports it.
+
+    Charms whose entrypoint is not a collected Python file (a shell
+    wrapper, or a console script installed as a dependency) are skipped
+    rather than flagged — there is no charm source here to judge.
+    """
+
+    category = "CHARMCRAFT"
+    number = 6
+    name = "no-ops-main-call"
+    description = "Charm entrypoint does not call ops.main()"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/ops/latest/reference/ops-main-entrypoint/"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        entrypoint = _entrypoint(context)
+        module = next((m for m in context.modules() if m.path == entrypoint), None)
+        if module is None:
+            return []
+        imports = _ast.Imports.of(module)
+        # A charm that doesn't use ops has nothing to say about ops.main().
+        if not imports.imports_module("ops"):
+            return []
+        for call in module.walk(ast.Call):
+            if _ast.call_target(call, imports) in _OPS_MAIN_TARGETS:
+                return []
+        return [
+            self.diagnostic(
+                "Charm entrypoint imports ops but never calls ops.main()",
+                path=module.path,
+                fix_hint="Add `ops.main(MyCharm)` at the end of the charm entrypoint",
+            )
+        ]
+
+
+# --- Helpers ---------------------------------------------------------------
+
+
+def _entrypoint(context: models.CharmContext) -> str:
+    """Return the charm-relative path of the entrypoint charmcraft will use.
+
+    The charm plugin's ``charm-entrypoint`` names the file ``dispatch``
+    execs, relative to the project directory; charmcraft defaults it to
+    ``src/charm.py``. The value is a plain string in charmcraft.yaml, so
+    anything else (a list, say) falls back to the default.
+    """
+    configured = context.metadata.get("parts").get("charm").get("charm-entrypoint").value
+    if not isinstance(configured, str) or not configured:
+        configured = "src/charm.py"
+    return pathlib.PurePosixPath(configured).as_posix()
+
+
+# Every spelling of the ops entrypoint, canonicalised: ``ops.main`` is the
+# submodule and the function of the same name inside it, and both are
+# callable. ``_ast.Imports`` resolves the aliases, so ``main(MyCharm)``
+# after ``from ops import main`` lands on ``ops.main`` like the rest.
+_OPS_MAIN_TARGETS = frozenset({"ops.main", "ops.main.main"})
+
+
+# Top-level keys valid in charmcraft.yaml (modern and legacy forms). A
+# separate set is kept for metadata.yaml below, because the two files accept
+# different top-level keys.
+# Kept deliberately broad — a false positive on a genuine field is far
+# worse than missing a truly unknown one.
+# The modern keys mirror charmcraft's published schema/charmcraft.json, plus
+# legacy keys the schema has dropped. Hand-maintained for now; see #174 for
+# validating against that schema directly instead.
+_KNOWN_CHARMCRAFT_FIELDS: frozenset[str] = frozenset(
+    {
+        # Identity / metadata.
+        "name",
+        "type",
+        "title",
+        "summary",
+        "description",
+        # Build / platform.
+        "base",
+        "build-base",
+        "bases",
+        "platforms",
+        "parts",
+        "extensions",
+        "adopt-info",
+        "package-repositories",
+        # Relations.
+        "requires",
+        "provides",
+        "peers",
+        "extra-bindings",
+        # Config / actions.
+        "config",
+        "actions",
+        # Workload.
+        "containers",
+        "resources",
+        "storage",
+        "devices",
+        # Charm libraries and dependencies.
+        "charm-libs",
+        # Workload run-as user (Kubernetes charms).
+        "charm-user",
+        # Links block (Charmhub) — nested form, e.g. links.documentation.
+        "links",
+        # Legacy top-level contact (now links.contact).
+        "contact",
+        # Subordinate / assumes.
+        "subordinate",
+        "assumes",
+        "terms",
+        # Legacy (deprecated but still accepted).
+        "series",
+        "min-juju-version",
+        "charmhub",
+        # Analysis / linting config inside the file.
+        "analysis",
+    }
+)
+
+# Keys that configure how the charm is *built*. These are meaningful only in
+# charmcraft.yaml, so they stay unknown in metadata.yaml.
+_BUILD_ONLY_FIELDS: frozenset[str] = frozenset(
+    {
+        "parts",
+        "base",
+        "build-base",
+        "extensions",
+        "adopt-info",
+        "package-repositories",
+        "analysis",
+        "charmhub",
+    }
+)
+
+# Keys valid in metadata.yaml but not charmcraft.yaml. metadata.yaml uses flat
+# top-level link fields instead of a nested links block, and
+# display-name/maintainers instead of title/links.contact.
+_METADATA_ONLY_FIELDS: frozenset[str] = frozenset(
+    {
+        "display-name",
+        # Top-level link fields (no nested links block).
+        "docs",
+        "issues",
+        "source",
+        "website",
+        # Both the list form and the singular string form are valid.
+        "maintainers",
+        "maintainer",
+        # Charmhub categorisation ('categories' predates 'tags').
+        "tags",
+        "categories",
+        # Kubernetes deployment block (type / service).
+        "deployment",
+        # Legacy (deprecated but still accepted).
+        "format",
+        "version",
+    }
+)
+
+# Top-level keys valid in metadata.yaml (the separate legacy metadata file).
+# Everything that describes the charm itself is valid in either file — a charm
+# that splits its metadata may put those keys on either side — so only the
+# build-only keys above are charmcraft.yaml-exclusive.
+_KNOWN_METADATA_FIELDS: frozenset[str] = _METADATA_ONLY_FIELDS | (
+    _KNOWN_CHARMCRAFT_FIELDS - _BUILD_ONLY_FIELDS
+)
+
+# Keys recognised inside a ``resources.<name>`` block.
+_KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset(
+    {
+        "type",
+        "description",
+        "filename",
+        "upstream-source",
+    }
+)
 
 
 def _suggest_closest(typo: object, known: frozenset[str]) -> str | None:
