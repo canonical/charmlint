@@ -190,7 +190,10 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
     # file the options came from so diagnostics anchor to the right file
     # and its per-option line numbers can be resolved for ``noqa``.
     config_section = metadata.get("config", {})
-    if isinstance(config_section, dict) and config_section.get("options"):
+    if isinstance(config_section, dict) and "options" in config_section:
+        # `config: {options: }` is an empty (not absent) option set — take
+        # it as-is, rather than falling through and treating the literal
+        # key 'options' as an option name.
         config_options = config_section["options"]
         config_source = metadata_source
     elif isinstance(config_section, dict) and config_section:
