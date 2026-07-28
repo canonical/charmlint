@@ -165,10 +165,11 @@ class TestConfigRulesTogether:
 
 
 class TestConfigNoqa:
-    """The config rules are the first to report per-option line numbers.
+    """Tests for ``# noqa`` suppression of the config rules.
 
-    That makes them the only rules an inline ``# noqa`` can target, so
-    the line anchoring is exercised here rather than in ``test_noqa.py``.
+    Config diagnostics carry the option's own key line, so an inline
+    directive on that line targets that option alone. ``test_noqa.py``
+    covers directive parsing; this covers the line anchoring.
     """
 
     # A bare option (`foo:` with no spec) trips CONFIG-001 and CONFIG-003
