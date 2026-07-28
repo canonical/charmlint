@@ -78,21 +78,38 @@ def _mapping_items(node: Any) -> list[tuple[str, Any]]:
     return [(key.value, value) for key, value in node.value if isinstance(key, yaml.ScalarNode)]
 
 
-def _config_option_lines(path: pathlib.Path) -> dict[str, int]:
-    """Map each config option name to its 1-based line in *path*.
+def _compose(path: pathlib.Path) -> Any:
+    """Compose *path* into a YAML node tree, or ``None`` if unusable.
 
-    Composes the YAML to read node positions rather than re-implementing
-    a parser, so the line numbers stay correct through comments, block
-    scalars, and anchors. Returns an empty map when the file is absent,
-    unreadable, malformed, or has no options block — ``noqa`` line
-    matching simply won't apply, and file-level directives still work.
+    Composing rather than re-implementing a parser keeps line numbers
+    correct through comments, block scalars, and anchors. An absent,
+    unreadable, or malformed file yields ``None``: ``noqa`` line matching
+    simply won't apply, and file-level directives still work.
     """
     if not path.exists():
-        return {}
+        return None
     try:
         with path.open() as f:
-            root = yaml.compose(f, Loader=_SafeLoader)
+            return yaml.compose(f, Loader=_SafeLoader)
     except (OSError, yaml.YAMLError):
+        return None
+
+
+def _key_lines(node: Any) -> dict[str, int]:
+    """Map each scalar key of a MappingNode to its 1-based line."""
+    if not isinstance(node, yaml.MappingNode):
+        return {}
+    return {
+        key.value: key.start_mark.line + 1
+        for key, _ in node.value
+        if isinstance(key, yaml.ScalarNode)
+    }
+
+
+def _config_option_lines(path: pathlib.Path) -> dict[str, int]:
+    """Map each config option name to its 1-based line in *path*."""
+    root = _compose(path)
+    if root is None:
         return {}
     top = dict(_mapping_items(root))
     # charmcraft.yaml nests options under ``config``; config.yaml has a
@@ -103,16 +120,27 @@ def _config_option_lines(path: pathlib.Path) -> dict[str, int]:
         options_node = dict(_mapping_items(config_node)).get("options")
     if options_node is None:
         options_node = top.get("options")
-    source = options_node if options_node is not None else root
-    if not isinstance(source, yaml.MappingNode):
-        return {}
     # Anchor on the key node: a ``noqa`` comment sits on the option's own line
     # (``admin-password:``), whereas the value's nested mapping begins on
     # the following line.
+    return _key_lines(options_node if options_node is not None else root)
+
+
+def _metadata_key_lines(path: pathlib.Path) -> dict[str, int]:
+    """Map each top-level metadata key to its 1-based line in *path*."""
+    return _key_lines(_compose(path))
+
+
+def _resource_field_lines(path: pathlib.Path) -> dict[tuple[str, str], int]:
+    """Map each ``(resource, field)`` pair to its 1-based line in *path*."""
+    root = _compose(path)
+    if root is None:
+        return {}
+    resources_node = dict(_mapping_items(root)).get("resources")
     return {
-        key.value: key.start_mark.line + 1
-        for key, _ in source.value
-        if isinstance(key, yaml.ScalarNode)
+        (res_name, field): line
+        for res_name, res_node in _mapping_items(resources_node)
+        for field, line in _key_lines(res_node).items()
     }
 
 
@@ -171,6 +199,9 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
     metadata = _load_yaml(charm_dir / "charmcraft.yaml")
     metadata_source = "charmcraft.yaml"
     metadata_fallback = _load_yaml(charm_dir / "metadata.yaml")
+    # Keys merged in from metadata.yaml, so rules that care which file a key
+    # came from (the two files accept different keys) can tell them apart.
+    metadata_key_sources: dict[str, str] = {}
     if not metadata:
         metadata = metadata_fallback
         metadata_source = "metadata.yaml"
@@ -178,6 +209,7 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
         for key in metadata_fallback:
             if key not in metadata:
                 metadata[key] = metadata_fallback[key]
+                metadata_key_sources[key] = "metadata.yaml"
 
     # Load actions (charmcraft.yaml or actions.yaml).
     actions_raw = metadata.get("actions") or {}
@@ -203,6 +235,17 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
     if not isinstance(config_options, dict):
         config_options = {}
     config_option_lines = _config_option_lines(charm_dir / config_source)
+    # Sections may have been merged in from metadata.yaml, so read the lines
+    # from whichever file actually declared each one.
+    resource_field_lines = _resource_field_lines(
+        charm_dir / metadata_key_sources.get("resources", metadata_source)
+    )
+    metadata_key_lines = _metadata_key_lines(charm_dir / metadata_source)
+    if metadata_key_sources:
+        merged_lines = _metadata_key_lines(charm_dir / "metadata.yaml")
+        metadata_key_lines.update(
+            {key: merged_lines[key] for key in metadata_key_sources if key in merged_lines}
+        )
 
     # Collect Python files and read their contents.
     python_files = _collect_python_files(charm_dir)
@@ -221,10 +264,13 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
         charm_dir=charm_dir,
         metadata_source=metadata_source,
         metadata=metadata,
+        metadata_key_sources=metadata_key_sources,
         actions=actions,
         config_options=config_options,
         config_source=config_source,
         config_option_lines=config_option_lines,
+        resource_field_lines=resource_field_lines,
+        metadata_key_lines=metadata_key_lines,
         python_files=python_files,
         python_sources=python_sources,
         readme_content=readme_content,
