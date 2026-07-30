@@ -11,9 +11,9 @@ allows:
   appearing on any line, suppresses the whole file. ``# charmlint: noqa:
   SECURITY-001`` suppresses only the listed rules across the file.
 
-Diagnostics are line-anchored only when a rule records a line (currently
-the per-config-option rules); everything else anchors to the file, so it
-can still be silenced with a file-level directive.
+Diagnostics are line-anchored only when a rule records a line;
+everything else anchors to the file, so it can still be silenced with a
+file-level directive.
 
 Like every comment-based linter directive, this is a line scan rather
 than a full YAML parse: a ``#`` is treated as starting a comment only

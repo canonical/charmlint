@@ -83,9 +83,9 @@ the file:
 # charmlint: noqa: SECURITY-001
 ```
 
-Inline `# noqa` only applies to findings that carry a line number (the
-per-config-option rules today); file-anchored findings are silenced with
-a file-level directive. Only YAML files are scanned.
+Inline `# noqa` only applies to findings that carry a line number;
+findings that anchor to a whole file are silenced with a file-level
+directive instead. Only YAML files are scanned.
 
 ## License
 

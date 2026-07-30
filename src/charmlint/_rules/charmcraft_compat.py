@@ -202,15 +202,29 @@ class UnknownTopLevelField(Rule):
             known = (
                 _KNOWN_METADATA_FIELDS if source == "metadata.yaml" else _KNOWN_CHARMCRAFT_FIELDS
             )
-            if key not in known:
-                diagnostics.append(
-                    self.diagnostic(
-                        f"Unrecognised top-level field '{key}' in {source} — possible typo",
-                        path=source,
-                        line=context.metadata_key_lines.get(key),
-                        fix_hint=_suggest_closest(key, known),
-                    )
+            if key in known:
+                continue
+            # A key that is valid in the *other* file is a misplaced field
+            # rather than a typo, and saying so is more useful than a
+            # "did you mean" hint that has nothing close to suggest.
+            other = (
+                _KNOWN_CHARMCRAFT_FIELDS if source == "metadata.yaml" else _KNOWN_METADATA_FIELDS
+            )
+            if key in other:
+                other_source = "charmcraft.yaml" if source == "metadata.yaml" else "metadata.yaml"
+                message = f"Field '{key}' is valid in {other_source} but not {source}"
+                fix_hint = None
+            else:
+                message = f"Unrecognised top-level field '{key}' in {source} — possible typo"
+                fix_hint = _suggest_closest(key, known)
+            diagnostics.append(
+                self.diagnostic(
+                    message,
+                    path=source,
+                    line=context.metadata_key_lines.get(key),
+                    fix_hint=fix_hint,
                 )
+            )
         return diagnostics
 
 
@@ -252,16 +266,33 @@ def _source_of(context: models.CharmContext, key: str) -> str:
     return context.metadata_key_sources.get(key, context.metadata_source)
 
 
-def _suggest_closest(typo: str, known: frozenset[str]) -> str | None:
+def _suggest_closest(typo: object, known: frozenset[str]) -> str | None:
     """Return a ``Did you mean 'X'?`` hint if a close match exists."""
-    best: str | None = None
-    best_dist = 3  # Only suggest if edit distance <= 2.
-    for candidate in known:
-        d = _edit_distance(typo, candidate, best_dist)
+    # YAML keys are not necessarily strings: an unquoted `on:` parses to a
+    # bool, and a bare numeric key to an int. Those get flagged, but no hint.
+    if not isinstance(typo, str):
+        return None
+    best: list[str] = []
+    best_dist = 2  # Only suggest if edit distance <= 2.
+    # Sorted so that equally-close candidates are listed in a stable order:
+    # `known` is a frozenset, whose iteration order varies with PYTHONHASHSEED.
+    for candidate in sorted(known):
+        # `best_dist + 1` as the threshold, so that anything at or below
+        # `best_dist` is an exact distance rather than an early bail-out.
+        d = _edit_distance(typo, candidate, best_dist + 1)
+        if d > best_dist:
+            continue
         if d < best_dist:
             best_dist = d
-            best = candidate
-    return f"Did you mean '{best}'?" if best else None
+            best = []
+        best.append(candidate)
+    if not best:
+        return None
+    quoted = [f"'{c}'" for c in best]
+    if len(quoted) > 1:
+        quoted[-1] = f"or {quoted[-1]}"
+    joined = " ".join(quoted) if len(quoted) == 2 else ", ".join(quoted)
+    return f"Did you mean {joined}?"
 
 
 def _edit_distance(a: str, b: str, threshold: int) -> int:

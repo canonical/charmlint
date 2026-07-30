@@ -163,6 +163,14 @@ class TestUnknownTopLevelField:
         assert diags[0].fix_hint is not None
         assert "summary" in diags[0].fix_hint
 
+    def test_equally_close_candidates_are_all_suggested(self, tmp_charm: pathlib.Path):
+        """'maintainere' is one edit from both 'maintainer' and 'maintainers'."""
+        (tmp_charm / "metadata.yaml").write_text("name: test\nmaintainere: someone\n")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
+        assert len(diags) == 1
+        assert diags[0].fix_hint == "Did you mean 'maintainer' or 'maintainers'?"
+
     def test_multiple_unknown(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,
@@ -181,6 +189,14 @@ class TestUnknownTopLevelField:
 
     def test_completely_unknown_no_hint(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test", "zzz-nonsense": "value"})
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
+        assert len(diags) == 1
+        assert diags[0].fix_hint is None
+
+    def test_non_string_key_flagged_without_a_hint(self, tmp_charm: pathlib.Path):
+        """An unquoted `on:` key parses to a bool under YAML 1.1, and must not crash."""
+        (tmp_charm / "charmcraft.yaml").write_text("name: test\non: true\n")
         report = lint(tmp_charm)
         diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
         assert len(diags) == 1
@@ -334,7 +350,11 @@ class TestUnknownTopLevelField:
         report = lint(tmp_charm)
         diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
         assert len(diags) == 1
-        assert "display-name" in diags[0].message
+        assert diags[0].message == (
+            "Field 'display-name' is valid in metadata.yaml but not charmcraft.yaml"
+        )
+        # A misplaced field is not a typo, so there is nothing to suggest.
+        assert diags[0].fix_hint is None
         assert diags[0].path == "charmcraft.yaml"
 
     def test_maintainers_flagged_in_charmcraft_yaml(self, tmp_charm: pathlib.Path):
@@ -346,7 +366,10 @@ class TestUnknownTopLevelField:
         report = lint(tmp_charm)
         diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
         assert len(diags) == 1
-        assert "maintainers" in diags[0].message
+        assert diags[0].message == (
+            "Field 'maintainers' is valid in metadata.yaml but not charmcraft.yaml"
+        )
+        assert diags[0].fix_hint is None
         assert diags[0].path == "charmcraft.yaml"
 
 
@@ -452,6 +475,15 @@ class TestUnknownResourceField:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         report = lint(tmp_charm)
         assert "CHARMCRAFT-005" not in {d.rule_id for d in list(report)}
+
+    def test_non_string_resource_key_flagged_without_a_hint(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nresources:\n  img:\n    type: oci-image\n    on: true\n"
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-005"]
+        assert len(diags) == 1
+        assert diags[0].fix_hint is None
 
     def test_non_dict_resource_ignored(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
