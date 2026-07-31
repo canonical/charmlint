@@ -3,7 +3,8 @@
 import pathlib
 
 from charmlint._linter import lint
-from charmlint._models import Severity
+from charmlint._models import CharmContext, Severity
+from charmlint._rules.charmcraft_compat import Entrypoint
 from tests.conftest import write_charmcraft_yaml
 
 
@@ -139,6 +140,122 @@ class TestNamingConventions:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
         assert "FATAL" not in {d.rule_id for d in list(report)}
+
+
+def write_dispatch(charm_dir: pathlib.Path, exec_line: str = "exec ./src/charm.py") -> None:
+    """Write a dispatch script that execs the given command."""
+    (charm_dir / "dispatch").write_text(f"#!/bin/sh\n{exec_line}\n")
+
+
+def write_entrypoint(charm_dir: pathlib.Path, executable: bool = True) -> None:
+    """Write src/charm.py, optionally without the executable bit."""
+    entrypoint = charm_dir / "src" / "charm.py"
+    entrypoint.write_text("#!/usr/bin/env python3\n")
+    entrypoint.chmod(0o755 if executable else 0o644)
+
+
+class TestEntrypoint:
+    """Tests for CHARMCRAFT-003 — entrypoint exists and is executable."""
+
+    def test_missing_entrypoint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm)
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert diags[0].path == "dispatch"
+        assert "src/charm.py" in diags[0].message
+
+    def test_entrypoint_not_executable(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm)
+        write_entrypoint(tmp_charm, executable=False)
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "not executable" in diags[0].message
+        assert diags[0].path == "src/charm.py"
+        assert diags[0].fix_hint == "Run: chmod +x src/charm.py"
+
+    def test_entrypoint_is_a_directory(self, tmp_charm: pathlib.Path):
+        # Driven through the rule directly: a directory named charm.py makes
+        # the context loader emit FATAL before any rule runs.
+        write_dispatch(tmp_charm)
+        (tmp_charm / "src" / "charm.py").mkdir()
+        diags = Entrypoint().check(CharmContext(charm_dir=tmp_charm))
+        assert len(diags) == 1
+        assert "not a regular file" in diags[0].message
+
+    def test_executable_entrypoint_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm)
+        write_entrypoint(tmp_charm)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_charmcraft_generated_dispatch(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(
+            tmp_charm,
+            'JUJU_DISPATCH_PATH="${JUJU_DISPATCH_PATH:-$0}" PYTHONPATH="lib:venv" '
+            "exec ./src/charm.py",
+        )
+        write_entrypoint(tmp_charm, executable=False)
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert diags[0].path == "src/charm.py"
+
+    def test_explicit_interpreter_checks_the_script(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "exec ./venv/bin/python3 ./src/charm.py")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "src/charm.py" in diags[0].message
+
+    def test_interpreted_entrypoint_needs_no_executable_bit(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "exec /usr/bin/env python3 ./src/charm.py")
+        write_entrypoint(tmp_charm, executable=False)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_interpreter_invocation_without_exec(self, tmp_charm: pathlib.Path):
+        # The pattern the slurm charms use: no exec, interpreter from a variable.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(
+            tmp_charm,
+            'JUJU_DISPATCH_PATH="${JUJU_DISPATCH_PATH:-$0}" PYTHONPATH=lib:venv '
+            "$PYTHON_BIN ./src/charm.py",
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "does not exist" in diags[0].message
+
+    def test_no_dispatch(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_dispatch_without_exec(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "dispatch").write_text("#!/bin/sh\necho nothing to do\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_unresolvable_entrypoints_are_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        for exec_line in (
+            'exec "$JUJU_CHARM_DIR/src/charm.py"',
+            "exec /usr/bin/true",
+            "exec ../elsewhere/charm.py",
+        ):
+            write_dispatch(tmp_charm, exec_line)
+            report = lint(tmp_charm)
+            assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}, exec_line
 
 
 class TestUnknownTopLevelField:
