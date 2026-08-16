@@ -5,6 +5,7 @@
 from . import actions as _actions  # noqa: F401
 from . import charmcraft_compat as _charmcraft_compat  # noqa: F401
 from . import config_quality as _config_quality  # noqa: F401
+from . import correctness as _correctness  # noqa: F401
 from . import documentation as _documentation  # noqa: F401
 from . import libraries as _libraries  # noqa: F401
 from . import metadata as _metadata  # noqa: F401
