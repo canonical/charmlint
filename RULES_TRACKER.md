@@ -51,7 +51,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | TESTING-001 | TESTING-001 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | in review |
 | TEST002 | TEST002 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
 | TEST003 | TEST003 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
-| JUJU-001/002 | JUJU-001, JUJU-002 | `_rules/juju.py` (shared `_missing_optional_diagnostics`) | `test_juju.py` | #49 | in review |
+| METADATA 008/009 | METADATA-008, METADATA-009 | `_rules/metadata.py` (shared `_missing_optional_diagnostics`) | `test_metadata.py` | #49 | in review |
 
 ## Counts
 
