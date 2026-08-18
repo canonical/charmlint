@@ -14,7 +14,7 @@ Because the minor version carries breaking changes, a bump from, say, `0.4.7` to
 
 A linter is unusual: almost every improvement is, strictly speaking, a breaking change. Adding a rule, or teaching an existing rule to catch a new case, can surface diagnostics that were not reported before, which can fail a CI run that was previously green. Under strict SemVer, charmlint could barely publish anything without a major version bump, which would make the major version meaningless.
 
-Instead — exactly as ruff does — we reserve the *minor* version for changes that are likely to break you, and the *patch* version for everything else, including new rules that ship behind [preview mode](#preview-mode).
+Instead — exactly as ruff does — we reserve the *minor* version for changes that are likely to break you, and the *patch* version for everything else. Ruff softens this further with a preview mode that lets new rules land in patch releases; charmlint does not have one yet, but plans to — see [Preview mode](#preview-mode).
 
 ## What triggers a minor bump (breaking changes)
 
@@ -22,11 +22,11 @@ A new minor version is released when charmlint makes a change that is likely to 
 
 ### Linter
 
-- Promoting a new rule from preview to stable.
-- Changing the behaviour of a stable rule, such that it reports diagnostics it previously did not (or stops reporting ones it did) — for example, broadening what a rule considers a violation.
-- Adding a stable rule to, or removing one from, the set of rules enabled by default.
+- Adding a new rule. Today every new rule is enabled by default, so every new rule is a breaking change; once [preview mode](#preview-mode) exists, this will apply only to promoting a rule from preview to stable.
+- Changing the behaviour of a rule, such that it reports diagnostics it previously did not (or stops reporting ones it did) — for example, broadening what a rule considers a violation.
+- Removing a rule from the set of rules enabled by default.
 - Removing a rule, or deprecating a rule and removing it in the same release.
-- Changing a stable rule's default severity.
+- Changing a rule's default severity.
 
 ### Configuration and CLI
 
@@ -45,10 +45,9 @@ A new patch version is released for changes that should not break a passing run.
 
 ### Linter
 
-- Adding a **new rule in [preview mode](#preview-mode)**. New rules are not enabled by default and cannot fail your build unless you opt in, so they ship in a patch release.
 - Bug fixes to a rule, including cases where a rule was reporting a false positive (a fix that *removes* diagnostics is backwards-compatible; a run that passed still passes).
-- Changing the behaviour of a **preview** rule in any way. Preview behaviour is explicitly unstable — see below.
 - Improving diagnostic messages, help text, or documentation.
+- Once [preview mode](#preview-mode) exists: adding a new rule in preview, and changing the behaviour of a preview rule in any way.
 
 ### Configuration and CLI
 
@@ -59,15 +58,19 @@ A new patch version is released for changes that should not break a passing run.
 
 - Adding support for a new Python version.
 
-## Rule stabilisation and preview mode
+## Preview mode
 
-Following ruff, new rules do not go straight into the default rule set. Instead:
+charmlint does not have a preview mode today: every rule that ships is enabled by default, which is why adding a rule is currently a minor (breaking) release. We expect to add one, following ruff's model. This section describes how versioning is intended to work once it exists.
+
+Under that model, new rules would not go straight into the default rule set. Instead:
 
 1. A new rule is first released in **preview mode**. It is off by default and only runs when you opt in (for example with a `--preview` flag or the equivalent configuration). This ships in a **patch** release.
 2. A preview rule stays in preview for **at least one minor release** so that there is time to gather feedback and shake out false positives.
 3. When a rule is promoted to **stable**, it may become part of the default rule set. Because this can produce new diagnostics on a previously green run, promotion happens in a **minor** release.
 
 While a rule (or any other behaviour) is gated behind preview mode, **we reserve the right to change any of its behaviour** — including its diagnostics, its message, its severity, or removing it entirely — in a patch release. Preview exists precisely so that new checks can be refined without waiting on the stable-version cadence. If you enable preview mode, expect churn.
+
+Introducing preview mode will itself be a minor release, and the rules of this document will be updated at the same time.
 
 ## Deprecation
 
@@ -76,7 +79,7 @@ When a rule, configuration option, or CLI flag is to be removed, it is first **d
 ## Pinning charmlint
 
 - **In CI**, pin to an exact version (for example `charmlint==0.4.7`) and bump deliberately. This is the only way to guarantee that a new rule or a sharpened rule never turns a green build red without you choosing it.
-- If you pin loosely, pin to the **patch** range (for example `~=0.4.0`, i.e. `>=0.4.0, <0.5.0`) so that you receive bug fixes and preview-gated additions but not breaking changes.
+- If you pin loosely, pin to the **patch** range (for example `~=0.4.0`, i.e. `>=0.4.0, <0.5.0`) so that you receive bug fixes but not breaking changes.
 
 ## Pre-1.0
 
