@@ -63,8 +63,17 @@ class CharmContext:
     charm_dir: pathlib.Path
     metadata_source: str = "charmcraft.yaml"
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
+    # Overrides metadata_source for individual keys, when charmcraft.yaml and
+    # metadata.yaml were merged. Only merged-in keys appear.
+    metadata_key_sources: dict[str, str] = dataclasses.field(default_factory=dict)
+    # Top-level metadata key -> 1-based line, for noqa matching.
+    metadata_key_lines: dict[str, int] = dataclasses.field(default_factory=dict)
     actions: dict[str, Any] = dataclasses.field(default_factory=dict)
     config_options: dict[str, Any] = dataclasses.field(default_factory=dict)
+    config_source: str = "charmcraft.yaml"
+    config_option_lines: dict[str, int] = dataclasses.field(default_factory=dict)
+    # (resource name, field name) -> 1-based line, for noqa matching.
+    resource_field_lines: dict[tuple[str, str], int] = dataclasses.field(default_factory=dict)
     python_files: list[pathlib.Path] = dataclasses.field(default_factory=list)
     python_sources: dict[pathlib.Path, str] = dataclasses.field(default_factory=dict)
     readme_content: str = ""

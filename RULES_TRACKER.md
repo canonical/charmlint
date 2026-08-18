@@ -14,10 +14,10 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | STS 001-003 | STS001, STS002, STS003 | `_rules/status.py` (factory) | `test_rules.py::TestStatusRules` | | pending |
 | DEP 001-004 | DEP001, DEP002, DEP003, DEP004 | `_rules/deprecated.py` (factory) | `test_rules.py::TestDeprecatedRules` | | pending |
 | CHARMCRAFT-001 | CHARMCRAFT-001 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #106 | merged |
-| CC002 | CC002 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
+| CHARMCRAFT-002 | CHARMCRAFT-002 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #107 | in review |
 | CC003 | CC003 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CC004 | CC004 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
-| CC005/CC006 | CC005, CC006 | `_rules/unknown_fields.py` (shared known-field tables) | `test_unknown_fields.py` | | pending |
+| CHARMCRAFT-004/005 | CHARMCRAFT-004, CHARMCRAFT-005 (were CC005/CC006 pre-renumber) | `_rules/charmcraft_compat.py` (shared known-field tables) | `test_charmcraft_compat.py` | #110 | in review |
 | ATT001 | ATT001 | `_rules/attestations.py` | `test_attestations.py` | | pending |
 | ATT002 | ATT002 | `_rules/attestations.py` | `test_attestations.py` | | pending |
 | PEB001 | PEB001 | `_rules/pebble.py` | `test_rules.py::TestPebbleRules` | | pending |
@@ -26,7 +26,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | ACT 001-003 | ACT001, ACT002, ACT003 | `_rules/actions.py` (factory, shared `_EXPECTED_ACTIONS`) | `test_rules.py::TestActionRules` | | pending |
 | ACT004 | ACT004 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | ACT005 | ACT005 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
-| ACT006 | ACT006 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
+| ACTIONS-001 | ACTIONS-001 (was ACT006 pre-renumber) | `_rules/actions.py` | `test_actions.py` | | in review |
 | ACT007 | ACT007 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | CFG001 | CFG001 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
 | CFG002 | CFG002 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
@@ -38,13 +38,13 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | DOC003 | DOC003 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC004 | DOC004 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC005 | DOC005 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
-| LIB001 | LIB001 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | | pending |
+| LIBRARY-001 | LIBRARY-001 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | #130 | in review |
 | LIB002 | LIB002 | `_rules/libraries.py` | `test_rules.py::TestLibraryRules` | | pending |
 | LIB003/LIB004 | LIB003, LIB004 | `_rules/library_versions.py` (shared parser) | `test_rules.py::TestLibraryVersions` | | pending |
 | REL001 | REL001 | `_rules/relation_data.py` | `test_rules.py::TestRelationDataRules` | | pending |
 | REL002 | REL002 | `_rules/relation_data.py` | `test_rules.py::TestRelationDataRules` | | pending |
-| SEC001 | SEC001 | `_rules/security.py` | `test_rules.py::TestSecurityRules` | | pending |
-| SEC002 | SEC002 | `_rules/security.py` | `test_rules.py::TestSecurityRules` | | pending |
+| SECURITY-001 | SECURITY-001 | `_rules/security.py` | `test_security.py` | #136 | in review |
+| SEC002 | SEC002 | `_rules/security.py` | `test_security.py` | | pending |
 | STR001 | STR001 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | #138 | in review |
 | STR002 | STR002 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
 | STR003 | STR003 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |

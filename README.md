@@ -59,6 +59,34 @@ ignore = ["ATTESTATION-002"]
 "OBSERVABILITY-005" = "error"
 ```
 
+## Suppressing findings inline
+
+Individual findings can be silenced from within a charm's YAML files with
+ruff-style `# noqa` comments.
+
+An inline `# noqa` suppresses every finding reported on that line; add a
+comma-separated list of codes to suppress only those. A code is a full
+rule ID (`SECURITY-001`) or a category (`SECURITY`):
+
+```yaml
+config:
+  options:
+    admin-password:  # noqa: SECURITY-001
+      type: string
+```
+
+A file-level `# charmlint: noqa` (on any line) suppresses the whole file;
+`# charmlint: noqa: SECURITY-001` suppresses only the listed rules across
+the file:
+
+```yaml
+# charmlint: noqa: SECURITY-001
+```
+
+Inline `# noqa` only applies to findings that carry a line number;
+findings that anchor to a whole file are silenced with a file-level
+directive instead. Only YAML files are scanned.
+
 ## Versioning
 
 charmlint follows a ruff-style versioning scheme: the minor version carries
