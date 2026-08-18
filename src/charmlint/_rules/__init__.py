@@ -5,7 +5,6 @@
 from . import actions as _actions  # noqa: F401
 from . import charmcraft_compat as _charmcraft_compat  # noqa: F401
 from . import documentation as _documentation  # noqa: F401
-from . import juju as _juju  # noqa: F401
 from . import libraries as _libraries  # noqa: F401
 from . import metadata as _metadata  # noqa: F401
 from . import security as _security  # noqa: F401
