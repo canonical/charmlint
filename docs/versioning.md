@@ -65,12 +65,12 @@ charmlint does not have a preview mode today: every rule that ships is enabled b
 Under that model, new rules would not go straight into the default rule set. Instead:
 
 1. A new rule is first released in **preview mode**. It is off by default and only runs when you opt in (for example with a `--preview` flag or the equivalent configuration). This ships in a **patch** release.
-2. A preview rule stays in preview for **at least one minor release** so that there is time to gather feedback and shake out false positives.
+2. A preview rule stays in preview until we're confident in it, typically **at least a month**, so that there is time to gather feedback and shake out false positives.
 3. When a rule is promoted to **stable**, it may become part of the default rule set. Because this can produce new diagnostics on a previously green run, promotion happens in a **minor** release.
 
 While a rule (or any other behaviour) is gated behind preview mode, **we reserve the right to change any of its behaviour** — including its diagnostics, its message, its severity, or removing it entirely — in a patch release. Preview exists precisely so that new checks can be refined without waiting on the stable-version cadence. If you enable preview mode, expect churn.
 
-Introducing preview mode will itself be a minor release, and the rules of this document will be updated at the same time.
+Introducing preview mode will itself be a minor release, since it changes how new rules reach the default rule set, and the rules of this document will be updated at the same time.
 
 ## Deprecation
 
