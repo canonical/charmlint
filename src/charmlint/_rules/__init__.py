@@ -1,13 +1,16 @@
 """Rule package — re-exports the base class and triggers rule registration."""
 
-from . import charmcraft_compat as _charmcraft_compat  # noqa: F401  (import registers rules)
-from . import correctness as _correctness  # noqa: F401  (import registers rules)
-from . import documentation as _documentation  # noqa: F401  (import registers rules)
-from . import libraries as _libraries  # noqa: F401  (import registers rules)
-from . import metadata as _metadata  # noqa: F401  (import registers rules)
-from . import security as _security  # noqa: F401  (import registers rules)
-from . import structure as _structure  # noqa: F401  (import registers rules)
-from . import testing as _testing  # noqa: F401  (import registers rules)
+# Importing each rule module registers its Rule subclasses via the metaclass
+# in ._base — the private names below are unused, hence the F401 suppressions.
+from . import actions as _actions  # noqa: F401
+from . import charmcraft_compat as _charmcraft_compat  # noqa: F401
+from . import correctness as _correctness  # noqa: F401
+from . import documentation as _documentation  # noqa: F401
+from . import libraries as _libraries  # noqa: F401
+from . import metadata as _metadata  # noqa: F401
+from . import security as _security  # noqa: F401
+from . import structure as _structure  # noqa: F401
+from . import testing as _testing  # noqa: F401
 from ._base import Rule, get_all_rules
 
 __all__ = ["Rule", "get_all_rules"]

@@ -18,7 +18,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | CORRECTNESS-001/002 | CORRECTNESS-001, CORRECTNESS-002 | `_rules/correctness.py` | `test_correctness.py` |  | in review |
 | CC003 | CC003 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CC004 | CC004 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
-| CC005/CC006 | CC005, CC006 | `_rules/unknown_fields.py` (shared known-field tables) | `test_unknown_fields.py` | | pending |
+| CHARMCRAFT-004/005 | CHARMCRAFT-004, CHARMCRAFT-005 (were CC005/CC006 pre-renumber) | `_rules/charmcraft_compat.py` (shared known-field tables) | `test_charmcraft_compat.py` | #110 | in review |
 | ATT001 | ATT001 | `_rules/attestations.py` | `test_attestations.py` | | pending |
 | ATT002 | ATT002 | `_rules/attestations.py` | `test_attestations.py` | | pending |
 | PEB001 | PEB001 | `_rules/pebble.py` | `test_rules.py::TestPebbleRules` | | pending |
@@ -27,7 +27,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | ACT 001-003 | ACT001, ACT002, ACT003 | `_rules/actions.py` (factory, shared `_EXPECTED_ACTIONS`) | `test_rules.py::TestActionRules` | | pending |
 | ACT004 | ACT004 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | ACT005 | ACT005 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
-| ACT006 | ACT006 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
+| ACTIONS-001 | ACTIONS-001 (was ACT006 pre-renumber) | `_rules/actions.py` | `test_actions.py` | | in review |
 | ACT007 | ACT007 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | CFG001 | CFG001 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
 | CFG002 | CFG002 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
