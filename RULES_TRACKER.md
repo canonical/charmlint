@@ -11,7 +11,8 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | METADATA 002-007 | METADATA-002, METADATA-003, METADATA-004, METADATA-005, METADATA-006, METADATA-007 | `_rules/metadata.py` | `test_rules.py::TestMetadataRules` | #95 | merged |
 | COS 001-004 | COS001, COS002, COS003, COS004 | `_rules/observability.py` (factory) | `test_rules.py::TestObservabilityRules` | | pending |
 | COS005 | COS005 | `_rules/observability.py` | `test_rules.py::TestObservabilityRules` | | pending |
-| STS 001-003 | STS001, STS002, STS003 | `_rules/status.py` (factory) | `test_rules.py::TestStatusRules` | | pending |
+| STS 001-003 | STS001, STS002, STS003 (renumber from STATUS-002 — STATUS-001 is taken) | `_rules/status.py` (factory) | `test_rules.py::TestStatusRules` | | pending |
+| STATUS-001 | STATUS-001 (new rule, not a re-land — issue #27) | `_rules/status.py` | `test_status.py` | #TBD | in review |
 | DEP 001-004 | DEP001, DEP002, DEP003, DEP004 | `_rules/deprecated.py` (factory) | `test_rules.py::TestDeprecatedRules` | | pending |
 | CHARMCRAFT-001 | CHARMCRAFT-001 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #106 | merged |
 | CHARMCRAFT-002 | CHARMCRAFT-002 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #107 | in review |
