@@ -83,11 +83,16 @@ def _walk_observe_calls(tree: ast.AST) -> list[str]:
     return found
 
 
-def _gather_action_observers(sources: dict[pathlib.Path, str]) -> set[str]:
+def _gather_action_observers(
+    sources: dict[pathlib.Path, str],
+    charm_dir: pathlib.Path,
+) -> set[str]:
     """Return the set of action names observed by charm sources."""
     out: set[str] = set()
     for path, content in sources.items():
-        if "lib" in path.parts:
+        # `lib/` at the charm root holds `charmcraft fetch-lib` output — other
+        # people's code. A `src/lib/` package is the charm's own, so read it.
+        if path.relative_to(charm_dir).parts[0] == "lib":
             continue
         try:
             tree = ast.parse(content)
@@ -115,7 +120,7 @@ class ActionMissingObserver(Rule):
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if not context.actions:
             return []
-        observers = _gather_action_observers(context.python_sources)
+        observers = _gather_action_observers(context.python_sources, context.charm_dir)
         diagnostics: list[models.Diagnostic] = []
         for action_name in context.actions:
             if action_name in observers:

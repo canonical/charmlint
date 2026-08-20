@@ -173,3 +173,14 @@ class TestDeferBeforeRaise:
         )
         report = lint(tmp_charm)
         assert not [d for d in list(report) if d.rule_id == "CORRECTNESS-002"]
+
+    def test_src_lib_directory_is_checked(self, tmp_charm: pathlib.Path):
+        # Only the top-level lib/ is fetch-lib output; src/lib/ is the charm's own code.
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        src_lib = tmp_charm / "src" / "lib"
+        src_lib.mkdir(parents=True)
+        (src_lib / "helper.py").write_text(
+            "def handler(self, event):\n    event.defer()\n    raise RuntimeError('x')\n",
+        )
+        report = lint(tmp_charm)
+        assert len([d for d in list(report) if d.rule_id == "CORRECTNESS-002"]) == 1

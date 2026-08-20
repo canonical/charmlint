@@ -166,3 +166,31 @@ class TestActionMissingObserver:
         )
         report = lint(tmp_charm)
         assert "ACTIONS-001" in {d.rule_id for d in report}
+
+    def test_observer_inside_src_lib_counts(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {"description": "x"}}},
+        )
+        # Only the top-level lib/ is fetch-lib output; src/lib/ is the charm's own code.
+        (tmp_charm / "src" / "lib").mkdir()
+        (tmp_charm / "src" / "lib" / "helper.py").write_text(
+            textwrap.dedent("""\
+                class X:
+                    def __init__(self, charm):
+                        charm.framework.observe(charm.on.do_thing_action, self._h)
+                    def _h(self, event):
+                        pass
+            """),
+        )
+        write_charm_source(
+            tmp_charm,
+            textwrap.dedent("""\
+                import ops
+
+                class C(ops.CharmBase):
+                    pass
+            """),
+        )
+        report = lint(tmp_charm)
+        assert "ACTIONS-001" not in {d.rule_id for d in report}
