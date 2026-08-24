@@ -23,6 +23,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | PEB001 | PEB001 | `_rules/pebble.py` | `test_rules.py::TestPebbleRules` | | pending |
 | PEB002 | PEB002 | `_rules/pebble.py` | `test_rules.py::TestPebbleRules` | | pending |
 | PEB003 | PEB003 | `_rules/pebble.py` | `test_rules.py::TestPebbleRules` | | pending |
+| PEBBLE-005 | PEBBLE-005 (new, issue #155) | `_rules/pebble.py` | `test_pebble.py` | | in review |
 | ACT 001-003 | ACT001, ACT002, ACT003 | `_rules/actions.py` (factory, shared `_EXPECTED_ACTIONS`) | `test_rules.py::TestActionRules` | | pending |
 | ACT004 | ACT004 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | ACT005 | ACT005 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |

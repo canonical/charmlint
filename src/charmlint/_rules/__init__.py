@@ -7,6 +7,7 @@ from . import charmcraft_compat as _charmcraft_compat  # noqa: F401
 from . import documentation as _documentation  # noqa: F401
 from . import libraries as _libraries  # noqa: F401
 from . import metadata as _metadata  # noqa: F401
+from . import pebble as _pebble  # noqa: F401
 from . import security as _security  # noqa: F401
 from . import structure as _structure  # noqa: F401
 from . import testing as _testing  # noqa: F401
