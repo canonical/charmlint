@@ -1,7 +1,6 @@
 """Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``."""
 
 import re
-from typing import Any
 
 from .. import _models as models
 from ._base import Rule
@@ -133,13 +132,14 @@ class DeprecatedSeries(Rule):
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        if "series" not in context.metadata:
+        series = context.metadata.get("series")
+        if not series.present:
             return []
         return [
             self.diagnostic(
                 "'series' is deprecated in charm metadata — use 'bases' or 'platforms' instead",
-                path=_source_of(context, "series"),
-                line=context.metadata_key_lines.get("series"),
+                path=series.source,
+                line=series.line,
                 fix_hint="Remove 'series' and use 'bases' or 'platforms'",
             )
         ]
@@ -158,17 +158,14 @@ class NamingConventions(Rule):
         # underscored action parameters are vanishingly rare in the wild,
         # so this rule targets config options only.
         diagnostics: list[models.Diagnostic] = []
-        for opt_name in context.config_options:
-            if "_" in opt_name:
+        for opt_name, option in context.config_options.items():
+            if isinstance(opt_name, str) and "_" in opt_name:
                 hyphenated = re.sub(r"[-_]+", "-", opt_name)
                 diagnostics.append(
                     self.diagnostic(
                         f"Config option '{opt_name}' uses underscores — prefer hyphens ('{hyphenated}')",
-                        # Options may come from config.yaml rather than the
-                        # metadata file, and the line is only meaningful
-                        # against the file that declared them.
-                        path=context.config_source,
-                        line=context.config_option_lines.get(opt_name),
+                        path=option.source,
+                        line=option.line,
                         fix_hint=f"Rename to '{hyphenated}'",
                     )
                 )
@@ -195,10 +192,10 @@ class UnknownTopLevelField(Rule):
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
-        for key in context.metadata:
+        for key, field in context.metadata.items():
             # A charm may split its metadata across both files, in which case
             # each key is judged against the set for the file it came from.
-            source = _source_of(context, key)
+            source = field.source
             known = (
                 _KNOWN_METADATA_FIELDS if source == "metadata.yaml" else _KNOWN_CHARMCRAFT_FIELDS
             )
@@ -221,7 +218,7 @@ class UnknownTopLevelField(Rule):
                 self.diagnostic(
                     message,
                     path=source,
-                    line=context.metadata_key_lines.get(key),
+                    line=field.line,
                     fix_hint=fix_hint,
                 )
             )
@@ -239,31 +236,19 @@ class UnknownResourceField(Rule):
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-resources"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        resources: dict[str, Any] = context.metadata.get("resources", {})
-        if not isinstance(resources, dict):
-            return []
-
-        source = _source_of(context, "resources")
         diagnostics: list[models.Diagnostic] = []
-        for res_name, res_def in resources.items():
-            if not isinstance(res_def, dict):
-                continue
-            for key in res_def:
+        for res_name, resource in context.metadata.get("resources").items():
+            for key, field in resource.items():
                 if key not in _KNOWN_RESOURCE_FIELDS:
                     diagnostics.append(
                         self.diagnostic(
                             f"Unrecognised field '{key}' in resource '{res_name}' — possible typo",
-                            path=source,
-                            line=context.resource_field_lines.get((res_name, key)),
+                            path=field.source,
+                            line=field.line,
                             fix_hint=_suggest_closest(key, _KNOWN_RESOURCE_FIELDS),
                         )
                     )
         return diagnostics
-
-
-def _source_of(context: models.CharmContext, key: str) -> str:
-    """Return the file a top-level metadata key was read from."""
-    return context.metadata_key_sources.get(key, context.metadata_source)
 
 
 def _suggest_closest(typo: object, known: frozenset[str]) -> str | None:

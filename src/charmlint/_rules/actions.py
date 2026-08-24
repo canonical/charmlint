@@ -157,7 +157,7 @@ class ActionMissingAdditionalProperties(Rule):
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
         for action_name, body in context.actions.items():
-            if isinstance(body, dict) and "additionalProperties" in body:
+            if "additionalProperties" in body:
                 continue
             diagnostics.append(
                 self.diagnostic(

@@ -24,12 +24,12 @@ class ConfigMissingType(Rule):
         return [
             self.diagnostic(
                 f"Config option '{name}' is missing a type",
-                path=context.config_source,
-                line=context.config_option_lines.get(name),
+                path=option.source,
+                line=option.line,
                 fix_hint="Add an explicit 'type' (string, int, float, boolean, or secret)",
             )
-            for name, spec in context.config_options.items()
-            if not (isinstance(spec, dict) and spec.get("type"))
+            for name, option in context.config_options.items()
+            if not option.get("type")
         ]
 
 
@@ -47,14 +47,14 @@ class ConfigMissingDefault(Rule):
         return [
             self.diagnostic(
                 f"Config option '{name}' is missing a default value",
-                path=context.config_source,
-                line=context.config_option_lines.get(name),
+                path=option.source,
+                line=option.line,
                 fix_hint="Add a 'default', or leave it out deliberately if the option is required",
             )
-            for name, spec in context.config_options.items()
-            if isinstance(spec, dict)
-            and "default" not in spec
-            and spec.get("type") not in _NO_SENSIBLE_DEFAULT_TYPES
+            for name, option in context.config_options.items()
+            if isinstance(option.value, dict)
+            and "default" not in option
+            and option.get("type").value not in _NO_SENSIBLE_DEFAULT_TYPES
         ]
 
 
@@ -72,10 +72,10 @@ class ConfigMissingDescription(Rule):
         return [
             self.diagnostic(
                 f"Config option '{name}' is missing a description",
-                path=context.config_source,
-                line=context.config_option_lines.get(name),
+                path=option.source,
+                line=option.line,
                 fix_hint="Add a 'description' explaining what the option does",
             )
-            for name, spec in context.config_options.items()
-            if not (isinstance(spec, dict) and str(spec.get("description", "")).strip())
+            for name, option in context.config_options.items()
+            if not str(option.get("description").value or "").strip()
         ]

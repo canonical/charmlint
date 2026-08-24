@@ -4,7 +4,105 @@ import contextlib
 import dataclasses
 import enum
 import pathlib
+from collections.abc import Iterable, Iterator
 from typing import Any
+
+
+@dataclasses.dataclass(frozen=True)
+class Yaml:
+    """A value read from one of a charm's YAML files, with its provenance.
+
+    A charm's metadata is spread over up to four files
+    (``charmcraft.yaml``, ``metadata.yaml``, ``actions.yaml``,
+    ``config.yaml``), and a split-metadata charm can declare one
+    top-level key in one file and the next key in another. A rule that
+    reports a finding needs to know *which* file the value it is
+    complaining about came from, and *which line* in that file, so the
+    diagnostic points at the right place and ``# noqa`` on that line
+    can silence it.
+
+    Carrying that on the value itself means a rule writes::
+
+        self.diagnostic(..., path=option.source, line=option.line)
+
+    instead of consulting a side table of line numbers keyed by name,
+    per section, that the linter core had to populate in advance.
+
+    ``value`` is the plain Python value PyYAML would have constructed;
+    ``source`` is the *file name* the value was read from (relative to
+    the charm directory, e.g. ``"metadata.yaml"``); ``line`` is the
+    1-based line of the key that introduced the value, or ``None`` for
+    a value with no line of its own.
+
+    Nested mappings are wrapped too, so ``.get()`` chains keep
+    provenance::
+
+        context.metadata.get("links").get("issues").source
+
+    ``bool(node)`` is the truthiness of the underlying value, so a
+    missing key, an explicit ``null``, and an empty string are all
+    falsy — which is what "empty or missing" rules want. Use
+    :attr:`present` when the distinction matters (an explicit
+    ``default: ""`` is a default; an explicit
+    ``additionalProperties: false`` is a choice).
+    """
+
+    value: Any = None
+    source: str = ""
+    line: int | None = None
+    # False only for a node returned by ``get()`` for a key that is not
+    # in the mapping. A key present with a ``null`` value is ``present``
+    # with a ``value`` of ``None``.
+    present: bool = True
+    # Wrapped children, for a mapping node. Excluded from ``repr`` so
+    # printing a node in a traceback doesn't dump the whole document.
+    children: "dict[Any, Yaml] | None" = dataclasses.field(default=None, repr=False)
+
+    @classmethod
+    def absent(cls, source: str) -> "Yaml":
+        """Return a node standing for a value that is not there.
+
+        It keeps *source* so a rule reporting the absence still names a
+        file, but has no line: there is no key to point at.
+        """
+        return cls(value=None, source=source, line=None, present=False)
+
+    def __bool__(self) -> bool:
+        return bool(self.value)
+
+    def __contains__(self, key: object) -> bool:
+        return key in (self.children or {})
+
+    def __iter__(self) -> "Iterator[Any]":
+        """Iterate the keys of a mapping node (nothing, for a non-mapping)."""
+        return iter(self.children or {})
+
+    def __getitem__(self, key: object) -> "Yaml":
+        return (self.children or {})[key]
+
+    def get(self, key: object) -> "Yaml":
+        """Return the child node for *key*, or an absent node.
+
+        Never raises and always returns a ``Yaml``, so lookups chain
+        through missing and non-mapping values alike.
+        """
+        child = (self.children or {}).get(key)
+        if child is None:
+            return Yaml.absent(self.source)
+        return child
+
+    def items(self) -> "Iterable[tuple[Any, Yaml]]":
+        """Iterate ``(key, node)`` pairs of a mapping node.
+
+        Empty for a non-mapping, which is what the rules want: a
+        malformed section yields no findings rather than a crash, the
+        same as the ``isinstance(..., dict)`` guards this replaces.
+
+        Keys are whatever YAML constructed, which is not always a
+        string — an unquoted ``on:`` key is the boolean ``True`` under
+        YAML 1.1. Rules that put a key in a message must cope with that.
+        """
+        return (self.children or {}).items()
 
 
 class Severity(enum.StrEnum):
@@ -61,19 +159,17 @@ class CharmContext:
     """All the data a rule needs, loaded once by the linter engine."""
 
     charm_dir: pathlib.Path
-    metadata_source: str = "charmcraft.yaml"
-    metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
-    # Overrides metadata_source for individual keys, when charmcraft.yaml and
-    # metadata.yaml were merged. Only merged-in keys appear.
-    metadata_key_sources: dict[str, str] = dataclasses.field(default_factory=dict)
-    # Top-level metadata key -> 1-based line, for noqa matching.
-    metadata_key_lines: dict[str, int] = dataclasses.field(default_factory=dict)
-    actions: dict[str, Any] = dataclasses.field(default_factory=dict)
-    config_options: dict[str, Any] = dataclasses.field(default_factory=dict)
-    config_source: str = "charmcraft.yaml"
-    config_option_lines: dict[str, int] = dataclasses.field(default_factory=dict)
-    # (resource name, field name) -> 1-based line, for noqa matching.
-    resource_field_lines: dict[tuple[str, str], int] = dataclasses.field(default_factory=dict)
+    # The charm's metadata, merged from charmcraft.yaml and metadata.yaml.
+    # ``metadata.source`` names the file the charm's metadata primarily
+    # comes from; each child node names the file that key came from, which
+    # for a split-metadata charm need not be the same one.
+    metadata: Yaml = dataclasses.field(default_factory=lambda: Yaml.absent("charmcraft.yaml"))
+    # Declared actions, from charmcraft.yaml or legacy actions.yaml.
+    actions: Yaml = dataclasses.field(default_factory=lambda: Yaml.absent("charmcraft.yaml"))
+    # Declared config options, from charmcraft.yaml or legacy config.yaml.
+    config_options: Yaml = dataclasses.field(
+        default_factory=lambda: Yaml.absent("charmcraft.yaml")
+    )
     python_files: list[pathlib.Path] = dataclasses.field(default_factory=list)
     python_sources: dict[pathlib.Path, str] = dataclasses.field(default_factory=dict)
     readme_content: str = ""

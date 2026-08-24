@@ -20,12 +20,12 @@ class TestBuildContext:
     def test_loads_metadata(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "my-charm"})
         ctx = build_context(tmp_charm)
-        assert ctx.metadata["name"] == "my-charm"
+        assert ctx.metadata["name"].value == "my-charm"
 
     def test_falls_back_to_metadata_yaml(self, tmp_charm: pathlib.Path):
         (tmp_charm / "metadata.yaml").write_text("name: legacy-charm\nsummary: hi\n")
         ctx = build_context(tmp_charm)
-        assert ctx.metadata["name"] == "legacy-charm"
+        assert ctx.metadata["name"].value == "legacy-charm"
 
     def test_merges_metadata_yaml_into_charmcraft_yaml(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"type": "charm", "parts": {}})
@@ -33,16 +33,16 @@ class TestBuildContext:
             "name: split-charm\nsummary: A split charm\ndescription: Long desc\n"
         )
         ctx = build_context(tmp_charm)
-        assert ctx.metadata["type"] == "charm"
-        assert ctx.metadata["name"] == "split-charm"
-        assert ctx.metadata["summary"] == "A split charm"
+        assert ctx.metadata["type"].value == "charm"
+        assert ctx.metadata["name"].value == "split-charm"
+        assert ctx.metadata["summary"].value == "A split charm"
 
     def test_charmcraft_yaml_takes_precedence_over_metadata_yaml(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "from-charmcraft", "type": "charm"})
         (tmp_charm / "metadata.yaml").write_text("name: from-metadata\nsummary: hi\n")
         ctx = build_context(tmp_charm)
-        assert ctx.metadata["name"] == "from-charmcraft"
-        assert ctx.metadata["summary"] == "hi"
+        assert ctx.metadata["name"].value == "from-charmcraft"
+        assert ctx.metadata["summary"].value == "hi"
 
     def test_loads_actions(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
@@ -74,21 +74,21 @@ class TestBuildContext:
     def test_metadata_source_charmcraft_yaml(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         ctx = build_context(tmp_charm)
-        assert ctx.metadata_source == "charmcraft.yaml"
+        assert ctx.metadata.source == "charmcraft.yaml"
 
     def test_metadata_source_metadata_yaml(self, tmp_charm: pathlib.Path):
         (tmp_charm / "metadata.yaml").write_text("name: legacy-charm\n")
         ctx = build_context(tmp_charm)
-        assert ctx.metadata_source == "metadata.yaml"
+        assert ctx.metadata.source == "metadata.yaml"
 
     def test_metadata_source_metadata_yaml_when_charmcraft_yaml_absent(
         self, tmp_charm: pathlib.Path
     ):
-        # When charmcraft.yaml is absent (or empty), metadata_source is
+        # When charmcraft.yaml is absent (or empty), the metadata source is
         # "metadata.yaml" regardless of whether metadata.yaml exists.
         # The linter emits a FATAL before rules run when both are absent.
         ctx = build_context(tmp_charm)
-        assert ctx.metadata_source == "metadata.yaml"
+        assert ctx.metadata.source == "metadata.yaml"
 
 
 class TestLintFiltering:
