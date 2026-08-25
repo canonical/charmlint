@@ -27,3 +27,20 @@ class NoLicence(Rule):
         if len(valid) == 2:
             return [self.diagnostic("Both LICENSE and LICENCE files present; keep only one.")]
         return []
+
+
+class NoIcon(Rule):
+    category = "STRUCTURE"
+    number = 2
+    name = "no-icon"
+    description = "No icon.svg found"
+    default_severity = models.Severity.INFO
+    reference_url = (
+        "https://canonical.com/juju/docs/charmcraft/stable/reference/files/icon-svg-file/"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        icon = context.charm_dir / "icon.svg"
+        if not icon.is_file() or icon.stat().st_size == 0:
+            return [self.diagnostic(self.description)]
+        return []
