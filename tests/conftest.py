@@ -42,12 +42,12 @@ def make_full_charm(charm_dir: pathlib.Path) -> None:
                 "source": "https://example.com/source",
             },
             "requires": {
-                "tracing": {"interface": "tracing"},
-                "logging": {"interface": "loki_push_api"},
-                "grafana-dashboard": {"interface": "grafana_dashboard"},
+                "tracing": {"interface": "tracing", "optional": True},
+                "logging": {"interface": "loki_push_api", "optional": True},
+                "grafana-dashboard": {"interface": "grafana_dashboard", "optional": True},
             },
             "provides": {
-                "metrics-endpoint": {"interface": "prometheus_scrape"},
+                "metrics-endpoint": {"interface": "prometheus_scrape", "optional": True},
             },
             "config": {
                 "options": {
