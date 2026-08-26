@@ -8,6 +8,26 @@ the substantive doc if one exists (HACKING.md, docs/contributing.md, etc.).
 Most Charm Tech repos keep this section inline rather than redirecting.
 -->
 
+# Project status
+
+charmlint is early work, and the implementation is subject to change (and probably will change). Please don't treat anything under `src/` as settled, or build on it expecting the internals to stay where they are.
+
+What we're trying to get right at the moment is the set of rules. That's where the care goes: what each rule is for, what it does and doesn't match, and the tests that pin that behaviour down. The tests themselves might change shape later - we'd like them to be less Python-specific, since charmlint is meant to be model-agnostic - so it's not worth over-investing in the current fixtures.
+
+The code is almost entirely agent-generated, and that's likely to continue for a while yet.
+
+# Review
+
+Review still matters, but the weight isn't spread evenly.
+
+Most of the attention belongs on the rule itself:
+
+* Is this a good thing to have a rule about at all? A rule that's noisy, or that encodes a personal preference rather than a practice we'd defend, costs more than it's worth.
+* What does it match, and (more importantly) what does it not match? A false positive is worse than a gap.
+* Do the tests actually capture that? A test that only exercises the case the rule was written for isn't telling us much.
+
+The implementation gets a lighter pass. We're more lenient about "agent-isms" here than in the other Charm Tech repos: if the code is more verbose or more defensive than a person would have written it, and it's correct and readable, that's ok. That's not a license to let quality slide - we still want code we'd be happy to maintain, and unnecessary comments (the ones that restate what the next line does) should still go. But if you find yourself choosing, spend the time on the rule rather than on the style of the code implementing it.
+
 # AI
 
 You're welcome to submit pull requests that are partly or entirely generated using generative AI tools. However, you must review the code yourself before moving the PR out of draft -- by submitting the PR, you are claiming personal responsibility for its quality and suitability. If you are not capable of reviewing the PR, please do not submit it (maybe you'd like to open an issue instead). PRs that are clearly (co-)authored by tools will be closed without review unless there is a human author that claims responsibility for the PR.
@@ -63,4 +83,3 @@ Replace this comment with the actual procedure. Repos that don't produce a
 discrete release artefact (demos, tutorials, specs, registries) can drop the
 whole section.
 -->
-
