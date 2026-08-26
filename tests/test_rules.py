@@ -251,6 +251,29 @@ class TestStructureRules:
         report = lint(tmp_charm)
         assert "STRUCTURE-001" in {d.rule_id for d in report}
 
+    def test_no_icon(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "STRUCTURE-002" in {d.rule_id for d in report}
+
+    def test_icon_present_no_diagnostic(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "icon.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>\n')
+        report = lint(tmp_charm)
+        assert "STRUCTURE-002" not in {d.rule_id for d in report}
+
+    def test_empty_icon_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "icon.svg").write_text("")
+        report = lint(tmp_charm)
+        assert "STRUCTURE-002" in {d.rule_id for d in report}
+
+    def test_icon_directory_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "icon.svg").mkdir()
+        report = lint(tmp_charm)
+        assert "STRUCTURE-002" in {d.rule_id for d in report}
+
 
 class TestTestingRules:
     """Tests for TESTING-001 — no unit tests found."""
