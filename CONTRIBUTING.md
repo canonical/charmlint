@@ -26,7 +26,7 @@ Most of the attention belongs on the rule itself:
 * What does it match, and (more importantly) what does it not match? A false positive is worse than a gap.
 * Do the tests actually capture that? A test that only exercises the case the rule was written for isn't telling us much.
 
-The implementation gets a lighter pass. We're more lenient about "agent-isms" here than in the other Charm Tech repos: if the code is more verbose or more defensive than a person would have written it, and it's correct and readable, that's ok. That's not a license to let quality slide - we still want code we'd be happy to maintain, and unnecessary comments (the ones that restate what the next line does) should still go. But if you find yourself choosing, spend the time on the rule rather than on the style of the code implementing it.
+The implementation gets a lighter pass. We're more lenient about "agent-isms" here than in the other Charm Tech repos: if the code is more verbose or more defensive than a person would have written it, and it's correct and readable, that's ok. That's not a license to let quality slide - we still want code we'd be happy to maintain, and unnecessary comments (especially ones referring to history) should still go. But if you find yourself choosing, spend the time on the rule rather than on the style of the code implementing it.
 
 # AI
 
