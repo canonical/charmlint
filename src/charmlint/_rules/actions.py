@@ -132,3 +132,41 @@ class ActionMissingObserver(Rule):
                 )
             )
         return diagnostics
+
+
+class ActionMissingAdditionalProperties(Rule):
+    """Every declared action should state ``additionalProperties`` explicitly.
+
+    Juju 4 flipped the default relative to Juju 3, so an action that
+    omits the field accepts unknown parameters on one version and
+    rejects them on the other. Either value silences the rule — the
+    point is that the charm has made the choice, not that it made a
+    particular one.
+
+    Actions declared without a body (``do-thing:`` with no mapping) are
+    flagged too: they have no ``additionalProperties`` either.
+    """
+
+    category = "ACTIONS"
+    number = 2
+    name = "action-missing-additional-properties"
+    description = "Action does not explicitly set 'additionalProperties'"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for action_name, body in context.actions.items():
+            if isinstance(body, dict) and "additionalProperties" in body:
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"Action '{action_name}' does not set 'additionalProperties' — "
+                    f"Juju 3 and Juju 4 default it differently",
+                    fix_hint=(
+                        f"Add `additionalProperties: false` to '{action_name}' "
+                        f"(or `true` if unknown parameters are intended)"
+                    ),
+                )
+            )
+        return diagnostics
