@@ -1,5 +1,6 @@
 """Core data models for charmlint."""
 
+import ast
 import contextlib
 import dataclasses
 import enum
@@ -171,6 +172,54 @@ class Diagnostic:
         return result
 
 
+class Scope(enum.StrEnum):
+    """Which part of the charm tree a module lives in.
+
+    Rules are almost always interested in exactly one of these. ``SRC`` is
+    the charm's own code; ``LIB`` is vendored ``charmcraft fetch-lib``
+    output, which the charm author does not maintain and should not be
+    linted for style or correctness.
+    """
+
+    SRC = "src"
+    LIB = "lib"
+    TESTS_UNIT = "tests/unit"
+    TESTS_INTEGRATION = "tests/integration"
+    OTHER = "other"
+
+
+@dataclasses.dataclass(frozen=True)
+class Module:
+    """One parsed Python file, with the provenance a diagnostic needs.
+
+    ``path`` is charm-relative and POSIX-formatted — the form a diagnostic
+    should report, matching how YAML rules report ``charmcraft.yaml``. Use
+    ``file`` when an absolute path is genuinely needed (a permission check,
+    say); everything user-facing wants ``path``.
+    """
+
+    path: str
+    file: pathlib.Path
+    text: str
+    tree: ast.Module
+    scope: Scope
+
+    def walk(self, *types: type[ast.AST]) -> Iterator[Any]:
+        """Yield every node of the given types, anywhere in the module.
+
+        ``module.walk(ast.Call)`` replaces the ``for node in ast.walk(tree):
+        if isinstance(node, ast.Call)`` pair that every AST rule opens with.
+        With no types given, yields every node.
+        """
+        for node in ast.walk(self.tree):
+            if not types or isinstance(node, types):
+                yield node
+
+    def functions(self) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
+        """Yield every function and method defined anywhere in the module."""
+        yield from self.walk(ast.FunctionDef, ast.AsyncFunctionDef)
+
+
 @dataclasses.dataclass
 class CharmContext:
     """All the data a rule needs, loaded once by the linter engine."""
@@ -189,9 +238,31 @@ class CharmContext:
     )
     python_files: list[pathlib.Path] = dataclasses.field(default_factory=list)
     python_sources: dict[pathlib.Path, str] = dataclasses.field(default_factory=dict)
+    # Every collected source, parsed once by the linter core. A rule that
+    # wants charm code should use ``charm_sources()`` rather than reaching
+    # for ``python_sources`` and parsing it again.
+    python_modules: list[Module] = dataclasses.field(default_factory=list)
     readme_content: str = ""
     has_tests_unit: bool = False
     has_tests_integration: bool = False
+
+    def modules(self, *scopes: Scope) -> Iterator[Module]:
+        """Yield the parsed modules, restricted to *scopes*.
+
+        With no scopes given, yields every module the linter collected.
+        """
+        for module in self.python_modules:
+            if not scopes or module.scope in scopes:
+                yield module
+
+    def charm_sources(self) -> Iterator[Module]:
+        """Yield the charm's own source modules — ``src/``, excluding ``lib/``.
+
+        The default iterator for a rule that checks charm code. Vendored
+        libraries are the library author's problem, and tests are a
+        different question from the charm they exercise.
+        """
+        return self.modules(Scope.SRC)
 
 
 @dataclasses.dataclass
