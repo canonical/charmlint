@@ -12,11 +12,14 @@ from charmlint._linter import build_context, lint
 from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 
-def parse(source: str, path: str = "src/charm.py") -> models.Module:
+def parse(source: str, path: str = "src/charm.py", charm_name: str | None = None) -> models.Module:
     """Parse a source snippet as if it lived at *path* in a charm."""
     charm_dir = pathlib.PurePosixPath("/charm")
     return _ast.parse(
-        pathlib.Path(charm_dir / path), textwrap.dedent(source), pathlib.Path(charm_dir)
+        pathlib.Path(charm_dir / path),
+        textwrap.dedent(source),
+        pathlib.Path(charm_dir),
+        charm_name,
     )
 
 
@@ -36,6 +39,9 @@ class TestScope:
             # A charm's own src/lib/ is charm source, not a vendored library.
             ("src/lib/util.py", models.Scope.SRC),
             ("lib/charms/owner/v0/thing.py", models.Scope.LIB),
+            # Not laid out as lib/charms/<owner>/, so not attributable.
+            ("lib/helper.py", models.Scope.LIB),
+            ("lib/charms/loose.py", models.Scope.LIB),
             ("tests/unit/test_charm.py", models.Scope.TESTS_UNIT),
             ("tests/integration/test_charm.py", models.Scope.TESTS_INTEGRATION),
             # Test code that is neither of the two named suites.
@@ -47,6 +53,26 @@ class TestScope:
     )
     def test_scope_of_path(self, path: str, expected: models.Scope):
         assert parse("x = 1", path).scope == expected
+
+    @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            # The charm publishes into its own name, hyphens underscored.
+            ("lib/charms/my_charm/v0/thing.py", models.Scope.CHARM_LIB),
+            ("lib/charms/my_charm/v2/nested/thing.py", models.Scope.CHARM_LIB),
+            # Someone else's library, vendored by fetch-lib.
+            ("lib/charms/other_charm/v0/thing.py", models.Scope.LIB),
+            # A near-miss on the owner directory is still someone else's.
+            ("lib/charms/my-charm/v0/thing.py", models.Scope.LIB),
+            ("lib/charms/my_charm_extra/v0/thing.py", models.Scope.LIB),
+        ],
+    )
+    def test_own_library_is_distinguished_from_vendored(self, path: str, expected: models.Scope):
+        assert parse("x = 1", path, charm_name="my-charm").scope == expected
+
+    def test_without_a_charm_name_everything_under_lib_is_vendored(self):
+        module = parse("x = 1", "lib/charms/my_charm/v0/thing.py")
+        assert module.scope == models.Scope.LIB
 
     def test_path_is_charm_relative_posix(self):
         assert parse("x = 1", "src/nested/helper.py").path == "src/nested/helper.py"
@@ -363,7 +389,7 @@ class TestParsingInTheCore:
         context = build_context(tmp_charm)
         assert [m.path for m in context.charm_sources()] == ["src/charm.py"]
 
-    def test_lib_is_collected_but_not_a_charm_source(self, tmp_charm: pathlib.Path):
+    def test_vendored_lib_is_collected_but_not_a_charm_source(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(tmp_charm, "import ops\n")
         lib = tmp_charm / "lib" / "charms" / "owner" / "v0"
@@ -373,6 +399,23 @@ class TestParsingInTheCore:
         assert [m.path for m in context.charm_sources()] == ["src/charm.py"]
         assert [m.path for m in context.modules(models.Scope.LIB)] == [
             "lib/charms/owner/v0/thing.py"
+        ]
+
+    def test_own_published_lib_is_a_charm_source(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "my-charm"})
+        write_charm_source(tmp_charm, "import ops\n")
+        for owner in ("my_charm", "other_charm"):
+            directory = tmp_charm / "lib" / "charms" / owner / "v0"
+            directory.mkdir(parents=True)
+            (directory / "thing.py").write_text("import ops\n")
+        context = build_context(tmp_charm)
+        # Collection order is src/, then lib/, then tests/.
+        assert [m.path for m in context.charm_sources()] == [
+            "src/charm.py",
+            "lib/charms/my_charm/v0/thing.py",
+        ]
+        assert [m.path for m in context.modules(models.Scope.LIB)] == [
+            "lib/charms/other_charm/v0/thing.py"
         ]
 
     def test_tests_are_collected_with_their_own_scopes(self, tmp_charm: pathlib.Path):

@@ -26,7 +26,16 @@ from collections.abc import Iterator, Sequence
 from . import _models as models
 
 
-def _scope_of(relative: pathlib.PurePosixPath) -> models.Scope:
+def _library_owner(name: str) -> str:
+    """Return the ``lib/charms/`` directory name a charm publishes under.
+
+    Charmhub names are hyphenated and Python packages are not, so
+    ``my-charm`` publishes into ``lib/charms/my_charm/``.
+    """
+    return name.replace("-", "_")
+
+
+def _scope_of(relative: pathlib.PurePosixPath, charm_name: str | None) -> models.Scope:
     """Classify a charm-relative path into a :class:`models.Scope`."""
     parts = relative.parts
     # Longest prefix first, so the two named suites beat the generic fallback.
@@ -36,17 +45,32 @@ def _scope_of(relative: pathlib.PurePosixPath) -> models.Scope:
         return models.Scope.TESTS_INTEGRATION
     if parts[:1] == ("tests",):
         return models.Scope.TESTS
-    # Only the top-level lib/ is vendored library code — a charm's own
-    # ``src/lib/`` is charm source.
+    # Only the top-level lib/ is library code — a charm's own ``src/lib/``
+    # is charm source.
     if parts[:1] == ("lib",):
+        # Everything under lib/charms/ is laid out as ``<owner>/vN/<lib>.py``.
+        # The charm publishing the library owns that directory; every other
+        # owner is a vendored copy of someone else's work.
+        owner = parts[2] if parts[:2] == ("lib", "charms") and len(parts) > 2 else None
+        if owner is not None and charm_name and owner == _library_owner(charm_name):
+            return models.Scope.CHARM_LIB
         return models.Scope.LIB
     if parts[:1] == ("src",):
         return models.Scope.SRC
     return models.Scope.OTHER
 
 
-def parse(file: pathlib.Path, text: str, charm_dir: pathlib.Path) -> models.Module:
+def parse(
+    file: pathlib.Path,
+    text: str,
+    charm_dir: pathlib.Path,
+    charm_name: str | None = None,
+) -> models.Module:
     """Parse one source file into a :class:`Module`.
+
+    *charm_name* is the charm's declared name, which tells a library this
+    charm publishes apart from a vendored copy of someone else's. Without
+    it, everything under ``lib/`` is taken to be vendored.
 
     Raises :class:`SyntaxError` — with ``filename`` set — for an unparseable
     source. The linter core turns that into a fatal diagnostic; rules never
@@ -58,7 +82,7 @@ def parse(file: pathlib.Path, text: str, charm_dir: pathlib.Path) -> models.Modu
         file=file,
         text=text,
         tree=ast.parse(text, filename=str(file)),
-        scope=_scope_of(relative),
+        scope=_scope_of(relative, charm_name),
     )
 
 

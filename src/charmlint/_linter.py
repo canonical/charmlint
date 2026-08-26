@@ -61,7 +61,7 @@ def _read_python_sources(python_files: list[pathlib.Path]) -> dict[pathlib.Path,
 
 
 def _parse_python_modules(
-    sources: dict[pathlib.Path, str], charm_dir: pathlib.Path
+    sources: dict[pathlib.Path, str], charm_dir: pathlib.Path, charm_name: str | None
 ) -> list[models.Module]:
     """Parse every collected source once, for all rules to share.
 
@@ -74,7 +74,7 @@ def _parse_python_modules(
     modules: list[models.Module] = []
     for path, text in sources.items():
         try:
-            modules.append(_ast.parse(path, text, charm_dir))
+            modules.append(_ast.parse(path, text, charm_dir, charm_name))
         except SyntaxError as exc:
             line = f" (line {exc.lineno})" if exc.lineno else ""
             raise _yaml.FileLoadError(path, f"could not parse{line}: {exc.msg}") from exc
@@ -135,7 +135,10 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
     # Collect Python files and read their contents.
     python_files = _collect_python_files(charm_dir)
     python_sources = _read_python_sources(python_files)
-    python_modules = _parse_python_modules(python_sources, charm_dir)
+    name = metadata.get("name").value
+    python_modules = _parse_python_modules(
+        python_sources, charm_dir, name if isinstance(name, str) else None
+    )
 
     # Read README.
     readme_content = ""

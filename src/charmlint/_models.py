@@ -176,9 +176,11 @@ class Scope(enum.StrEnum):
     """Which part of the charm tree a module lives in.
 
     Rules are almost always interested in exactly one of these. ``SRC`` is
-    the charm's own code; ``LIB`` is vendored ``charmcraft fetch-lib``
-    output, which the charm author does not maintain and should not be
-    linted for style or correctness.
+    the charm's own code and ``CHARM_LIB`` the libraries it publishes: both
+    are maintained by the charm author. ``LIB`` is a vendored
+    ``charmcraft fetch-lib`` copy of *someone else's* library, which the
+    author does not maintain and should not be linted for style or
+    correctness — deleting it is the only fix they can make.
 
     The scopes are disjoint: a module has exactly one. ``TESTS`` covers test
     code that is neither ``tests/unit`` nor ``tests/integration`` — shared
@@ -188,6 +190,7 @@ class Scope(enum.StrEnum):
     """
 
     SRC = "src"
+    CHARM_LIB = "charm-lib"
     LIB = "lib"
     TESTS = "tests"
     TESTS_UNIT = "tests/unit"
@@ -261,13 +264,14 @@ class CharmContext:
                 yield module
 
     def charm_sources(self) -> Iterator[Module]:
-        """Yield the charm's own source modules — ``src/``, excluding ``lib/``.
+        """Yield the modules the charm's author maintains.
 
-        The default iterator for a rule that checks charm code. Vendored
-        libraries are the library author's problem, and tests are a
-        different question from the charm they exercise.
+        The default iterator for a rule that checks charm code: ``src/``
+        plus any library this charm publishes. Someone else's vendored
+        library is their problem, and tests are a different question from
+        the charm they exercise.
         """
-        return self.modules(Scope.SRC)
+        return self.modules(Scope.SRC, Scope.CHARM_LIB)
 
 
 @dataclasses.dataclass
