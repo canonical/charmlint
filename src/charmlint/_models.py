@@ -207,8 +207,6 @@ class Module:
     def walk(self, *types: type[ast.AST]) -> Iterator[Any]:
         """Yield every node of the given types, anywhere in the module.
 
-        ``module.walk(ast.Call)`` replaces the ``for node in ast.walk(tree):
-        if isinstance(node, ast.Call)`` pair that every AST rule opens with.
         With no types given, yields every node.
         """
         for node in ast.walk(self.tree):
@@ -238,9 +236,9 @@ class CharmContext:
     )
     python_files: list[pathlib.Path] = dataclasses.field(default_factory=list)
     python_sources: dict[pathlib.Path, str] = dataclasses.field(default_factory=dict)
-    # Every collected source, parsed once by the linter core. A rule that
-    # wants charm code should use ``charm_sources()`` rather than reaching
-    # for ``python_sources`` and parsing it again.
+    # Every collected source, parsed once by the linter core. Rules should
+    # reach these through ``charm_sources()`` or ``modules()``, which select
+    # by scope.
     python_modules: list[Module] = dataclasses.field(default_factory=list)
     readme_content: str = ""
     has_tests_unit: bool = False

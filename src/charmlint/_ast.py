@@ -14,9 +14,8 @@ to decide what to do about one. :class:`models.Module` and
 Sections, in call order: parsing, then name resolution, then the matcher
 families built on it — imports, calls, observers, statements, literals.
 
-Every matcher here has at least two callers, landed or in review. A finder
-that only one rule wants stays with that rule until a second one asks for
-it (#192).
+A matcher belongs here once a second rule wants it; until then it stays
+with the rule that needs it.
 """
 
 import ast
@@ -35,9 +34,8 @@ def _scope_of(relative: pathlib.PurePosixPath) -> models.Scope:
         return models.Scope.TESTS_UNIT
     if parts[:2] == ("tests", "integration"):
         return models.Scope.TESTS_INTEGRATION
-    # Only the top-level lib/ is vendored library code. A charm's own
-    # ``src/lib/`` is charm source, and the ``"lib" in path.parts`` test that
-    # several rules grew independently gets that wrong.
+    # Only the top-level lib/ is vendored library code — a charm's own
+    # ``src/lib/`` is charm source.
     if parts[:1] == ("lib",):
         return models.Scope.LIB
     if parts[:1] == ("src",):
@@ -49,9 +47,8 @@ def parse(file: pathlib.Path, text: str, charm_dir: pathlib.Path) -> models.Modu
     """Parse one source file into a :class:`Module`.
 
     Raises :class:`SyntaxError` — with ``filename`` set — for an unparseable
-    source. Callers in the linter core turn that into a fatal diagnostic;
-    rules never see it. See #191: a charm with a broken ``src/charm.py``
-    should not produce a report that looks clean.
+    source. The linter core turns that into a fatal diagnostic; rules never
+    see it.
     """
     relative = pathlib.PurePosixPath(file.relative_to(charm_dir).as_posix())
     return models.Module(
@@ -93,12 +90,11 @@ class Imports:
     """The names a module's imports bind, and what they resolve to.
 
     Lets a rule ask "does this name mean ``time.sleep`` here?" without
-    assuming a spelling. Several rules currently either hard-code one form
-    or, as PR #37 says of ``from time import sleep``, document the
-    unresolvable case as a deliberate miss.
+    assuming a spelling, so that ``from time import sleep`` is as visible
+    as ``time.sleep``.
 
     Relative imports (``from . import x``) are ignored: resolving them needs
-    the charm's package layout, and no rule has wanted one yet.
+    the charm's package layout.
     """
 
     aliases: dict[str, str]

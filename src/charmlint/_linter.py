@@ -29,10 +29,10 @@ def _category_of(rule_id: str) -> str:
 def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
     """Collect all Python files in the charm's source and test trees.
 
-    ``tests/`` is collected as well as ``src/`` and ``lib/`` so that rules
-    about test code have something to read. Each file is tagged with a
-    :class:`models.Scope` when parsed, and rules select the scope they mean,
-    so widening collection here does not widen what any existing rule sees.
+    Covers ``src/``, ``lib/`` and ``tests/``. Each file is tagged with a
+    :class:`models.Scope` when parsed, and a rule selects the scope it
+    means, so collecting a tree here does not put it in front of a rule
+    that did not ask for it.
     """
     files: list[pathlib.Path] = []
     for subdir in ("src", "lib", "tests"):
@@ -66,11 +66,10 @@ def _parse_python_modules(
     """Parse every collected source once, for all rules to share.
 
     A source that does not parse is a :class:`_yaml.FileLoadError`, the same as a
-    malformed YAML file — see #191. charmlint does not duplicate what ruff
-    and a type checker already report, and both run before it; a charm that
-    reaches charmlint with a broken ``src/charm.py`` should be told so
-    rather than handed a report that looks clean because every AST rule
-    quietly skipped the file.
+    malformed YAML file. charmlint does not duplicate what ruff and a type
+    checker already report, and both run before it; a charm that reaches
+    charmlint with a broken ``src/charm.py`` should be told so rather than
+    handed a report that looks clean.
     """
     modules: list[models.Module] = []
     for path, text in sources.items():
