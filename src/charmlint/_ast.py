@@ -29,11 +29,13 @@ from . import _models as models
 def _scope_of(relative: pathlib.PurePosixPath) -> models.Scope:
     """Classify a charm-relative path into a :class:`models.Scope`."""
     parts = relative.parts
-    # Longest prefix first, so tests/unit beats a bare tests/ file.
+    # Longest prefix first, so the two named suites beat the generic fallback.
     if parts[:2] == ("tests", "unit"):
         return models.Scope.TESTS_UNIT
     if parts[:2] == ("tests", "integration"):
         return models.Scope.TESTS_INTEGRATION
+    if parts[:1] == ("tests",):
+        return models.Scope.TESTS
     # Only the top-level lib/ is vendored library code — a charm's own
     # ``src/lib/`` is charm source.
     if parts[:1] == ("lib",):

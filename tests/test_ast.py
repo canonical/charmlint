@@ -38,7 +38,11 @@ class TestScope:
             ("lib/charms/owner/v0/thing.py", models.Scope.LIB),
             ("tests/unit/test_charm.py", models.Scope.TESTS_UNIT),
             ("tests/integration/test_charm.py", models.Scope.TESTS_INTEGRATION),
-            ("tests/conftest.py", models.Scope.OTHER),
+            # Test code that is neither of the two named suites.
+            ("tests/conftest.py", models.Scope.TESTS),
+            ("tests/scenario/test_charm.py", models.Scope.TESTS),
+            ("tests/spread/nested/task.py", models.Scope.TESTS),
+            ("build.py", models.Scope.OTHER),
         ],
     )
     def test_scope_of_path(self, path: str, expected: models.Scope):
@@ -384,6 +388,19 @@ class TestParsingInTheCore:
         assert [m.path for m in context.modules(models.Scope.TESTS_INTEGRATION)] == [
             "tests/integration/test_charm.py"
         ]
+
+    def test_unrecognised_test_suite_falls_back_to_tests(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        directory = tmp_charm / "tests" / "scenario"
+        directory.mkdir(parents=True)
+        (directory / "test_charm.py").write_text("def test_x(): pass\n")
+        (tmp_charm / "tests" / "conftest.py").write_text("import pytest\n")
+        context = build_context(tmp_charm)
+        assert [m.path for m in context.modules(models.Scope.TESTS)] == [
+            "tests/conftest.py",
+            "tests/scenario/test_charm.py",
+        ]
+        assert list(context.modules(models.Scope.OTHER)) == []
 
     def test_modules_without_scopes_yields_everything(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})

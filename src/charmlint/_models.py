@@ -179,10 +179,17 @@ class Scope(enum.StrEnum):
     the charm's own code; ``LIB`` is vendored ``charmcraft fetch-lib``
     output, which the charm author does not maintain and should not be
     linted for style or correctness.
+
+    The scopes are disjoint: a module has exactly one. ``TESTS`` covers test
+    code that is neither ``tests/unit`` nor ``tests/integration`` — shared
+    fixtures in ``tests/conftest.py``, and suites a charm organises its own
+    way, such as ``tests/scenario`` or ``tests/spread``. A rule that means
+    every test file asks for all three.
     """
 
     SRC = "src"
     LIB = "lib"
+    TESTS = "tests"
     TESTS_UNIT = "tests/unit"
     TESTS_INTEGRATION = "tests/integration"
     OTHER = "other"
