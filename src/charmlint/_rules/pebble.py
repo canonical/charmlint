@@ -86,7 +86,7 @@ class PebbleEnvNonString(Rule):
     name = "pebble-env-non-string"
     description = "Pebble layer environment value is not a string"
     default_severity = models.Severity.ERROR
-    reference_url = "https://documentation.ubuntu.com/pebble/reference/layer-specification/"
+    reference_url = "https://ubuntu.com/docs/pebble/reference/layer-specification/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
