@@ -62,6 +62,7 @@ class TestLoad:
             ("- a\n- b\n", "top-level YAML value is not a mapping"),
             ("just a string\n", "top-level YAML value is not a mapping"),
             ("? [a, b]\n: c\n", "invalid mapping key"),
+            ("links: &a\n  - *a\n", "recursive node"),
         ],
     )
     def test_broken_file_raises(self, tmp_path: pathlib.Path, content: str, reason: str):
@@ -85,6 +86,47 @@ class TestLoad:
         assert node[True].value == "allowed"
         assert node[7].value == "x"
         assert list(node) == [True, 7]
+
+    def test_block_sequence_elements_keep_their_own_line(self, tmp_path: pathlib.Path):
+        # A finding about one URL in a list should anchor to that URL, so a
+        # ``noqa`` beside it silences that element and not its neighbours.
+        node = _yaml.load(
+            _write(
+                tmp_path,
+                "charmcraft.yaml",
+                "name: test\nlinks:\n  website:\n    - https://a.example\n    - https://b.example\n",
+            )
+        )
+        website = node["links"]["website"]
+        assert website.value == ["https://a.example", "https://b.example"]
+        assert [(e.value, e.line) for e in website.elements or []] == [
+            ("https://a.example", 4),
+            ("https://b.example", 5),
+        ]
+        assert all(e.source == "charmcraft.yaml" for e in website.elements or [])
+
+    def test_flow_sequence_elements_share_their_line(self, tmp_path: pathlib.Path):
+        # ``[a, b]`` on one line is one line to a reader and to ``noqa``.
+        node = _yaml.load(
+            _write(
+                tmp_path,
+                "charmcraft.yaml",
+                "name: test\nwebsite: [https://a.example, https://b.example]\n",
+            )
+        )
+        assert [e.line for e in node["website"].elements or []] == [2, 2]
+
+    def test_sequence_of_mappings_is_wrapped_through(self, tmp_path: pathlib.Path):
+        node = _yaml.load(
+            _write(
+                tmp_path,
+                "charmcraft.yaml",
+                "name: test\nparts:\n  - plugin: dump\n  - plugin: nil\n",
+            )
+        )
+        elements = node["parts"].elements or []
+        assert [e["plugin"].value for e in elements] == ["dump", "nil"]
+        assert [e["plugin"].line for e in elements] == [3, 4]
 
 
 class TestMerge:
@@ -170,6 +212,22 @@ class TestYamlNode:
         # a malformed section yields no findings rather than a crash.
         assert list(node.get("series").items()) == []
         assert list(node.get("nope").items()) == []
+
+    def test_a_sequence_is_not_a_mapping(self, node: Yaml):
+        # Sequences carry provenance through ``elements``, but the mapping
+        # lookups stay mapping-only: a section written as a list is malformed
+        # to a rule that wants names, rather than yielding list indices.
+        series = node.get("series")
+        assert series.elements == []
+        assert list(series.items()) == []
+        assert list(series) == []
+        assert 0 not in series
+
+    def test_elements_is_none_for_a_non_sequence(self, node: Yaml):
+        # ``None`` (not a sequence) is distinct from ``[]`` (an empty one).
+        assert node.get("name").elements is None
+        assert node.get("links").elements is None
+        assert node.get("nope").elements is None
 
     def test_getitem_raises_for_a_missing_key(self, node: Yaml):
         with pytest.raises(KeyError):
