@@ -26,8 +26,8 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | PEBBLE-005 | PEBBLE-005 (new, issue #155) | `_rules/pebble.py` | `test_pebble.py` | | in review |
 | ACT 001-003 | ACT001, ACT002, ACT003 | `_rules/actions.py` (factory, shared `_EXPECTED_ACTIONS`) | `test_rules.py::TestActionRules` | | pending |
 | ACTIONS-001 | ACTIONS-001 (was ACT006 pre-renumber) | `_rules/actions.py` | `test_actions.py` | #104 | merged |
-| ACTIONS-003 | ACTIONS-003 (was ACT004 pre-renumber) | `_rules/actions.py` | `test_actions.py` | | in review |
-| ACTIONS-004 | ACTIONS-004 (was ACT005 pre-renumber) | `_rules/actions.py` | `test_actions.py` | | in review |
+| ACTIONS-003 | ACTIONS-003 (was ACT004 pre-renumber) | `_rules/actions.py` | `test_actions.py` | #182 | in review |
+| ACTIONS-004 | ACTIONS-004 (was ACT005 pre-renumber) | `_rules/actions.py` | `test_actions.py` | #182 | in review |
 | ACT007 | ACT007 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | CONFIG 001-003 | CONFIG-001, CONFIG-002, CONFIG-003 (were CFG001-CFG003 pre-renumber) | `_rules/config_quality.py` | `test_config_quality.py` | | in review |
 | CFG004 | CFG004 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
