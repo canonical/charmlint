@@ -166,3 +166,79 @@ class TestActionMissingObserver:
         )
         report = lint(tmp_charm)
         assert "ACTIONS-001" in {d.rule_id for d in report}
+
+
+class TestActionMissingAdditionalProperties:
+    """ACTIONS-002 — declared actions must state `additionalProperties`."""
+
+    def test_missing_additional_properties_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {"description": "x"}}},
+        )
+        report = lint(tmp_charm)
+        found = [d for d in report if d.rule_id == "ACTIONS-002"]
+        assert len(found) == 1
+        assert found[0].severity == Severity.WARNING
+        assert "do-thing" in found[0].message
+
+    def test_additional_properties_false_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "actions": {"do-thing": {"description": "x", "additionalProperties": False}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert "ACTIONS-002" not in {d.rule_id for d in report}
+
+    def test_additional_properties_true_not_flagged(self, tmp_charm: pathlib.Path):
+        # Either value is accepted — the rule only asks that the charm chose.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "actions": {"do-thing": {"description": "x", "additionalProperties": True}},
+            },
+        )
+        report = lint(tmp_charm)
+        assert "ACTIONS-002" not in {d.rule_id for d in report}
+
+    def test_action_without_body_flagged(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text("name: test\nactions:\n  do-thing:\n")
+        report = lint(tmp_charm)
+        found = [d for d in report if d.rule_id == "ACTIONS-002"]
+        assert len(found) == 1
+        assert "do-thing" in found[0].message
+
+    def test_each_action_flagged_separately(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "actions": {
+                    "do-thing": {"description": "x"},
+                    "do-other": {"description": "y", "additionalProperties": False},
+                    "do-third": {"description": "z"},
+                },
+            },
+        )
+        report = lint(tmp_charm)
+        found = [d for d in report if d.rule_id == "ACTIONS-002"]
+        assert len(found) == 2
+        flagged = {d.message.split("'")[1] for d in found}
+        assert flagged == {"do-thing", "do-third"}
+
+    def test_legacy_actions_yaml_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "actions.yaml").write_text("do-thing:\n  description: x\n")
+        report = lint(tmp_charm)
+        found = [d for d in report if d.rule_id == "ACTIONS-002"]
+        assert len(found) == 1
+        assert "do-thing" in found[0].message
+
+    def test_no_actions_declared_no_diagnostic(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "ACTIONS-002" not in {d.rule_id for d in report}
