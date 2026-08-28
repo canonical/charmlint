@@ -1,5 +1,6 @@
 """Core data models for charmlint."""
 
+import ast
 import contextlib
 import dataclasses
 import enum
@@ -171,6 +172,62 @@ class Diagnostic:
         return result
 
 
+class Scope(enum.StrEnum):
+    """Which part of the charm tree a module lives in.
+
+    Rules are almost always interested in exactly one of these. ``SRC`` is
+    the charm's own code and ``OWNED_LIB`` the libraries it publishes: both
+    are maintained by the charm author. ``VENDORED_LIB`` is a
+    ``charmcraft fetch-lib`` copy of *someone else's* library, which the
+    author does not maintain and should not be linted for style or
+    correctness — deleting it is the only fix they can make.
+
+    The scopes are disjoint: a module has exactly one. ``TESTS_OTHER``
+    covers test code that is neither ``tests/unit`` nor
+    ``tests/integration`` — shared fixtures in ``tests/conftest.py``, and
+    suites a charm organises its own way, such as ``tests/scenario`` or
+    ``tests/spread``. A rule that means every test file asks for all three.
+    """
+
+    SRC = "src"
+    OWNED_LIB = "owned-lib"
+    VENDORED_LIB = "vendored-lib"
+    TESTS_OTHER = "tests"
+    TESTS_UNIT = "tests/unit"
+    TESTS_INTEGRATION = "tests/integration"
+    OTHER = "other"
+
+
+@dataclasses.dataclass(frozen=True)
+class Module:
+    """One parsed Python file, with the provenance a diagnostic needs.
+
+    ``path`` is charm-relative and POSIX-formatted — the form a diagnostic
+    should report, matching how YAML rules report ``charmcraft.yaml``. Use
+    ``file`` when an absolute path is genuinely needed (a permission check,
+    say); everything user-facing wants ``path``.
+    """
+
+    path: str
+    file: pathlib.Path
+    text: str
+    tree: ast.Module
+    scope: Scope
+
+    def walk(self, *types: type[ast.AST]) -> Iterator[Any]:
+        """Yield every node of the given types, anywhere in the module.
+
+        With no types given, yields every node.
+        """
+        for node in ast.walk(self.tree):
+            if not types or isinstance(node, types):
+                yield node
+
+    def functions(self) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
+        """Yield every function and method defined anywhere in the module."""
+        yield from self.walk(ast.FunctionDef, ast.AsyncFunctionDef)
+
+
 @dataclasses.dataclass
 class CharmContext:
     """All the data a rule needs, loaded once by the linter engine."""
@@ -189,9 +246,32 @@ class CharmContext:
     )
     python_files: list[pathlib.Path] = dataclasses.field(default_factory=list)
     python_sources: dict[pathlib.Path, str] = dataclasses.field(default_factory=dict)
+    # Every collected source, parsed once by the linter core. Rules should
+    # reach these through ``charm_sources()`` or ``modules()``, which select
+    # by scope.
+    python_modules: list[Module] = dataclasses.field(default_factory=list)
     readme_content: str = ""
     has_tests_unit: bool = False
     has_tests_integration: bool = False
+
+    def modules(self, *scopes: Scope) -> Iterator[Module]:
+        """Yield the parsed modules, restricted to *scopes*.
+
+        With no scopes given, yields every module the linter collected.
+        """
+        for module in self.python_modules:
+            if not scopes or module.scope in scopes:
+                yield module
+
+    def charm_sources(self) -> Iterator[Module]:
+        """Yield the modules the charm's author maintains.
+
+        The default iterator for a rule that checks charm code: ``src/``
+        plus any library this charm publishes. Someone else's vendored
+        library is their problem, and tests are a different question from
+        the charm they exercise.
+        """
+        return self.modules(Scope.SRC, Scope.OWNED_LIB)
 
 
 @dataclasses.dataclass

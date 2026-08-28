@@ -1,7 +1,6 @@
 """Pebble rules — layer definitions built in the charm's Python source."""
 
 import ast
-import pathlib
 
 from .. import _models as models
 from ._base import Rule
@@ -42,7 +41,7 @@ def _keys(node: ast.Dict) -> set[str]:
 _SERVICE_MARKERS = frozenset({"override", "command"})
 
 
-def _environment_dicts(tree: ast.AST) -> list[ast.Dict]:
+def _environment_dicts(module: models.Module) -> list[ast.Dict]:
     """Return every ``environment`` dict literal of a Pebble service or check.
 
     Layers are ordinary dict literals in charm source — passed to
@@ -65,9 +64,7 @@ def _environment_dicts(tree: ast.AST) -> list[ast.Dict]:
             seen.add(id(environment))
             found.append(environment)
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Dict):
-            continue
+    for node in module.walk(ast.Dict):
         services = _lookup(node, "services")
         if isinstance(services, ast.Dict):
             for service in services.values:
@@ -94,20 +91,12 @@ class PebbleEnvNonString(Rule):
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
-        for path, content in context.python_sources.items():
-            if "lib" in path.parts:
-                continue
-            try:
-                tree = ast.parse(content)
-            except SyntaxError:
-                continue
-            for environment in _environment_dicts(tree):
-                diagnostics.extend(self._check_environment(environment, path))
+        for module in context.charm_sources():
+            for environment in _environment_dicts(module):
+                diagnostics.extend(self._check_environment(environment, module.path))
         return diagnostics
 
-    def _check_environment(
-        self, environment: ast.Dict, path: pathlib.Path
-    ) -> list[models.Diagnostic]:
+    def _check_environment(self, environment: ast.Dict, path: str) -> list[models.Diagnostic]:
         """Report every non-string constant value in one ``environment`` dict."""
         diagnostics: list[models.Diagnostic] = []
         for key, value in zip(environment.keys, environment.values, strict=True):
@@ -142,7 +131,7 @@ class PebbleEnvNonString(Rule):
                 self.diagnostic(
                     message,
                     severity=severity,
-                    path=str(path),
+                    path=path,
                     line=value.lineno,
                     fix_hint=fix_hint,
                 )

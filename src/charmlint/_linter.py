@@ -4,7 +4,7 @@ import contextlib
 import pathlib
 import re
 
-from . import _config, _noqa, _rules, _yaml
+from . import _ast, _config, _noqa, _rules, _yaml
 from . import _models as models
 
 # Rule IDs follow ``<UPPERCASE-CATEGORY>-<DIGITS>`` (e.g.
@@ -27,9 +27,15 @@ def _category_of(rule_id: str) -> str:
 
 
 def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
-    """Collect all Python files in src/ and lib/ directories."""
+    """Collect all Python files in the charm's source and test trees.
+
+    Covers ``src/``, ``lib/`` and ``tests/``. Each file is tagged with a
+    :class:`models.Scope` when parsed, and a rule selects the scope it
+    means, so collecting a tree here does not put it in front of a rule
+    that did not ask for it.
+    """
     files: list[pathlib.Path] = []
-    for subdir in ("src", "lib"):
+    for subdir in ("src", "lib", "tests"):
         d = charm_dir / subdir
         if d.is_dir():
             files.extend(sorted(d.rglob("*.py")))
@@ -52,6 +58,27 @@ def _read_python_sources(python_files: list[pathlib.Path]) -> dict[pathlib.Path,
         except OSError as exc:
             raise _yaml.FileLoadError(path, f"could not read: {exc}") from exc
     return sources
+
+
+def _parse_python_modules(
+    sources: dict[pathlib.Path, str], charm_dir: pathlib.Path, charm_name: str | None
+) -> list[models.Module]:
+    """Parse every collected source once, for all rules to share.
+
+    A source that does not parse is a :class:`_yaml.FileLoadError`, the same as a
+    malformed YAML file. charmlint does not duplicate what ruff and a type
+    checker already report, and both run before it; a charm that reaches
+    charmlint with a broken ``src/charm.py`` should be told so rather than
+    handed a report that looks clean.
+    """
+    modules: list[models.Module] = []
+    for path, text in sources.items():
+        try:
+            modules.append(_ast.parse(path, text, charm_dir, charm_name))
+        except SyntaxError as exc:
+            line = f" (line {exc.lineno})" if exc.lineno else ""
+            raise _yaml.FileLoadError(path, f"could not parse{line}: {exc.msg}") from exc
+    return modules
 
 
 def _check_tests(charm_dir: pathlib.Path) -> tuple[bool, bool]:
@@ -108,6 +135,10 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
     # Collect Python files and read their contents.
     python_files = _collect_python_files(charm_dir)
     python_sources = _read_python_sources(python_files)
+    name = metadata.get("name").value
+    python_modules = _parse_python_modules(
+        python_sources, charm_dir, name if isinstance(name, str) else None
+    )
 
     # Read README.
     readme_content = ""
@@ -125,6 +156,7 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
         config_options=config_options,
         python_files=python_files,
         python_sources=python_sources,
+        python_modules=python_modules,
         readme_content=readme_content,
         has_tests_unit=has_unit,
         has_tests_integration=has_integration,
