@@ -215,6 +215,26 @@ class TestPebbleEnvNonString:
         report = lint(tmp_charm)
         assert "PEBBLE-005" not in {d.rule_id for d in report}
 
-    def test_syntax_error_source_ignored(self, tmp_charm: pathlib.Path):
-        findings = _lint_source(tmp_charm, "def broken(:\n")
-        assert findings == []
+    def test_own_published_lib_checked(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "my-charm"})
+        lib_dir = tmp_charm / "lib" / "charms" / "my_charm" / "v0"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "helper.py").write_text(
+            textwrap.dedent("""\
+                LAYER = {
+                    "services": {
+                        "workload": {"environment": {"PROXY": None}},
+                    },
+                }
+            """)
+        )
+        report = lint(tmp_charm)
+        findings = [d for d in report if d.rule_id == "PEBBLE-005"]
+        assert len(findings) == 1
+        assert findings[0].path == "lib/charms/my_charm/v0/helper.py"
+
+    def test_syntax_error_is_fatal(self, tmp_charm: pathlib.Path):
+        """A source that does not parse is reported by the core, not skipped here."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "def broken(:\n")
+        assert [d.rule_id for d in lint(tmp_charm)] == ["FATAL"]
