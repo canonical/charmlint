@@ -25,9 +25,9 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | PEB003 | PEB003 | `_rules/pebble.py` | `test_rules.py::TestPebbleRules` | | pending |
 | PEBBLE-005 | PEBBLE-005 (new, issue #155) | `_rules/pebble.py` | `test_pebble.py` | | in review |
 | ACT 001-003 | ACT001, ACT002, ACT003 | `_rules/actions.py` (factory, shared `_EXPECTED_ACTIONS`) | `test_rules.py::TestActionRules` | | pending |
-| ACT004 | ACT004 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
-| ACT005 | ACT005 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
-| ACTIONS-001 | ACTIONS-001 (was ACT006 pre-renumber) | `_rules/actions.py` | `test_actions.py` | | in review |
+| ACTIONS-001 | ACTIONS-001 (was ACT006 pre-renumber) | `_rules/actions.py` | `test_actions.py` | #104 | merged |
+| ACTIONS-003 | ACTIONS-003 (was ACT004 pre-renumber) | `_rules/actions.py` | `test_actions.py` | #182 | in review |
+| ACTIONS-004 | ACTIONS-004 (was ACT005 pre-renumber) | `_rules/actions.py` | `test_actions.py` | #182 | in review |
 | ACT007 | ACT007 | `_rules/actions.py` | `test_rules.py::TestActionRules` | | pending |
 | CONFIG 001-003 | CONFIG-001, CONFIG-002, CONFIG-003 (were CFG001-CFG003 pre-renumber) | `_rules/config_quality.py` | `test_config_quality.py` | | in review |
 | CFG004 | CFG004 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
@@ -57,7 +57,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 
 - 61 rule IDs total across 17 modules
 - 1 kept in core (META001)
-- 60 to re-land via 41 PRs (shared-module groups collapsed: META 6→1, COS 4→1, STS 3→1, DEP 4→1, ACT001-003 3→1, CONFIG 001-003 3→1, CC005/006 2→1, LIB003/004 2→1)
+- 60 to re-land via 40 PRs (shared-module groups collapsed: META 6→1, COS 4→1, STS 3→1, DEP 4→1, ACT001-003 3→1, ACT004/005 2→1, CONFIG 001-003 3→1, CC005/006 2→1, LIB003/004 2→1)
 
 ## Process
 
