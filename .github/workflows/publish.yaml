@@ -1,18 +1,22 @@
 name: Publish
 
+# A tag push publishes to PyPI; a manual run publishes to TestPyPI, taking the
+# same path through the same steps so that a rehearsal actually rehearses.
+
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions: {}
 
 jobs:
   publish:
-    name: Build and publish to PyPI (Trusted Publishing)
+    name: Build and publish to ${{ github.event_name == 'push' && 'PyPI' || 'TestPyPI' }} (Trusted Publishing)
     runs-on: ubuntu-latest
     environment:
-      name: publish-pypi
-      url: https://pypi.org/p/charmlint
+      name: ${{ github.event_name == 'push' && 'publish-pypi' || 'publish-testpypi' }}
+      url: ${{ github.event_name == 'push' && 'https://pypi.org/p/charmlint' || 'https://test.pypi.org/p/charmlint' }}
     permissions:
       id-token: write      # OIDC to PyPI + sigstore for attestations.
       attestations: write  # Write build-provenance + SBOM predicates.
@@ -23,6 +27,7 @@ jobs:
           persist-credentials: false
 
       - name: Check the tag matches the project version
+        if: github.event_name == 'push'
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -31,6 +36,18 @@ jobs:
             echo "::error::Tag $TAG does not match pyproject.toml version $version (expected v$version)."
             exit 1
           fi
+
+      - name: Give the build a .dev suffix
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          sed -i -E "0,/^version = \"([^\"]+)\"/s//version = \"\\1.dev${RUN_NUMBER}\"/" pyproject.toml
+          version="$(python3 -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          case "$version" in
+            *.dev"$RUN_NUMBER") echo "Building $version" ;;
+            *) echo "::error::Failed to add a .dev suffix; version is $version." ; exit 1 ;;
+          esac
 
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
@@ -64,5 +81,7 @@ jobs:
           path: sbom.cdx.json
           if-no-files-found: error
 
-      - name: Publish to PyPI
+      - name: Publish
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+        with:
+          repository-url: ${{ github.event_name == 'push' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
