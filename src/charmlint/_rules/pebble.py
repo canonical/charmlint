@@ -35,11 +35,15 @@ def _keys(node: ast.Dict) -> set[str]:
 # often built a step at a time — the service dict assigned to a local
 # and then dropped into ``{"services": {name: <local>}}`` — so a service
 # is also recognised on its own, away from the layer that will hold it.
+#
+# ``command`` also matches the inner dict of an exec check, which is
+# deliberate: a check's ``environment`` is the same ``map[string]string``
+# as a service's, so the same coercion trap applies to it.
 _SERVICE_MARKERS = frozenset({"override", "command"})
 
 
 def _environment_dicts(tree: ast.AST) -> list[ast.Dict]:
-    """Return every ``environment`` dict literal of a Pebble service.
+    """Return every ``environment`` dict literal of a Pebble service or check.
 
     Layers are ordinary dict literals in charm source — passed to
     ``ops.pebble.Layer(...)``, to ``container.add_layer(...)``, or
@@ -85,7 +89,7 @@ class PebbleEnvNonString(Rule):
     number = 5
     name = "pebble-env-non-string"
     description = "Pebble layer environment value is not a string"
-    default_severity = models.Severity.ERROR
+    default_severity = models.Severity.INFO
     reference_url = "https://ubuntu.com/docs/pebble/reference/layer-specification/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
@@ -111,6 +115,7 @@ class PebbleEnvNonString(Rule):
                 continue
             name = _constant_key(key)
             described = f"'{name}'" if name is not None else "an environment variable"
+            severity: models.Severity | None = None
             if value.value is None:
                 message = (
                     f"Pebble layer environment value for {described} is None "
@@ -126,14 +131,12 @@ class PebbleEnvNonString(Rule):
                     f"— it serialises as '{literal}', where workloads usually "
                     f"expect '{literal.lower()}' or '{int(value.value)}'"
                 )
-                severity = models.Severity.INFO
                 fix_hint = f"Write the value the workload expects, e.g. '{literal.lower()}'"
             else:
                 message = (
                     f"Pebble layer environment value for {described} is not a string "
                     f"— Pebble coerces it, but the coerced form is easy to get wrong"
                 )
-                severity = models.Severity.INFO
                 fix_hint = f"Use a string literal, e.g. '{value.value}'"
             diagnostics.append(
                 self.diagnostic(

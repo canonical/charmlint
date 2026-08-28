@@ -17,7 +17,12 @@ def _lint_source(charm_dir: pathlib.Path, source: str):
 
 
 def _layer(environment: str) -> str:
-    """A charm source defining a Pebble layer with the given environment body."""
+    """A charm source defining a Pebble layer with the given environment body.
+
+    *environment* is the dict body alone, written without indentation; it
+    is indented here to the depth the layer needs.
+    """
+    body = textwrap.indent(textwrap.dedent(environment), " " * 24)
     return f"""\
         import ops
 
@@ -31,7 +36,7 @@ def _layer(environment: str) -> str:
                             "override": "replace",
                             "command": "/bin/workload",
                             "environment": {{
-        {environment}
+{body}
                             }},
                         }},
                     }},
@@ -43,7 +48,7 @@ class TestPebbleEnvNonString:
     """PEBBLE-005 — environment values in a Pebble layer must be strings."""
 
     def test_none_value_flagged_as_error(self, tmp_charm: pathlib.Path):
-        findings = _lint_source(tmp_charm, _layer('                        "PROXY": None,'))
+        findings = _lint_source(tmp_charm, _layer('"PROXY": None,'))
         assert len(findings) == 1
         assert findings[0].severity == Severity.ERROR
         assert "PROXY" in findings[0].message
@@ -51,31 +56,27 @@ class TestPebbleEnvNonString:
         assert findings[0].line is not None
 
     def test_bool_value_flagged_as_info(self, tmp_charm: pathlib.Path):
-        findings = _lint_source(tmp_charm, _layer('                        "DEBUG": True,'))
+        findings = _lint_source(tmp_charm, _layer('"DEBUG": True,'))
         assert len(findings) == 1
         assert findings[0].severity == Severity.INFO
         assert "DEBUG" in findings[0].message
         assert "'true'" in findings[0].message
 
     def test_int_value_flagged_as_info(self, tmp_charm: pathlib.Path):
-        findings = _lint_source(tmp_charm, _layer('                        "PORT": 8080,'))
+        findings = _lint_source(tmp_charm, _layer('"PORT": 8080,'))
         assert len(findings) == 1
         assert findings[0].severity == Severity.INFO
         assert "PORT" in findings[0].message
 
     def test_float_value_flagged(self, tmp_charm: pathlib.Path):
-        findings = _lint_source(tmp_charm, _layer('                        "RATIO": 0.5,'))
+        findings = _lint_source(tmp_charm, _layer('"RATIO": 0.5,'))
         assert len(findings) == 1
         assert findings[0].severity == Severity.INFO
 
     def test_string_values_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_source(
             tmp_charm,
-            _layer(
-                '                        "PORT": "8080",\n'
-                '                        "DEBUG": "true",\n'
-                '                        "EMPTY": "",'
-            ),
+            _layer('"PORT": "8080",\n"DEBUG": "true",\n"EMPTY": "",'),
         )
         assert findings == []
 
@@ -83,26 +84,22 @@ class TestPebbleEnvNonString:
         findings = _lint_source(
             tmp_charm,
             _layer(
-                '                        "PORT": str(self.config["port"]),\n'
-                '                        "URL": f"http://{self.hostname}",\n'
-                '                        "MODE": MODE,\n'
-                '                        "OPT": self.config.get("opt"),'
+                '"PORT": str(self.config["port"]),\n'
+                '"URL": f"http://{self.hostname}",\n'
+                '"MODE": MODE,\n'
+                '"OPT": self.config.get("opt"),'
             ),
         )
         assert findings == []
 
     def test_dict_unpacking_not_flagged(self, tmp_charm: pathlib.Path):
-        findings = _lint_source(tmp_charm, _layer("                        **self._base_env,"))
+        findings = _lint_source(tmp_charm, _layer("**self._base_env,"))
         assert findings == []
 
     def test_multiple_values_each_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_source(
             tmp_charm,
-            _layer(
-                '                        "PROXY": None,\n'
-                '                        "DEBUG": False,\n'
-                '                        "OK": "yes",'
-            ),
+            _layer('"PROXY": None,\n"DEBUG": False,\n"OK": "yes",'),
         )
         assert len(findings) == 2
         assert {d.severity for d in findings} == {Severity.ERROR, Severity.INFO}
@@ -153,8 +150,33 @@ class TestPebbleEnvNonString:
         assert "TRACING_ENABLED" in findings[0].message
 
     def test_service_reported_once_when_nested_and_marked(self, tmp_charm: pathlib.Path):
-        findings = _lint_source(tmp_charm, _layer('                        "PROXY": None,'))
+        findings = _lint_source(tmp_charm, _layer('"PROXY": None,'))
         assert len(findings) == 1
+
+    def test_exec_check_environment_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return ops.pebble.Layer({
+                            "checks": {
+                                "up": {
+                                    "override": "replace",
+                                    "exec": {
+                                        "command": "/bin/check",
+                                        "environment": {"VERBOSE": True},
+                                    },
+                                },
+                            },
+                        })
+            """,
+        )
+        assert len(findings) == 1
+        assert "VERBOSE" in findings[0].message
+        assert findings[0].severity == Severity.INFO
 
     def test_environment_outside_a_layer_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_source(
@@ -172,7 +194,7 @@ class TestPebbleEnvNonString:
     def test_non_string_service_environment_key_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_source(
             tmp_charm,
-            _layer("                        VAR_NAME: 1,"),
+            _layer("VAR_NAME: 1,"),
         )
         assert len(findings) == 1
         assert "an environment variable" in findings[0].message
