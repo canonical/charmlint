@@ -170,3 +170,93 @@ class ActionMissingAdditionalProperties(Rule):
                 )
             )
         return diagnostics
+
+
+def _action_params(action: models.Yaml) -> models.Yaml:
+    """Return the node holding an action's parameter definitions.
+
+    Juju's schema puts parameters directly under ``params`` — that mapping
+    *is* the JSON Schema ``properties`` object. Some charms nest an explicit
+    ``properties`` key inside ``params`` instead, so unwrap that when present.
+    """
+    params = action.get("params")
+    properties = params.get("properties")
+    if isinstance(properties.value, dict):
+        return properties
+    return params
+
+
+class ActionMissingDescription(Rule):
+    """Every declared action should document what it does.
+
+    ``juju actions <app>`` lists each action with its description; without
+    one, operators have to read the charm source to find out what running
+    the action will do.
+    """
+
+    category = "ACTIONS"
+    number = 3
+    name = "action-missing-description"
+    description = "Action declared without a description"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for action_name, action in context.actions.items():
+            description = action.get("description").value
+            if isinstance(description, str) and description.strip():
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"Action '{action_name}' is missing a description",
+                    path=action.source,
+                    line=action.line,
+                    fix_hint=(
+                        f"Add a `description:` to the '{action_name}' action explaining "
+                        f"what it does and when to run it"
+                    ),
+                )
+            )
+        return diagnostics
+
+
+class ActionParamMissingDescription(Rule):
+    """Every action parameter should document what it controls.
+
+    Parameter descriptions are surfaced by ``juju actions --schema``, so a
+    parameter without one leaves operators guessing at accepted values.
+    """
+
+    category = "ACTIONS"
+    number = 4
+    name = "action-param-missing-description"
+    description = "Action parameter declared without a description"
+    default_severity = models.Severity.INFO
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for action_name, action in context.actions.items():
+            for param_name, param in _action_params(action).items():
+                # A parameter written as a bare scalar (``verbose: boolean``)
+                # is a shorthand Juju does not accept; leave it to whichever
+                # rule validates the parameter schema itself.
+                if not isinstance(param.value, dict):
+                    continue
+                description = param.get("description").value
+                if isinstance(description, str) and description.strip():
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Action '{action_name}' parameter '{param_name}' "
+                        f"is missing a description",
+                        path=param.source,
+                        line=param.line,
+                        fix_hint=(
+                            f"Add a `description:` to the '{param_name}' parameter of the "
+                            f"'{action_name}' action"
+                        ),
+                    )
+                )
+        return diagnostics
