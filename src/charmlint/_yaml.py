@@ -67,6 +67,11 @@ def load(path: pathlib.Path) -> models.Yaml:
         # ConstructorError for this when it builds the mapping itself;
         # building it here surfaces it as a TypeError instead.
         raise FileLoadError(path, f"invalid mapping key: {exc}") from exc
+    except RecursionError as exc:
+        # A self-referential anchor (``links: &a\n  - *a``). Walking the
+        # composed tree runs out of stack where PyYAML's own constructor
+        # would have refused the document; report it the same way.
+        raise FileLoadError(path, "found unconstructable recursive node") from exc
     # An empty file composes to nothing, which is the same "no metadata
     # here" state as a file that isn't there at all.
     if root is None:
@@ -100,17 +105,26 @@ def merge(primary: models.Yaml, fallback: models.Yaml) -> models.Yaml:
 
 
 def _build(node: yaml.Node, loader: Any, source: str, line: int | None) -> models.Yaml:
-    """Wrap a composed YAML node, recursing into mappings.
+    """Wrap a composed YAML node, recursing into mappings and sequences.
 
     *line* is the line to attribute the value to: for a mapping entry
     that is the line of its **key**, not of its value. A ``# noqa``
     comment sits on the option's own line (``admin-password:``),
     whereas the value's nested mapping begins on the following line.
 
-    Sequences are constructed as plain values: no rule needs the
-    provenance of an individual list element yet, and wrapping them
-    would be machinery without a consumer.
+    A sequence element has no key, so it is attributed to its own line.
+    A block sequence therefore gives each element a distinct line, and a
+    flow sequence (``[a, b]``) gives every element the line they share —
+    which is the line a ``# noqa`` for any of them would sit on anyway.
     """
+    if isinstance(node, yaml.SequenceNode):
+        elements = [_build(item, loader, source, item.start_mark.line + 1) for item in node.value]
+        return models.Yaml(
+            value=[element.value for element in elements],
+            source=source,
+            line=line,
+            elements=elements,
+        )
     if not isinstance(node, yaml.MappingNode):
         return models.Yaml(
             value=loader.construct_object(node, deep=True), source=source, line=line

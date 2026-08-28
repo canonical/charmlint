@@ -39,6 +39,19 @@ class Yaml:
 
         context.metadata.get("links").get("issues").source
 
+    So are sequences, whose elements are reached through
+    :attr:`elements` rather than through the mapping lookups: a list
+    written one item per line gives each element its own line, so a
+    finding about one URL in a list anchors to that URL::
+
+        for element in node.elements or ():
+            ...  # element.value, element.line
+
+    The mapping lookups stay mapping-only on purpose. ``items()`` being
+    empty for a sequence is what lets a rule treat a section written as
+    a list as malformed and yield nothing, rather than reporting on
+    list indices as though they were names.
+
     ``bool(node)`` is the truthiness of the underlying value, so a
     missing key, an explicit ``null``, and an empty string are all
     falsy — which is what "empty or missing" rules want. Use
@@ -57,6 +70,10 @@ class Yaml:
     # Wrapped children, for a mapping node. Excluded from ``repr`` so
     # printing a node in a traceback doesn't dump the whole document.
     children: "dict[Any, Yaml] | None" = dataclasses.field(default=None, repr=False)
+    # Wrapped elements, for a sequence node. Kept apart from ``children``
+    # so the mapping lookups stay mapping-only; excluded from ``repr``
+    # for the same reason.
+    elements: "list[Yaml] | None" = dataclasses.field(default=None, repr=False)
 
     @classmethod
     def absent(cls, source: str) -> "Yaml":
