@@ -176,23 +176,23 @@ class Scope(enum.StrEnum):
     """Which part of the charm tree a module lives in.
 
     Rules are almost always interested in exactly one of these. ``SRC`` is
-    the charm's own code and ``CHARM_LIB`` the libraries it publishes: both
-    are maintained by the charm author. ``LIB`` is a vendored
+    the charm's own code and ``OWNED_LIB`` the libraries it publishes: both
+    are maintained by the charm author. ``VENDORED_LIB`` is a
     ``charmcraft fetch-lib`` copy of *someone else's* library, which the
     author does not maintain and should not be linted for style or
     correctness — deleting it is the only fix they can make.
 
-    The scopes are disjoint: a module has exactly one. ``TESTS`` covers test
-    code that is neither ``tests/unit`` nor ``tests/integration`` — shared
-    fixtures in ``tests/conftest.py``, and suites a charm organises its own
-    way, such as ``tests/scenario`` or ``tests/spread``. A rule that means
-    every test file asks for all three.
+    The scopes are disjoint: a module has exactly one. ``TESTS_OTHER``
+    covers test code that is neither ``tests/unit`` nor
+    ``tests/integration`` — shared fixtures in ``tests/conftest.py``, and
+    suites a charm organises its own way, such as ``tests/scenario`` or
+    ``tests/spread``. A rule that means every test file asks for all three.
     """
 
     SRC = "src"
-    CHARM_LIB = "charm-lib"
-    LIB = "lib"
-    TESTS = "tests"
+    OWNED_LIB = "owned-lib"
+    VENDORED_LIB = "vendored-lib"
+    TESTS_OTHER = "tests"
     TESTS_UNIT = "tests/unit"
     TESTS_INTEGRATION = "tests/integration"
     OTHER = "other"
@@ -271,7 +271,7 @@ class CharmContext:
         library is their problem, and tests are a different question from
         the charm they exercise.
         """
-        return self.modules(Scope.SRC, Scope.CHARM_LIB)
+        return self.modules(Scope.SRC, Scope.OWNED_LIB)
 
 
 @dataclasses.dataclass

@@ -38,16 +38,16 @@ class TestScope:
             ("src/nested/helper.py", models.Scope.SRC),
             # A charm's own src/lib/ is charm source, not a vendored library.
             ("src/lib/util.py", models.Scope.SRC),
-            ("lib/charms/owner/v0/thing.py", models.Scope.LIB),
+            ("lib/charms/owner/v0/thing.py", models.Scope.VENDORED_LIB),
             # Not laid out as lib/charms/<owner>/, so not attributable.
-            ("lib/helper.py", models.Scope.LIB),
-            ("lib/charms/loose.py", models.Scope.LIB),
+            ("lib/helper.py", models.Scope.VENDORED_LIB),
+            ("lib/charms/loose.py", models.Scope.VENDORED_LIB),
             ("tests/unit/test_charm.py", models.Scope.TESTS_UNIT),
             ("tests/integration/test_charm.py", models.Scope.TESTS_INTEGRATION),
             # Test code that is neither of the two named suites.
-            ("tests/conftest.py", models.Scope.TESTS),
-            ("tests/scenario/test_charm.py", models.Scope.TESTS),
-            ("tests/spread/nested/task.py", models.Scope.TESTS),
+            ("tests/conftest.py", models.Scope.TESTS_OTHER),
+            ("tests/scenario/test_charm.py", models.Scope.TESTS_OTHER),
+            ("tests/spread/nested/task.py", models.Scope.TESTS_OTHER),
             ("build.py", models.Scope.OTHER),
         ],
     )
@@ -58,13 +58,13 @@ class TestScope:
         ("path", "expected"),
         [
             # The charm publishes into its own name, hyphens underscored.
-            ("lib/charms/my_charm/v0/thing.py", models.Scope.CHARM_LIB),
-            ("lib/charms/my_charm/v2/nested/thing.py", models.Scope.CHARM_LIB),
+            ("lib/charms/my_charm/v0/thing.py", models.Scope.OWNED_LIB),
+            ("lib/charms/my_charm/v2/nested/thing.py", models.Scope.OWNED_LIB),
             # Someone else's library, vendored by fetch-lib.
-            ("lib/charms/other_charm/v0/thing.py", models.Scope.LIB),
+            ("lib/charms/other_charm/v0/thing.py", models.Scope.VENDORED_LIB),
             # A near-miss on the owner directory is still someone else's.
-            ("lib/charms/my-charm/v0/thing.py", models.Scope.LIB),
-            ("lib/charms/my_charm_extra/v0/thing.py", models.Scope.LIB),
+            ("lib/charms/my-charm/v0/thing.py", models.Scope.VENDORED_LIB),
+            ("lib/charms/my_charm_extra/v0/thing.py", models.Scope.VENDORED_LIB),
         ],
     )
     def test_own_library_is_distinguished_from_vendored(self, path: str, expected: models.Scope):
@@ -72,7 +72,7 @@ class TestScope:
 
     def test_without_a_charm_name_everything_under_lib_is_vendored(self):
         module = parse("x = 1", "lib/charms/my_charm/v0/thing.py")
-        assert module.scope == models.Scope.LIB
+        assert module.scope == models.Scope.VENDORED_LIB
 
     def test_path_is_charm_relative_posix(self):
         assert parse("x = 1", "src/nested/helper.py").path == "src/nested/helper.py"
@@ -397,7 +397,7 @@ class TestParsingInTheCore:
         (lib / "thing.py").write_text("import ops\n")
         context = build_context(tmp_charm)
         assert [m.path for m in context.charm_sources()] == ["src/charm.py"]
-        assert [m.path for m in context.modules(models.Scope.LIB)] == [
+        assert [m.path for m in context.modules(models.Scope.VENDORED_LIB)] == [
             "lib/charms/owner/v0/thing.py"
         ]
 
@@ -414,7 +414,7 @@ class TestParsingInTheCore:
             "src/charm.py",
             "lib/charms/my_charm/v0/thing.py",
         ]
-        assert [m.path for m in context.modules(models.Scope.LIB)] == [
+        assert [m.path for m in context.modules(models.Scope.VENDORED_LIB)] == [
             "lib/charms/other_charm/v0/thing.py"
         ]
 
@@ -439,7 +439,7 @@ class TestParsingInTheCore:
         (directory / "test_charm.py").write_text("def test_x(): pass\n")
         (tmp_charm / "tests" / "conftest.py").write_text("import pytest\n")
         context = build_context(tmp_charm)
-        assert [m.path for m in context.modules(models.Scope.TESTS)] == [
+        assert [m.path for m in context.modules(models.Scope.TESTS_OTHER)] == [
             "tests/conftest.py",
             "tests/scenario/test_charm.py",
         ]

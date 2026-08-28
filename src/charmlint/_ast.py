@@ -44,7 +44,7 @@ def _scope_of(relative: pathlib.PurePosixPath, charm_name: str | None) -> models
     if parts[:2] == ("tests", "integration"):
         return models.Scope.TESTS_INTEGRATION
     if parts[:1] == ("tests",):
-        return models.Scope.TESTS
+        return models.Scope.TESTS_OTHER
     # Only the top-level lib/ is library code — a charm's own ``src/lib/``
     # is charm source.
     if parts[:1] == ("lib",):
@@ -53,8 +53,8 @@ def _scope_of(relative: pathlib.PurePosixPath, charm_name: str | None) -> models
         # owner is a vendored copy of someone else's work.
         owner = parts[2] if parts[:2] == ("lib", "charms") and len(parts) > 2 else None
         if owner is not None and charm_name and owner == _library_owner(charm_name):
-            return models.Scope.CHARM_LIB
-        return models.Scope.LIB
+            return models.Scope.OWNED_LIB
+        return models.Scope.VENDORED_LIB
     if parts[:1] == ("src",):
         return models.Scope.SRC
     return models.Scope.OTHER
