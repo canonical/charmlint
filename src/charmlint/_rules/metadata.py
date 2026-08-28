@@ -7,32 +7,27 @@ level. Accepting the wrong spelling in the wrong file would silently
 paper over a real misplacement.
 """
 
-from typing import Any
-
 from .. import _models as models
 from ._base import Rule
 
 
-def _resolve(metadata: dict[str, Any], dotted: str) -> Any:
-    cur: Any = metadata
+def _resolve(metadata: models.Yaml, dotted: str) -> models.Yaml:
+    """Follow a dotted path through nested mappings, e.g. ``links.issues``."""
+    node = metadata
     for part in dotted.split("."):
-        if not isinstance(cur, dict):
-            return None
-        if part not in cur:
-            return None
-        cur = cur[part]
-    return cur
+        node = node.get(part)
+    return node
 
 
 def _is_charmcraft(context: models.CharmContext) -> bool:
-    return context.metadata_source == "charmcraft.yaml"
+    return context.metadata.source == "charmcraft.yaml"
 
 
 def _is_bundle(context: models.CharmContext) -> bool:
     # Bundles declare `type: bundle` in charmcraft.yaml, or use the legacy
     # top-level bundle.yaml layout. Neither shape needs the charm-metadata
     # fields these rules check for.
-    if context.metadata.get("type") == "bundle":
+    if context.metadata.get("type").value == "bundle":
         return True
     return (context.charm_dir / "bundle.yaml").is_file()
 
@@ -50,7 +45,7 @@ class MissingName(Rule):
             return []
         if _resolve(context.metadata, "name"):
             return []
-        return [self.diagnostic(self.description, path=context.metadata_source)]
+        return [self.diagnostic(self.description, path=context.metadata.source)]
 
 
 class MissingDisplayName(Rule):
@@ -67,7 +62,7 @@ class MissingDisplayName(Rule):
         key = "title" if _is_charmcraft(context) else "display-name"
         if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(f"Empty or missing '{key}' field", path=context.metadata_source)]
+        return [self.diagnostic(f"Empty or missing '{key}' field", path=context.metadata.source)]
 
 
 class MissingSummary(Rule):
@@ -83,7 +78,7 @@ class MissingSummary(Rule):
             return []
         if _resolve(context.metadata, "summary"):
             return []
-        return [self.diagnostic(self.description, path=context.metadata_source)]
+        return [self.diagnostic(self.description, path=context.metadata.source)]
 
 
 class MissingDescription(Rule):
@@ -99,7 +94,7 @@ class MissingDescription(Rule):
             return []
         if _resolve(context.metadata, "description"):
             return []
-        return [self.diagnostic(self.description, path=context.metadata_source)]
+        return [self.diagnostic(self.description, path=context.metadata.source)]
 
 
 class MissingDocs(Rule):
@@ -116,7 +111,7 @@ class MissingDocs(Rule):
         key = "links.documentation" if _is_charmcraft(context) else "docs"
         if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata_source)]
+        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata.source)]
 
 
 class MissingIssues(Rule):
@@ -133,7 +128,7 @@ class MissingIssues(Rule):
         key = "links.issues" if _is_charmcraft(context) else "issues"
         if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata_source)]
+        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata.source)]
 
 
 class MissingSource(Rule):
@@ -150,21 +145,20 @@ class MissingSource(Rule):
         key = "links.source" if _is_charmcraft(context) else "source"
         if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata_source)]
+        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata.source)]
 
 
 def _missing_optional_diagnostics(
     rule: Rule,
-    endpoints: object,
+    endpoints: models.Yaml,
     section: str,
-    metadata_source: str,
 ) -> list[models.Diagnostic]:
     """Return one diagnostic per endpoint in ``section`` lacking ``optional``."""
-    if not isinstance(endpoints, dict) or not endpoints:
-        return []
     diagnostics: list[models.Diagnostic] = []
     for name, definition in endpoints.items():
-        if not isinstance(definition, dict):
+        # Only a mapping can declare `optional`; a malformed entry is not
+        # this rule's finding to report.
+        if not isinstance(definition.value, dict):
             continue
         if "optional" in definition:
             continue
@@ -173,7 +167,7 @@ def _missing_optional_diagnostics(
                 f"{section} endpoint `{name}` does not declare `optional` — "
                 "charm authors should explicitly state whether the relation is "
                 "required for the charm to function",
-                path=metadata_source,
+                path=definition.source,
                 fix_hint=(
                     f"Add `optional: true` or `optional: false` to the `{name}` "
                     f"entry under `{section}`"
@@ -194,9 +188,7 @@ class RequiresMissingOptional(Rule):
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#endpoint-role-endpoint-name-optional"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        return _missing_optional_diagnostics(
-            self, context.metadata.get("requires"), "requires", context.metadata_source
-        )
+        return _missing_optional_diagnostics(self, context.metadata.get("requires"), "requires")
 
 
 class ProvidesMissingOptional(Rule):
@@ -210,6 +202,4 @@ class ProvidesMissingOptional(Rule):
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#endpoint-role-endpoint-name-optional"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        return _missing_optional_diagnostics(
-            self, context.metadata.get("provides"), "provides", context.metadata_source
-        )
+        return _missing_optional_diagnostics(self, context.metadata.get("provides"), "provides")

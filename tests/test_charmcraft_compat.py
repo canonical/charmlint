@@ -99,6 +99,31 @@ class TestNamingConventions:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
 
+    def test_config_in_the_metadata_half_of_a_split_charm(self, tmp_charm: pathlib.Path):
+        """A split charm may put its config block in metadata.yaml.
+
+        The diagnostic must anchor to the file that actually declares the
+        option, so its line number is meaningful and a ``noqa`` there works.
+        """
+        (tmp_charm / "charmcraft.yaml").write_text("name: test\ntype: charm\n")
+        (tmp_charm / "metadata.yaml").write_text(
+            "summary: s\nconfig:\n  options:\n    my_option:\n      type: string\n"
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-002"]
+        assert len(diags) == 1
+        assert diags[0].path == "metadata.yaml"
+        assert diags[0].line == 4
+
+    def test_noqa_in_the_metadata_half_of_a_split_charm(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text("name: test\ntype: charm\n")
+        (tmp_charm / "metadata.yaml").write_text(
+            "summary: s\nconfig:\n  options:\n"
+            "    my_option:  # noqa: CHARMCRAFT-002\n      type: string\n"
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
+
     def test_legacy_config_yaml_diagnostic_anchors_to_config_yaml(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         (tmp_charm / "config.yaml").write_text("options:\n  my_option:\n    type: string\n")
