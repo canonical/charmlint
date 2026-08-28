@@ -24,6 +24,17 @@ jobs:
         with:
           enable-cache: false
 
+      - name: Give the build a .dev suffix
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          sed -i -E "0,/^version = \"([^\"]+)\"/s//version = \"\\1.dev${RUN_NUMBER}\"/" pyproject.toml
+          version="$(python3 -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          case "$version" in
+            *.dev"$RUN_NUMBER") echo "Building $version" ;;
+            *) echo "::error::Failed to add a .dev suffix; version is $version." ; exit 1 ;;
+          esac
+
       - name: Build sdist and wheel
         run: uv build
 
