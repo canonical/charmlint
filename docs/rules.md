@@ -66,6 +66,7 @@ config file overrides it per rule.
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
 | [STRUCTURE-002](#structure-002-no-icon) | `no-icon` | Info | No icon.svg found |
+| [STRUCTURE-003](#structure-003-no-type-annotations) | `no-type-annotations` | Info | No type annotations found in charm source |
 | [SUPPLYCHAIN-001](#supplychain-001-oci-image-missing-upstream-source) | `oci-image-missing-upstream-source` | Info | oci-image resource declared without an 'upstream-source' |
 | [SUPPLYCHAIN-005](#supplychain-005-ops-dependency-unpinned) | `ops-dependency-unpinned` | Warning | ops dependency has no version specifier |
 | [SUPPLYCHAIN-006](#supplychain-006-ops-dependency-exactly-pinned) | `ops-dependency-exactly-pinned` | Info | ops dependency pinned with `==` |
@@ -832,6 +833,25 @@ were missing. Nothing inside the SVG is examined: dimensions and
 viewBox are charmcraft's business, not this rule's.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/icon-svg-file/>
+
+### STRUCTURE-003 no-type-annotations
+
+**Info** — No type annotations found in charm source
+
+Check that the charm's own source uses type annotations at all.
+
+Annotations are what let a type checker catch a wrong event type, a
+misspelt attribute or a `None` that was never handled before the
+charm is deployed. A charm with none at all gets no help from one.
+
+The rule reports once per charm, not per function: annotating every
+local is not the convention, and a rule that demanded it would fire
+on almost every charm. Any annotation anywhere — a return type, a
+parameter, or an annotated assignment — is enough to pass. Only the
+charm's own source counts: `src/` plus any library the charm
+publishes, never a vendored copy of someone else's library, and never
+the tests. A charm with no functions has nothing to annotate and is
+not reported.
 
 ## SUPPLYCHAIN
 
