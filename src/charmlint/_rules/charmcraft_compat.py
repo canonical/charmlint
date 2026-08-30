@@ -306,6 +306,40 @@ class OpsMainCall(Rule):
 # --- Helpers ---------------------------------------------------------------
 
 
+class LegacyBases(Rule):
+    """Flag the charmcraft 2 ``bases:`` block.
+
+    charmcraft 3 still accepts ``bases:``, but ``base:`` plus ``platforms:``
+    is the form it documents and the one that expresses everything ``bases:``
+    could. Reported as info rather than a warning: the charm still builds, and
+    a third of the published corpus has yet to migrate.
+    """
+
+    category = "CHARMCRAFT"
+    number = 7
+    name = "legacy-bases"
+    description = "Legacy 'bases' block instead of 'base' and 'platforms'"
+    default_severity = models.Severity.INFO
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        bases = context.metadata.get("bases")
+        # ``bases`` is a charmcraft.yaml key. A stray one in metadata.yaml is
+        # dead text charmcraft ignores — several charms in the wild have
+        # migrated charmcraft.yaml to platforms and left the old block behind
+        # — so telling those charms to migrate would be wrong.
+        if not bases.present or bases.source != "charmcraft.yaml":
+            return []
+        return [
+            self.diagnostic(
+                "'bases' is the charmcraft 2 form — use 'base' and 'platforms' instead",
+                path=bases.source,
+                line=bases.line,
+                fix_hint="Replace 'bases' with a 'base' key and a 'platforms' block",
+            )
+        ]
+
+
 def _entrypoint(context: models.CharmContext) -> str:
     """Return the charm-relative path of the entrypoint charmcraft will use.
 

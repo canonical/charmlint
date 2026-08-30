@@ -798,3 +798,83 @@ class TestOpsMainCall:
         write_charm_source(tmp_charm, "import ops\n\ndef broken(:\n")
         report = lint(tmp_charm)
         assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+
+class TestLegacyBases:
+    """Tests for CHARMCRAFT-007 — legacy 'bases' block."""
+
+    def test_bases_present_is_info(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "bases": [{"name": "ubuntu", "channel": "22.04"}]},
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+        assert diags[0].path == "charmcraft.yaml"
+
+    def test_build_on_run_on_form_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "bases": [
+                    {
+                        "build-on": [{"name": "ubuntu", "channel": "22.04"}],
+                        "run-on": [{"name": "ubuntu", "channel": "22.04"}],
+                    }
+                ],
+            },
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+
+    def test_base_and_platforms_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "base": "ubuntu@22.04",
+                "platforms": {"amd64": None},
+            },
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_no_bases(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_points_at_the_bases_line(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nsummary: s\nbases:\n  - name: ubuntu\n    channel: '22.04'\n"
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].line == 3
+
+    def test_noqa_on_the_bases_line_suppresses(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nbases:  # noqa: CHARMCRAFT-007\n  - name: ubuntu\n    channel: '22.04'\n"
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_stale_bases_in_metadata_yaml_ignored(self, tmp_charm: pathlib.Path):
+        """A leftover 'bases' in metadata.yaml is dead text charmcraft ignores."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "base": "ubuntu@24.04", "platforms": {"amd64": None}},
+        )
+        (tmp_charm / "metadata.yaml").write_text("summary: s\nbases:\n  - name: ubuntu\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_bases_only_in_metadata_yaml_ignored(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "metadata.yaml").write_text("name: test\nbases:\n  - name: ubuntu\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
