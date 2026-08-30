@@ -52,6 +52,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | TEST003 | TEST003 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
 | METADATA 008/009 | METADATA-008, METADATA-009 | `_rules/metadata.py` (shared `_missing_optional_diagnostics`) | `test_metadata.py` | #49 | in review |
 | METADATA-010 | METADATA-010 | `_rules/metadata.py` | `test_metadata.py` | #188 | in review |
+| SUPPLYCHAIN-001 | SUPPLYCHAIN-001 (was SUPP003 pre-renumber) | `_rules/supply_chain.py` | `test_supply_chain.py` | #58 | in review |
 
 ## Counts
 
