@@ -32,6 +32,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | CONFIG 001-003 | CONFIG-001, CONFIG-002, CONFIG-003 (were CFG001-CFG003 pre-renumber) | `_rules/config_quality.py` | `test_config_quality.py` | | in review |
 | CFG004 | CFG004 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
 | CFG005 | CFG005 | `_rules/config_quality.py` | `test_rules.py::TestConfigRules` | | pending |
+| CONFIG-006 | CONFIG-006 (new, issue #150) | `_rules/config_quality.py` | `test_config_quality.py` | | in review |
 | DOCUMENTATION-001 | DOCUMENTATION-001 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | #123 | merged |
 | DOC002 | DOC002 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |
 | DOC003 | DOC003 | `_rules/documentation.py` | `test_rules.py::TestDocumentationRules` | | pending |

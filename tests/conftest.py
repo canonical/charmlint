@@ -56,6 +56,11 @@ def make_full_charm(charm_dir: pathlib.Path) -> None:
                         "default": 8080,
                         "description": "HTTP port",
                     },
+                    "invalid-combo": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Deliberately invalid combination, for tests",
+                    },
                 },
             },
             "actions": {
