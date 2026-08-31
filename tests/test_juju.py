@@ -260,3 +260,34 @@ class TestOpsDependencyParsing:
         assert dep is not None
         assert dep.line == 4
         assert dep.section == "requirements.txt"
+
+    def test_where_names_a_pyproject_section(self):
+        dep = _juju._parse_pep508("ops", "pyproject.toml", "dependency-groups.test")
+        assert dep is not None
+        assert dep.where == " in `dependency-groups.test`"
+
+    def test_where_empty_for_requirements(self):
+        dep = _juju._parse_pep508("ops", "requirements.txt", "requirements.txt")
+        assert dep is not None
+        assert dep.where == ""
+
+
+class TestSectionInMessages:
+    """The section a dependency was declared in reaching the diagnostic."""
+
+    def test_pyproject_message_names_the_section(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text('[project]\ndependencies = ["ops==3.7.1"]\n')
+        report = lint(tmp_charm)
+        hits = [d for d in report if d.rule_id == "JUJU-004"]
+        assert len(hits) == 1
+        assert "in `project.dependencies`" in hits[0].message
+
+    def test_requirements_message_does_not_repeat_the_file(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "requirements.txt").write_text("ops\n")
+        report = lint(tmp_charm)
+        hits = [d for d in report if d.rule_id == "JUJU-003"]
+        assert len(hits) == 1
+        assert "requirements.txt" not in hits[0].message
+        assert hits[0].path == "requirements.txt"

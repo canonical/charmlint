@@ -62,6 +62,21 @@ class _OpsDependency:
         """Whether it is pinned to a single version with ``==``."""
         return self.specifier.startswith("==")
 
+    @property
+    def where(self) -> str:
+        """A phrase naming the section, for a diagnostic message.
+
+        Empty for a flat requirements file, where the section *is* the
+        file the diagnostic already points at, and naming it again
+        would only pad the message. For ``pyproject.toml``, where
+        there is no line to anchor to and a charm can declare ``ops``
+        in any of half a dozen places, it is the only thing telling
+        the author which one to go and edit.
+        """
+        if self.section == self.source:
+            return ""
+        return f" in `{self.section}`"
+
 
 def _normalize(name: str) -> str:
     """PEP 503 name normalisation — dashes/underscores/dots collapse and lowercase."""
@@ -258,7 +273,7 @@ class OpsDependencyUnpinned(Rule):
             return []
         return [
             self.diagnostic(
-                "ops dependency has no version specifier — "
+                f"ops dependency has no version specifier{dep.where} — "
                 "charms should pin a supported range so dependency "
                 "resolvers do not silently pull a major bump",
                 path=dep.source,
@@ -283,7 +298,7 @@ class OpsDependencyExactlyPinned(Rule):
             return []
         return [
             self.diagnostic(
-                "ops dependency is exactly pinned (`==`) — "
+                f"ops dependency is exactly pinned (`==`){dep.where} — "
                 "prefer a version range so security fixes flow in "
                 "without a manual bump",
                 path=dep.source,
