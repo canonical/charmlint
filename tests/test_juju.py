@@ -4,6 +4,7 @@ import pathlib
 
 from charmlint._linter import lint
 from charmlint._models import Severity
+from charmlint._rules import juju as _juju
 from tests.conftest import write_charmcraft_yaml
 
 
@@ -183,3 +184,79 @@ class TestJujuRules:
         (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
         report = lint(tmp_charm)
         assert [d for d in report if d.rule_id == "JUJU-004"]
+
+
+class TestOpsDependencyParsing:
+    """The parsed ops dependency, which every JUJU pinning rule works from."""
+
+    def test_pep508_specifier_extras_and_section(self):
+        dep = _juju._parse_pep508(
+            "ops[tracing,testing]>=2.17,<4", "pyproject.toml", "project.dependencies"
+        )
+        assert dep is not None
+        assert dep.specifier == ">=2.17,<4"
+        assert dep.extras == ("tracing", "testing")
+        assert dep.section == "project.dependencies"
+        assert dep.line is None
+        assert not dep.is_unpinned
+        assert not dep.is_exact
+
+    def test_pep508_environment_marker_dropped(self):
+        dep = _juju._parse_pep508(
+            'ops>=2.17; python_version < "3.12"', "requirements.txt", "requirements.txt"
+        )
+        assert dep is not None
+        assert dep.specifier == ">=2.17"
+
+    def test_pep508_non_ops_ignored(self):
+        assert (
+            _juju._parse_pep508("operator-libs-linux", "requirements.txt", "requirements.txt")
+            is None
+        )
+
+    def test_pep508_bare_is_unpinned(self):
+        dep = _juju._parse_pep508("ops", "requirements.txt", "requirements.txt")
+        assert dep is not None
+        assert dep.specifier == ""
+        assert dep.is_unpinned
+
+    def test_poetry_table_keeps_version_and_extras(self):
+        dep = _juju._parse_poetry(
+            {"version": "==3.7.1", "extras": ["tracing"]},
+            "pyproject.toml",
+            "tool.poetry.dependencies",
+        )
+        assert dep.specifier == "==3.7.1"
+        assert dep.extras == ("tracing",)
+        assert dep.is_exact
+
+    def test_poetry_wildcard_is_unpinned(self):
+        dep = _juju._parse_poetry("*", "pyproject.toml", "tool.poetry.dependencies")
+        assert dep.is_unpinned
+
+    def test_section_recorded_for_optional_dependencies(self):
+        dep = _juju._find_ops_in_pyproject(
+            {"project": {"optional-dependencies": {"dev": ["ops==3.7.1"]}}}
+        )
+        assert dep is not None
+        assert dep.section == "project.optional-dependencies.dev"
+
+    def test_section_recorded_for_dependency_groups(self):
+        dep = _juju._find_ops_in_pyproject({"dependency-groups": {"test": ["ops"]}})
+        assert dep is not None
+        assert dep.section == "dependency-groups.test"
+
+    def test_section_recorded_for_poetry_group(self):
+        dep = _juju._find_ops_in_pyproject(
+            {"tool": {"poetry": {"group": {"dev": {"dependencies": {"ops": "==3.7.1"}}}}}}
+        )
+        assert dep is not None
+        assert dep.section == "tool.poetry.group.dev.dependencies"
+
+    def test_requirements_line_recorded(self, tmp_charm: pathlib.Path):
+        path = tmp_charm / "requirements.txt"
+        path.write_text("# a comment\n-r other.txt\n\nops==3.7.1\n")
+        dep = _juju._find_ops_in_requirements(path)
+        assert dep is not None
+        assert dep.line == 4
+        assert dep.section == "requirements.txt"

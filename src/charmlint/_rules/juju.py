@@ -1,5 +1,6 @@
 """JUJU rules — Juju-ness / idiomatic ops conventions."""
 
+import dataclasses
 import functools
 import pathlib
 import re
@@ -13,7 +14,7 @@ _PEP508_RE = re.compile(
     ^\s*
     (?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)   # the distribution name
     \s*
-    (?:\[[^\]]*\])?                        # optional [extras], e.g. ops[tracing]
+    (?:\[(?P<extras>[^\]]*)\])?           # optional [extras], e.g. ops[tracing]
     \s*
     (?P<rest>.*)                           # the version specifier and/or a PEP 508 marker
     """,
@@ -21,36 +22,94 @@ _PEP508_RE = re.compile(
 )
 
 
+@dataclasses.dataclass(frozen=True)
+class _OpsDependency:
+    """One charm's declared ``ops`` dependency, and where it was declared.
+
+    Every JUJU rule about the ``ops`` dependency works from one of
+    these, so the charm's packaging is parsed once and interrogated
+    many times rather than each rule re-deriving the answer it happens
+    to need. Keeping the specifier and the section rather than a
+    collapsed verdict is what lets a later rule ask a question the
+    current two do not — whether there is an upper bound, whether the
+    pinned version is an LTS, whether the section it was found in is
+    one a charm ought to be using.
+    """
+
+    #: The version specifier exactly as written, e.g. ``">=2.17,<4"``.
+    #: Empty when the dependency is declared with no specifier at all.
+    specifier: str
+    #: Extras requested alongside it, e.g. ``("tracing",)``.
+    extras: tuple[str, ...]
+    #: The file it was declared in, relative to the charm directory.
+    source: str
+    #: Where within that file, as a dotted path for ``pyproject.toml``
+    #: (``"project.dependencies"``) or the file name for a flat
+    #: requirements file. Names a place a charm author can go and look.
+    section: str
+    #: 1-based line, or ``None`` for a ``pyproject.toml`` match —
+    #: ``tomllib`` discards positions, so a finding there anchors to
+    #: the file.
+    line: int | None
+
+    @property
+    def is_unpinned(self) -> bool:
+        """Whether it carries no version constraint at all."""
+        return not self.specifier or self.specifier == "*"
+
+    @property
+    def is_exact(self) -> bool:
+        """Whether it is pinned to a single version with ``==``."""
+        return self.specifier.startswith("==")
+
+
 def _normalize(name: str) -> str:
     """PEP 503 name normalisation — dashes/underscores/dots collapse and lowercase."""
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def _classify_spec(spec: str) -> str:
-    """Return ``"unpinned"`` / ``"exact"`` / ``"ok"`` for a version specifier."""
-    s = spec.strip()
-    if not s or s == "*":
-        return "unpinned"
-    if s.startswith("=="):
-        return "exact"
-    return "ok"
-
-
-def _classify_pep508(entry: str) -> str | None:
-    """Classify a PEP 508 requirement string, returning ``None`` if it isn't ``ops``."""
+def _parse_pep508(
+    entry: str, source: str, section: str, line: int | None = None
+) -> _OpsDependency | None:
+    """Parse a PEP 508 requirement string, returning ``None`` if it isn't ``ops``."""
     match = _PEP508_RE.match(entry)
-    if match is None:
+    if match is None or _normalize(match.group("name")) != "ops":
         return None
-    if _normalize(match.group("name")) != "ops":
-        return None
-    spec = match.group("rest").split(";", 1)[0].strip()
-    return _classify_spec(spec)
+    # Drop any environment marker: `ops>=2.17; python_version < "3.12"`
+    # constrains when the dependency applies, not which versions satisfy it.
+    specifier = match.group("rest").split(";", 1)[0].strip()
+    return _OpsDependency(
+        specifier=specifier,
+        extras=_split_extras(match.group("extras")),
+        source=source,
+        section=section,
+        line=line,
+    )
 
 
-def _classify_poetry(value: Any) -> str:
-    """Classify a Poetry dependency value (bare string, or table with ``version``)."""
-    spec = str(value.get("version", "")) if isinstance(value, dict) else str(value)
-    return _classify_spec(spec)
+def _parse_poetry(value: Any, source: str, section: str) -> _OpsDependency:
+    """Parse a Poetry dependency value (bare string, or table with ``version``)."""
+    if isinstance(value, dict):
+        specifier = str(value.get("version", ""))
+        extras = value.get("extras")
+        extras = tuple(str(e) for e in extras) if isinstance(extras, list) else ()
+    else:
+        specifier = str(value)
+        extras = ()
+    return _OpsDependency(
+        specifier=specifier.strip(),
+        extras=extras,
+        source=source,
+        section=section,
+        line=None,
+    )
+
+
+def _split_extras(extras: str | None) -> tuple[str, ...]:
+    """Split the bracketed extras of a PEP 508 requirement into a tuple."""
+    if not extras:
+        return ()
+    return tuple(part.strip() for part in extras.split(",") if part.strip())
 
 
 def _walk_pep508_list(entries: Any):
@@ -62,15 +121,12 @@ def _walk_pep508_list(entries: Any):
             yield entry
 
 
-def _find_ops_in_pyproject(data: dict[str, Any]) -> tuple[str, str, int | None] | None:
+def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
     """Look for an ``ops`` dependency across the common pyproject.toml layouts.
 
     *data* is the charm's parsed ``pyproject.toml``, read once by the
-    linter core. Returns ``(source, kind, line)`` where ``kind`` is
-    ``"unpinned"`` / ``"exact"`` / ``"ok"`` and ``line`` is always
-    ``None`` — ``tomllib`` discards positions, so a finding here
-    anchors to the file. ``None`` means no ``ops`` dependency appears
-    in any known location.
+    linter core. ``None`` means no ``ops`` dependency appears in any
+    known location.
     """
     source = "pyproject.toml"
 
@@ -78,25 +134,25 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> tuple[str, str, int | None] 
     project = data.get("project")
     if isinstance(project, dict):
         for entry in _walk_pep508_list(project.get("dependencies")):
-            kind = _classify_pep508(entry)
-            if kind is not None:
-                return source, kind, None
+            dep = _parse_pep508(entry, source, "project.dependencies")
+            if dep is not None:
+                return dep
         optional = project.get("optional-dependencies")
         if isinstance(optional, dict):
-            for entries in optional.values():
+            for name, entries in optional.items():
                 for entry in _walk_pep508_list(entries):
-                    kind = _classify_pep508(entry)
-                    if kind is not None:
-                        return source, kind, None
+                    dep = _parse_pep508(entry, source, f"project.optional-dependencies.{name}")
+                    if dep is not None:
+                        return dep
 
     # PEP 735 — [dependency-groups.*]
     groups = data.get("dependency-groups")
     if isinstance(groups, dict):
-        for entries in groups.values():
+        for name, entries in groups.items():
             for entry in _walk_pep508_list(entries):
-                kind = _classify_pep508(entry)
-                if kind is not None:
-                    return source, kind, None
+                dep = _parse_pep508(entry, source, f"dependency-groups.{name}")
+                if dep is not None:
+                    return dep
 
     # Poetry — [tool.poetry.dependencies], legacy [tool.poetry.dev-dependencies],
     # and [tool.poetry.group.<name>.dependencies].
@@ -109,24 +165,26 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> tuple[str, str, int | None] 
                 if isinstance(deps, dict):
                     for name, value in deps.items():
                         if _normalize(name) == "ops":
-                            return source, _classify_poetry(value), None
+                            return _parse_poetry(value, source, f"tool.poetry.{key}")
             poetry_groups = poetry.get("group")
             if isinstance(poetry_groups, dict):
-                for group in poetry_groups.values():
+                for group_name, group in poetry_groups.items():
                     if not isinstance(group, dict):
                         continue
                     deps = group.get("dependencies")
                     if isinstance(deps, dict):
                         for name, value in deps.items():
                             if _normalize(name) == "ops":
-                                return source, _classify_poetry(value), None
+                                return _parse_poetry(
+                                    value,
+                                    source,
+                                    f"tool.poetry.group.{group_name}.dependencies",
+                                )
 
     return None
 
 
-def _find_ops_in_requirements(
-    requirements: pathlib.Path,
-) -> tuple[str, str, int | None] | None:
+def _find_ops_in_requirements(requirements: pathlib.Path) -> _OpsDependency | None:
     """Look for an ``ops`` line in a ``requirements.txt``-style file."""
     try:
         text = requirements.read_text()
@@ -136,9 +194,9 @@ def _find_ops_in_requirements(
         stripped = raw.split("#", 1)[0].strip()
         if not stripped or stripped.startswith("-"):
             continue
-        kind = _classify_pep508(stripped)
-        if kind is not None:
-            return "requirements.txt", kind, lineno
+        dep = _parse_pep508(stripped, "requirements.txt", "requirements.txt", lineno)
+        if dep is not None:
+            return dep
     return None
 
 
@@ -157,7 +215,7 @@ def _uses_lockfile_plugin(metadata: models.Yaml) -> bool:
 
 
 @functools.cache
-def _find_ops_requirements(charm_dir: pathlib.Path) -> tuple[str, str, int | None] | None:
+def _find_ops_requirements(charm_dir: pathlib.Path) -> _OpsDependency | None:
     """Scan ``requirements.txt`` once per charm, for both JUJU rules."""
     requirements = charm_dir / "requirements.txt"
     if not requirements.is_file():
@@ -165,8 +223,8 @@ def _find_ops_requirements(charm_dir: pathlib.Path) -> tuple[str, str, int | Non
     return _find_ops_in_requirements(requirements)
 
 
-def _find_ops_dep(context: models.CharmContext) -> tuple[str, str, int | None] | None:
-    """Return ``(source, kind, line)`` for the first ``ops`` dep found, or ``None``.
+def _find_ops_dep(context: models.CharmContext) -> _OpsDependency | None:
+    """Return the charm's declared ``ops`` dependency, or ``None``.
 
     Both JUJU rules share this scan and stop at the first hit — a charm
     should only declare ``ops`` in one place. ``pyproject.toml`` wins
@@ -175,9 +233,9 @@ def _find_ops_dep(context: models.CharmContext) -> tuple[str, str, int | None] |
     charmcraft plugin generates it from a lock file.
     """
     if context.pyproject is not None:
-        found = _find_ops_in_pyproject(context.pyproject)
-        if found is not None:
-            return found
+        dep = _find_ops_in_pyproject(context.pyproject)
+        if dep is not None:
+            return dep
 
     if _uses_lockfile_plugin(context.metadata):
         return None
@@ -195,17 +253,16 @@ class OpsDependencyUnpinned(Rule):
     default_severity = models.Severity.WARNING
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        found = _find_ops_dep(context)
-        if found is None or found[1] != "unpinned":
+        dep = _find_ops_dep(context)
+        if dep is None or not dep.is_unpinned:
             return []
-        source, _kind, line = found
         return [
             self.diagnostic(
                 "ops dependency has no version specifier — "
                 "charms should pin a supported range so dependency "
                 "resolvers do not silently pull a major bump",
-                path=source,
-                line=line,
+                path=dep.source,
+                line=dep.line,
                 fix_hint="Add a version range, e.g. `ops>=2.17,<4`",
             )
         ]
@@ -221,17 +278,16 @@ class OpsDependencyExactlyPinned(Rule):
     default_severity = models.Severity.INFO
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        found = _find_ops_dep(context)
-        if found is None or found[1] != "exact":
+        dep = _find_ops_dep(context)
+        if dep is None or not dep.is_exact:
             return []
-        source, _kind, line = found
         return [
             self.diagnostic(
                 "ops dependency is exactly pinned (`==`) — "
                 "prefer a version range so security fixes flow in "
                 "without a manual bump",
-                path=source,
-                line=line,
+                path=dep.source,
+                line=dep.line,
                 fix_hint="Replace the `==` pin with a range, e.g. `ops>=2.17,<4`",
             )
         ]
