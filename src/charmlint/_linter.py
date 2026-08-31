@@ -4,7 +4,7 @@ import contextlib
 import dataclasses
 import pathlib
 
-from . import _ast, _config, _discovery, _noqa, _rules, _selectors, _yaml
+from . import _ast, _config, _discovery, _noqa, _rules, _selectors, _toml, _yaml
 from . import _models as models
 
 
@@ -121,6 +121,10 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
         config_options = config_data.get("options") if "options" in config_data else config_data
     config_options = _mapping_or_absent(config_options)
 
+    # Parse pyproject.toml once, for every rule that reads a charm's
+    # Python packaging (dependency pinning, build backend, tooling).
+    pyproject = _toml.load(charm_dir / "pyproject.toml")
+
     # Collect Python files and read their contents.
     python_files = _collect_python_files(charm_dir)
     python_sources = _read_python_sources(python_files)
@@ -143,6 +147,7 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
         metadata=metadata,
         actions=actions,
         config_options=config_options,
+        pyproject=pyproject,
         python_files=python_files,
         python_sources=python_sources,
         python_modules=python_modules,

@@ -142,13 +142,19 @@ class TestJujuRules:
         report = lint(tmp_charm)
         assert [d for d in report if d.rule_id == "JUJU-004"]
 
-    def test_malformed_pyproject_does_not_crash(self, tmp_charm: pathlib.Path):
+    def test_malformed_pyproject_reported_as_fatal(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
         (tmp_charm / "pyproject.toml").write_text("this is [not valid toml\n")
         (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
         report = lint(tmp_charm)
-        # falls through to requirements.txt
-        assert [d for d in report if d.rule_id == "JUJU-004"]
+        # A broken pyproject.toml is reported, not silently skipped in
+        # favour of requirements.txt: the charm's real dependency
+        # declaration could not be read, so a clean JUJU report would be
+        # a lie.
+        fatal = [d for d in report if d.rule_id == "FATAL"]
+        assert len(fatal) == 1
+        assert "pyproject.toml" in fatal[0].message
+        assert not [d for d in report if d.rule_id in {"JUJU-003", "JUJU-004"}]
 
     def test_uv_plugin_ignores_requirements_txt(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x", "parts": {"my-charm": {"plugin": "uv"}}})
