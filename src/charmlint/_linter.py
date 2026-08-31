@@ -3,16 +3,9 @@
 import contextlib
 import pathlib
 import re
-from typing import Any
 
-import yaml
-
-from . import _config, _noqa, _rules
+from . import _ast, _config, _noqa, _rules, _yaml
 from . import _models as models
-
-# Use the libyaml-backed C loader when available — it's ~10× faster than
-# the pure-Python SafeLoader and matches what ops does internally.
-_SafeLoader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 # Rule IDs follow ``<UPPERCASE-CATEGORY>-<DIGITS>`` (e.g.
 # ``METADATA-001``, ``SECURITY-003``). The category is everything before
@@ -33,121 +26,16 @@ def _category_of(rule_id: str) -> str:
     return match.group(1)
 
 
-class _FileLoadError(Exception):
-    """Raised when a required file exists but cannot be loaded.
-
-    Covers YAML syntax errors, OS-level read failures, and any other
-    failure to turn a present file into usable data. Distinct from the
-    absent-file case so the linter can tell the user which file is
-    broken instead of falsely claiming the manifest is missing.
-    """
-
-    def __init__(self, path: pathlib.Path, reason: str) -> None:
-        super().__init__(f"{path.name}: {reason}")
-        self.path = path
-        self.reason = reason
-
-
-def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
-    """Load a YAML file.
-
-    Returns an empty dict only when *path* does not exist. Every other
-    failure (unreadable file, YAML syntax error, top-level value that
-    isn't a mapping) is surfaced via :class:`_FileLoadError` — a file
-    that is there but broken should never be silently reported as
-    missing.
-    """
-    if not path.exists():
-        return {}
-    try:
-        with path.open() as f:
-            data = yaml.load(f, Loader=_SafeLoader)
-    except yaml.YAMLError as exc:
-        raise _FileLoadError(path, str(exc)) from exc
-    except OSError as exc:
-        raise _FileLoadError(path, f"could not read: {exc}") from exc
-    if not isinstance(data, dict):
-        raise _FileLoadError(path, "top-level YAML value is not a mapping")
-    return data
-
-
-def _mapping_items(node: Any) -> list[tuple[str, Any]]:
-    """Yield ``(scalar-key, value-node)`` pairs of a YAML MappingNode."""
-    if not isinstance(node, yaml.MappingNode):
-        return []
-    return [(key.value, value) for key, value in node.value if isinstance(key, yaml.ScalarNode)]
-
-
-def _compose(path: pathlib.Path) -> Any:
-    """Compose *path* into a YAML node tree, or ``None`` if unusable.
-
-    Composing rather than re-implementing a parser keeps line numbers
-    correct through comments, block scalars, and anchors. An absent,
-    unreadable, or malformed file yields ``None``: ``noqa`` line matching
-    simply won't apply, and file-level directives still work.
-    """
-    if not path.exists():
-        return None
-    try:
-        with path.open() as f:
-            return yaml.compose(f, Loader=_SafeLoader)
-    except (OSError, yaml.YAMLError):
-        return None
-
-
-def _key_lines(node: Any) -> dict[str, int]:
-    """Map each scalar key of a MappingNode to its 1-based line."""
-    if not isinstance(node, yaml.MappingNode):
-        return {}
-    return {
-        key.value: key.start_mark.line + 1
-        for key, _ in node.value
-        if isinstance(key, yaml.ScalarNode)
-    }
-
-
-def _config_option_lines(path: pathlib.Path) -> dict[str, int]:
-    """Map each config option name to its 1-based line in *path*."""
-    root = _compose(path)
-    if root is None:
-        return {}
-    top = dict(_mapping_items(root))
-    # charmcraft.yaml nests options under ``config``; config.yaml has a
-    # top-level ``options`` (or is bare options at the root).
-    options_node = None
-    config_node = top.get("config")
-    if config_node is not None:
-        options_node = dict(_mapping_items(config_node)).get("options")
-    if options_node is None:
-        options_node = top.get("options")
-    # Anchor on the key node: a ``noqa`` comment sits on the option's own line
-    # (``admin-password:``), whereas the value's nested mapping begins on
-    # the following line.
-    return _key_lines(options_node if options_node is not None else root)
-
-
-def _metadata_key_lines(path: pathlib.Path) -> dict[str, int]:
-    """Map each top-level metadata key to its 1-based line in *path*."""
-    return _key_lines(_compose(path))
-
-
-def _resource_field_lines(path: pathlib.Path) -> dict[tuple[str, str], int]:
-    """Map each ``(resource, field)`` pair to its 1-based line in *path*."""
-    root = _compose(path)
-    if root is None:
-        return {}
-    resources_node = dict(_mapping_items(root)).get("resources")
-    return {
-        (res_name, field): line
-        for res_name, res_node in _mapping_items(resources_node)
-        for field, line in _key_lines(res_node).items()
-    }
-
-
 def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
-    """Collect all Python files in src/ and lib/ directories."""
+    """Collect all Python files in the charm's source and test trees.
+
+    Covers ``src/``, ``lib/`` and ``tests/``. Each file is tagged with a
+    :class:`models.Scope` when parsed, and a rule selects the scope it
+    means, so collecting a tree here does not put it in front of a rule
+    that did not ask for it.
+    """
     files: list[pathlib.Path] = []
-    for subdir in ("src", "lib"):
+    for subdir in ("src", "lib", "tests"):
         d = charm_dir / subdir
         if d.is_dir():
             files.extend(sorted(d.rglob("*.py")))
@@ -168,8 +56,29 @@ def _read_python_sources(python_files: list[pathlib.Path]) -> dict[pathlib.Path,
         try:
             sources[path] = path.read_text(errors="replace")
         except OSError as exc:
-            raise _FileLoadError(path, f"could not read: {exc}") from exc
+            raise _yaml.FileLoadError(path, f"could not read: {exc}") from exc
     return sources
+
+
+def _parse_python_modules(
+    sources: dict[pathlib.Path, str], charm_dir: pathlib.Path, charm_name: str | None
+) -> list[models.Module]:
+    """Parse every collected source once, for all rules to share.
+
+    A source that does not parse is a :class:`_yaml.FileLoadError`, the same as a
+    malformed YAML file. charmlint does not duplicate what ruff and a type
+    checker already report, and both run before it; a charm that reaches
+    charmlint with a broken ``src/charm.py`` should be told so rather than
+    handed a report that looks clean.
+    """
+    modules: list[models.Module] = []
+    for path, text in sources.items():
+        try:
+            modules.append(_ast.parse(path, text, charm_dir, charm_name))
+        except SyntaxError as exc:
+            line = f" (line {exc.lineno})" if exc.lineno else ""
+            raise _yaml.FileLoadError(path, f"could not parse{line}: {exc.msg}") from exc
+    return modules
 
 
 def _check_tests(charm_dir: pathlib.Path) -> tuple[bool, bool]:
@@ -196,60 +105,40 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
     # When both files exist, merge them: charmcraft.yaml takes precedence
     # for duplicate keys, but fields only in metadata.yaml are included.
     # This matches charmcraft's own behaviour for split-metadata charms.
-    metadata = _load_yaml(charm_dir / "charmcraft.yaml")
-    metadata_source = "charmcraft.yaml"
-    metadata_fallback = _load_yaml(charm_dir / "metadata.yaml")
-    # Keys merged in from metadata.yaml, so rules that care which file a key
-    # came from (the two files accept different keys) can tell them apart.
-    metadata_key_sources: dict[str, str] = {}
-    if not metadata:
-        metadata = metadata_fallback
-        metadata_source = "metadata.yaml"
-    elif metadata_fallback:
-        for key in metadata_fallback:
-            if key not in metadata:
-                metadata[key] = metadata_fallback[key]
-                metadata_key_sources[key] = "metadata.yaml"
+    # Every key keeps the file it was read from, so rules that care which
+    # file a key came from (the two files accept different keys) can tell
+    # them apart, and diagnostics anchor to the right one.
+    charmcraft = _yaml.load(charm_dir / "charmcraft.yaml")
+    legacy = _yaml.load(charm_dir / "metadata.yaml")
+    metadata = _yaml.merge(charmcraft, legacy) if charmcraft else legacy
 
     # Load actions (charmcraft.yaml or actions.yaml).
-    actions_raw = metadata.get("actions") or {}
-    actions: dict[str, Any] = actions_raw if isinstance(actions_raw, dict) else {}
+    actions = metadata.get("actions")
     if not actions:
-        actions_data = _load_yaml(charm_dir / "actions.yaml")
-        actions = actions_data if isinstance(actions_data, dict) else {}
+        actions = _yaml.load(charm_dir / "actions.yaml")
+    actions = _mapping_or_absent(actions)
 
-    # Load config options (charmcraft.yaml or config.yaml). Track which
-    # file the options came from so diagnostics anchor to the right file
-    # and its per-option line numbers can be resolved for ``noqa``.
-    config_section = metadata.get("config", {})
-    if isinstance(config_section, dict) and config_section.get("options"):
+    # Load config options (charmcraft.yaml or config.yaml).
+    config_section = metadata.get("config")
+    if "options" in config_section:
+        # `config: {options: }` is an empty (not absent) option set — take
+        # it as-is, rather than falling through and treating the literal
+        # key 'options' as an option name.
         config_options = config_section["options"]
-        config_source = metadata_source
-    elif isinstance(config_section, dict) and config_section:
+    elif config_section:
         config_options = config_section
-        config_source = metadata_source
     else:
-        config_data = _load_yaml(charm_dir / "config.yaml")
-        config_options = config_data.get("options", config_data) if config_data else {}
-        config_source = "config.yaml"
-    if not isinstance(config_options, dict):
-        config_options = {}
-    config_option_lines = _config_option_lines(charm_dir / config_source)
-    # Sections may have been merged in from metadata.yaml, so read the lines
-    # from whichever file actually declared each one.
-    resource_field_lines = _resource_field_lines(
-        charm_dir / metadata_key_sources.get("resources", metadata_source)
-    )
-    metadata_key_lines = _metadata_key_lines(charm_dir / metadata_source)
-    if metadata_key_sources:
-        merged_lines = _metadata_key_lines(charm_dir / "metadata.yaml")
-        metadata_key_lines.update(
-            {key: merged_lines[key] for key in metadata_key_sources if key in merged_lines}
-        )
+        config_data = _yaml.load(charm_dir / "config.yaml")
+        config_options = config_data.get("options") if "options" in config_data else config_data
+    config_options = _mapping_or_absent(config_options)
 
     # Collect Python files and read their contents.
     python_files = _collect_python_files(charm_dir)
     python_sources = _read_python_sources(python_files)
+    name = metadata.get("name").value
+    python_modules = _parse_python_modules(
+        python_sources, charm_dir, name if isinstance(name, str) else None
+    )
 
     # Read README.
     readme_content = ""
@@ -262,21 +151,28 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
 
     return models.CharmContext(
         charm_dir=charm_dir,
-        metadata_source=metadata_source,
         metadata=metadata,
-        metadata_key_sources=metadata_key_sources,
         actions=actions,
         config_options=config_options,
-        config_source=config_source,
-        config_option_lines=config_option_lines,
-        resource_field_lines=resource_field_lines,
-        metadata_key_lines=metadata_key_lines,
         python_files=python_files,
         python_sources=python_sources,
+        python_modules=python_modules,
         readme_content=readme_content,
         has_tests_unit=has_unit,
         has_tests_integration=has_integration,
     )
+
+
+def _mapping_or_absent(node: models.Yaml) -> models.Yaml:
+    """Return *node* if it holds a mapping, else an absent node for its file.
+
+    A section written as something other than a mapping (``actions: []``)
+    has no entries to check, and reducing it here keeps every rule from
+    repeating the same shape guard.
+    """
+    if isinstance(node.value, dict):
+        return node
+    return models.Yaml.absent(node.source)
 
 
 def _should_run_rule(rule: _rules.Rule, config: _config.LintConfig) -> bool:
@@ -326,7 +222,7 @@ def lint(
 
     try:
         context = build_context(charm_dir)
-    except _FileLoadError as exc:
+    except _yaml.FileLoadError as exc:
         return models.LintReport.from_diagnostics(
             charm_dir=charm_dir,
             diagnostics=[

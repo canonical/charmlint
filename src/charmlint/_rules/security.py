@@ -29,19 +29,16 @@ class SecretInPlainConfig(Rule):
     reference_url = "https://canonical.com/juju/docs/ops/latest/howto/manage-secrets/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        secret_options = [
-            name
-            for name, spec in context.config_options.items()
-            if not (isinstance(spec, dict) and spec.get("type") in _NON_SECRET_TYPES)
-            and _SECRET_KEYWORD_RE.search(name)
-        ]
         return [
             self.diagnostic(
                 f"Config option '{name}' looks like a secret "
                 f"— use Juju secrets instead of plain-text config",
-                path=context.config_source,
-                line=context.config_option_lines.get(name),
+                path=option.source,
+                line=option.line,
                 fix_hint="Use the Juju secrets API for sensitive data",
             )
-            for name in secret_options
+            for name, option in context.config_options.items()
+            if option.get("type").value not in _NON_SECRET_TYPES
+            and isinstance(name, str)
+            and _SECRET_KEYWORD_RE.search(name)
         ]
