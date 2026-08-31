@@ -149,3 +149,31 @@ class TestJujuRules:
         report = lint(tmp_charm)
         # falls through to requirements.txt
         assert [d for d in report if d.rule_id == "JUJU-004"]
+
+    def test_uv_plugin_ignores_requirements_txt(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x", "parts": {"my-charm": {"plugin": "uv"}}})
+        (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report if d.rule_id in {"JUJU-003", "JUJU-004"}]
+
+    def test_poetry_plugin_ignores_requirements_txt(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm, {"name": "x", "parts": {"my-charm": {"plugin": "poetry"}}}
+        )
+        (tmp_charm / "requirements.txt").write_text("ops\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report if d.rule_id in {"JUJU-003", "JUJU-004"}]
+
+    def test_uv_plugin_still_checks_pyproject(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x", "parts": {"my-charm": {"plugin": "uv"}}})
+        (tmp_charm / "pyproject.toml").write_text(
+            '[project]\nname = "x"\ndependencies = [\n  "ops==3.7.1",\n]\n'
+        )
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "JUJU-004"]
+
+    def test_charm_plugin_still_checks_requirements_txt(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x", "parts": {"my-charm": {"plugin": "charm"}}})
+        (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "JUJU-004"]

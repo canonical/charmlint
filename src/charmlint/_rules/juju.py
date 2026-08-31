@@ -146,15 +146,33 @@ def _find_ops_in_requirements(
     return None
 
 
+#: charmcraft plugins that resolve dependencies from ``pyproject.toml``
+#: plus a lock file. Any ``requirements.txt`` alongside one of these is a
+#: generated artefact, not a hand-written declaration, so the pinning
+#: rules must not read it.
+_LOCKFILE_PLUGINS = frozenset({"poetry", "uv"})
+
+
+def _uses_lockfile_plugin(metadata: models.Yaml) -> bool:
+    """Report whether any ``parts`` entry uses a lock-file-based plugin."""
+    return any(
+        part.get("plugin").value in _LOCKFILE_PLUGINS for _, part in metadata.get("parts").items()
+    )
+
+
 @functools.cache
-def _find_ops_dep(charm_dir: pathlib.Path) -> tuple[str, str, int | None] | None:
+def _find_ops_dep(
+    charm_dir: pathlib.Path, *, skip_requirements: bool
+) -> tuple[str, str, int | None] | None:
     """Return ``(source, kind, line)`` for the first ``ops`` dep found, or ``None``.
 
     Both JUJU rules share this scan so we parse each source once per
     lint and stop at the first hit — a charm should only declare
     ``ops`` in one place. ``pyproject.toml`` wins over
-    ``requirements.txt`` when both are present. ``line`` is 1-based
-    for ``requirements.txt`` matches and ``None`` for
+    ``requirements.txt`` when both are present, and
+    *skip_requirements* drops ``requirements.txt`` altogether for
+    charms whose plugin generates it from a lock file. ``line`` is
+    1-based for ``requirements.txt`` matches and ``None`` for
     ``pyproject.toml`` matches (``tomllib`` discards positions).
     """
     pyproject = charm_dir / "pyproject.toml"
@@ -162,6 +180,9 @@ def _find_ops_dep(charm_dir: pathlib.Path) -> tuple[str, str, int | None] | None
         found = _find_ops_in_pyproject(pyproject)
         if found is not None:
             return found
+
+    if skip_requirements:
+        return None
 
     requirements = charm_dir / "requirements.txt"
     if requirements.is_file():
@@ -182,7 +203,10 @@ class OpsDependencyUnpinned(Rule):
     default_severity = models.Severity.WARNING
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        found = _find_ops_dep(context.charm_dir)
+        found = _find_ops_dep(
+            context.charm_dir,
+            skip_requirements=_uses_lockfile_plugin(context.metadata),
+        )
         if found is None or found[1] != "unpinned":
             return []
         source, _kind, line = found
@@ -208,7 +232,10 @@ class OpsDependencyExactlyPinned(Rule):
     default_severity = models.Severity.INFO
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        found = _find_ops_dep(context.charm_dir)
+        found = _find_ops_dep(
+            context.charm_dir,
+            skip_requirements=_uses_lockfile_plugin(context.metadata),
+        )
         if found is None or found[1] != "exact":
             return []
         source, _kind, line = found
