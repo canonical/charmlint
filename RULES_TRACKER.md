@@ -15,7 +15,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | DEP 001-004 | DEP001, DEP002, DEP003, DEP004 | `_rules/deprecated.py` (factory) | `test_rules.py::TestDeprecatedRules` | | pending |
 | CHARMCRAFT-001 | CHARMCRAFT-001 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #106 | merged |
 | CHARMCRAFT-002 | CHARMCRAFT-002 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #107 | in review |
-| CC003 | CC003 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
+| CHARMCRAFT-003 | CHARMCRAFT-003 (was CC003 pre-renumber) | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | #108 | in review |
 | CC004 | CC004 | `_rules/charmcraft_compat.py` | `test_charmcraft_compat.py` | | pending |
 | CHARMCRAFT-004/005 | CHARMCRAFT-004, CHARMCRAFT-005 (were CC005/CC006 pre-renumber) | `_rules/charmcraft_compat.py` (shared known-field tables) | `test_charmcraft_compat.py` | #110 | in review |
 | ATT001 | ATT001 | `_rules/attestations.py` | `test_attestations.py` | | pending |

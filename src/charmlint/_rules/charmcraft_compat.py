@@ -1,5 +1,7 @@
 """Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``."""
 
+import os
+import pathlib
 import re
 
 from .. import _models as models
@@ -170,6 +172,129 @@ class NamingConventions(Rule):
                     )
                 )
         return diagnostics
+
+
+class Entrypoint(Rule):
+    category = "CHARMCRAFT"
+    number = 3
+    name = "dispatch-entrypoint-issues"
+    description = "Charm entrypoint missing or not executable"
+    default_severity = models.Severity.ERROR
+    reference_url = (
+        "https://canonical.com/juju/docs/charmcraft/stable/reference/files/dispatch-file/"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        # charmcraft generates dispatch at pack time, so most charm repos do
+        # not have one. Only a hand-written dispatch is worth checking.
+        dispatch = context.charm_dir / "dispatch"
+        if not dispatch.is_file():
+            return []
+        try:
+            # Decoding never fails (errors="replace"), so this is only the
+            # environmental cases — unreadable mode, I/O error — where the
+            # charm itself is not at fault.
+            content = dispatch.read_text(errors="replace")
+        except OSError:
+            return []
+
+        resolved = self._entrypoint(content)
+        if resolved is None:
+            return []
+        entrypoint_rel, via_interpreter = resolved
+        entrypoint = context.charm_dir / entrypoint_rel
+
+        if not entrypoint.exists():
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' referenced in dispatch does not exist",
+                    path="dispatch",
+                    fix_hint=f"Create {entrypoint_rel}, or point dispatch at the real entrypoint",
+                )
+            ]
+        if not entrypoint.is_file():
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' referenced in dispatch is not a regular file",
+                    path="dispatch",
+                )
+            ]
+        # An entrypoint handed to an interpreter does not need the executable
+        # bit — only one dispatch runs directly does.
+        if not via_interpreter and not os.access(entrypoint, os.X_OK):
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' is not executable",
+                    path=entrypoint_rel,
+                    fix_hint=f"Run: chmod +x {entrypoint_rel}",
+                )
+            ]
+        return []
+
+    def _entrypoint(self, dispatch_content: str) -> tuple[str, bool] | None:
+        """Resolve the entrypoint dispatch runs.
+
+        Returns the charm-relative path and whether it is handed to an
+        interpreter rather than executed directly, or ``None`` when dispatch
+        does something too dynamic to resolve statically.
+        """
+        command_line = self._command_line(dispatch_content)
+        if command_line is None:
+            return None
+
+        via_interpreter = False
+        words = [word.strip("'\"") for word in command_line.split()]
+        for index, word in enumerate(words):
+            more_follow = index < len(words) - 1
+            # A leading ``VAR=`` assignment, e.g. ``PYTHONPATH=lib:venv``.
+            if re.match(r"^\w+=", word):
+                continue
+            # An interpreter run by name: ``python``, ``python3``,
+            # ``python3.12``, or ``/usr/bin/env`` (matched on basename).
+            if more_follow and re.match(
+                r"^(?:python[0-9.]*|env)$", pathlib.PurePosixPath(word).name
+            ):
+                via_interpreter = True
+                continue
+            # An interpreter named by a variable, e.g. ``$PYTHON_BIN charm.py``:
+            # unresolvable as a command, but its argument is still the charm.
+            if more_follow and "$" in word:
+                via_interpreter = True
+                continue
+            relative = self._charm_relative(word)
+            return None if relative is None else (relative, via_interpreter)
+        return None
+
+    def _command_line(self, dispatch_content: str) -> str | None:
+        """Return the dispatch line that runs the charm, sans any ``exec``."""
+        # The command dispatch hands control to, e.g. the ``./src/charm.py``
+        # in ``PYTHONPATH=lib:venv exec ./src/charm.py``. Stops at a shell
+        # separator so a trailing redirect or ``&&`` is not swallowed in.
+        match = re.search(r"\bexec\s+(?P<rest>[^\n;&|<>]+)", dispatch_content)
+        if match is not None:
+            return match.group("rest")
+        # No ``exec``: hand-written dispatch scripts often just run the charm
+        # as their last statement. Only the last statement is considered, so a
+        # ``.py`` path mentioned earlier in the script is not mistaken for the
+        # entrypoint.
+        for line in reversed(dispatch_content.splitlines()):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            return line if ".py" in line else None
+        return None
+
+    def _charm_relative(self, command: str) -> str | None:
+        """Normalise a dispatch command to a charm-relative path, if it is one."""
+        # Anything with shell expansion in it, or pointing outside the charm,
+        # cannot be resolved statically.
+        if not command or "$" in command or "`" in command:
+            return None
+        path = pathlib.PurePosixPath(command)
+        if path.is_absolute() or ".." in path.parts:
+            return None
+        parts = [part for part in path.parts if part != "."]
+        return str(pathlib.PurePosixPath(*parts)) if parts else None
 
 
 class UnknownTopLevelField(Rule):
