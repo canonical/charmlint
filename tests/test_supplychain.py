@@ -36,7 +36,7 @@ class TestOpsPinningRules:
 
     def test_range_pin_passes(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
-        (tmp_charm / "requirements.txt").write_text("ops>=2.17,<4\n")
+        (tmp_charm / "requirements.txt").write_text("ops>=2.23,<4\n")
         report = lint(tmp_charm)
         assert not [d for d in report if d.rule_id in {"SUPPLYCHAIN-005", "SUPPLYCHAIN-006"}]
 
@@ -76,7 +76,7 @@ class TestOpsPinningRules:
             "[project]\n"
             'name = "ops"\n'
             'keywords = ["ops", "charm"]\n'
-            'dependencies = ["ops>=2.17,<4"]\n'
+            'dependencies = ["ops>=2.23,<4"]\n'
         )
         report = lint(tmp_charm)
         assert not [d for d in report if d.rule_id in {"SUPPLYCHAIN-005", "SUPPLYCHAIN-006"}]
@@ -110,7 +110,7 @@ class TestOpsPinningRules:
             "\n"
             "[tool.poetry.dependencies]\n"
             'python = "^3.10"\n'
-            'ops = "^2.17"\n'
+            'ops = "^2.23"\n'
         )
         report = lint(tmp_charm)
         assert not [d for d in report if d.rule_id in {"SUPPLYCHAIN-005", "SUPPLYCHAIN-006"}]
@@ -191,10 +191,10 @@ class TestOpsDependencyParsing:
 
     def test_pep508_specifier_extras_and_section(self):
         dep = _supplychain._parse_pep508(
-            "ops[tracing,testing]>=2.17,<4", "pyproject.toml", "project.dependencies"
+            "ops[tracing,testing]>=2.23,<4", "pyproject.toml", "project.dependencies"
         )
         assert dep is not None
-        assert dep.specifier == ">=2.17,<4"
+        assert dep.specifier == ">=2.23,<4"
         assert dep.extras == ("tracing", "testing")
         assert dep.section == "project.dependencies"
         assert dep.line is None
@@ -203,10 +203,10 @@ class TestOpsDependencyParsing:
 
     def test_pep508_environment_marker_dropped(self):
         dep = _supplychain._parse_pep508(
-            'ops>=2.17; python_version < "3.12"', "requirements.txt", "requirements.txt"
+            'ops>=2.23; python_version < "3.12"', "requirements.txt", "requirements.txt"
         )
         assert dep is not None
-        assert dep.specifier == ">=2.17"
+        assert dep.specifier == ">=2.23"
 
     def test_pep508_non_ops_ignored(self):
         assert (

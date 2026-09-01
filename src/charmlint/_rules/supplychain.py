@@ -36,7 +36,7 @@ class _OpsDependency:
     one a charm ought to be using.
     """
 
-    #: The version specifier exactly as written, e.g. ``">=2.17,<4"``.
+    #: The version specifier exactly as written, e.g. ``">=2.23,<4"``.
     #: Empty when the dependency is declared with no specifier at all.
     specifier: str
     #: Extras requested alongside it, e.g. ``("tracing",)``.
@@ -90,7 +90,7 @@ def _parse_pep508(
     match = _PEP508_RE.match(entry)
     if match is None or _normalize(match.group("name")) != "ops":
         return None
-    # Drop any environment marker: `ops>=2.17; python_version < "3.12"`
+    # Drop any environment marker: `ops>=2.23; python_version < "3.12"`
     # constrains when the dependency applies, not which versions satisfy it.
     specifier = match.group("rest").split(";", 1)[0].strip()
     return _OpsDependency(

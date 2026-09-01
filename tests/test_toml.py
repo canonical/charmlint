@@ -23,11 +23,11 @@ class TestLoad:
 
     def test_parses_tables(self, tmp_path: pathlib.Path):
         path = tmp_path / "pyproject.toml"
-        path.write_text('[project]\nname = "x"\ndependencies = ["ops>=2.17,<4"]\n')
+        path.write_text('[project]\nname = "x"\ndependencies = ["ops>=2.23,<4"]\n')
         data = _toml.load(path)
         assert data is not None
         assert data["project"]["name"] == "x"
-        assert data["project"]["dependencies"] == ["ops>=2.17,<4"]
+        assert data["project"]["dependencies"] == ["ops>=2.23,<4"]
 
     def test_malformed_raises(self, tmp_path: pathlib.Path):
         path = tmp_path / "pyproject.toml"

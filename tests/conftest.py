@@ -105,7 +105,7 @@ if __name__ == "__main__":
 """,
     )
     # Add requirements with ops-tracing.
-    (charm_dir / "requirements.txt").write_text("ops>=2.17,<4\nops-tracing\n")
+    (charm_dir / "requirements.txt").write_text("ops>=2.23,<4\nops-tracing\n")
     # Add README.
     (charm_dir / "README.md").write_text(
         "# Test Charm\n\n## Installation\n\n## Configuration\n\n## Usage\n\n## Troubleshooting\n"
