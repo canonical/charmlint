@@ -107,7 +107,7 @@ class BlockedStatusInNonRepeatingHandler(Rule):
     name = "blocked-status-in-non-repeating-handler"
     description = "BlockedStatus set in an install/start/stop/remove handler"
     default_severity = models.Severity.WARNING
-    reference_url = "https://documentation.ubuntu.com/juju/latest/reference/hook/#install"
+    reference_url = "https://canonical.com/juju/docs/juju-cli/latest/reference/hook/#install"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
