@@ -14,7 +14,7 @@ _PEP508_RE = re.compile(
     ^\s*
     (?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)   # the distribution name
     \s*
-    (?:\[(?P<extras>[^\]]*)\])?           # optional [extras], e.g. ops[tracing]
+    (?:\[(?P<extras>[^\]]*)\])?            # optional [extras], e.g. ops[tracing]
     \s*
     (?P<rest>.*)                           # the version specifier and/or a PEP 508 marker
     """,
