@@ -1,4 +1,4 @@
-"""JUJU rules — Juju-ness / idiomatic ops conventions."""
+"""SUPPLYCHAIN rules — dependency and release hygiene."""
 
 import dataclasses
 import functools
@@ -26,7 +26,7 @@ _PEP508_RE = re.compile(
 class _OpsDependency:
     """One charm's declared ``ops`` dependency, and where it was declared.
 
-    Every JUJU rule about the ``ops`` dependency works from one of
+    Every rule about the ``ops`` dependency works from one of
     these, so the charm's packaging is parsed once and interrogated
     many times rather than each rule re-deriving the answer it happens
     to need. Keeping the specifier and the section rather than a
@@ -231,7 +231,7 @@ def _uses_lockfile_plugin(metadata: models.Yaml) -> bool:
 
 @functools.cache
 def _find_ops_requirements(charm_dir: pathlib.Path) -> _OpsDependency | None:
-    """Scan ``requirements.txt`` once per charm, for both JUJU rules."""
+    """Scan ``requirements.txt`` once per charm, for both pinning rules."""
     requirements = charm_dir / "requirements.txt"
     if not requirements.is_file():
         return None
@@ -241,7 +241,7 @@ def _find_ops_requirements(charm_dir: pathlib.Path) -> _OpsDependency | None:
 def _find_ops_dep(context: models.CharmContext) -> _OpsDependency | None:
     """Return the charm's declared ``ops`` dependency, or ``None``.
 
-    Both JUJU rules share this scan and stop at the first hit — a charm
+    Both pinning rules share this scan and stop at the first hit — a charm
     should only declare ``ops`` in one place. ``pyproject.toml`` wins
     over ``requirements.txt`` when both are present, and
     ``requirements.txt`` is skipped altogether for charms whose
@@ -261,8 +261,8 @@ def _find_ops_dep(context: models.CharmContext) -> _OpsDependency | None:
 class OpsDependencyUnpinned(Rule):
     """Flag an ``ops`` dependency with no version specifier."""
 
-    category = "JUJU"
-    number = 3
+    category = "SUPPLYCHAIN"
+    number = 5
     name = "ops-dependency-unpinned"
     description = "ops dependency has no version specifier"
     default_severity = models.Severity.WARNING
@@ -286,8 +286,8 @@ class OpsDependencyUnpinned(Rule):
 class OpsDependencyExactlyPinned(Rule):
     """Flag an ``ops`` dependency pinned with ``==``."""
 
-    category = "JUJU"
-    number = 4
+    category = "SUPPLYCHAIN"
+    number = 6
     name = "ops-dependency-exactly-pinned"
     description = "ops dependency pinned with `==`"
     default_severity = models.Severity.INFO
