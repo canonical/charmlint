@@ -174,18 +174,10 @@ class NamingConventions(Rule):
         return diagnostics
 
 
-# The command the dispatch script hands control to, e.g. the ``./src/charm.py``
-# in ``PYTHONPATH=lib:venv exec ./src/charm.py``. Stops at a shell separator so
-# a trailing redirect or ``&&`` is not swallowed into the command.
-_EXEC_PATTERN = re.compile(r"\bexec\s+(?P<rest>[^\n;&|<>]+)")
-_ASSIGNMENT_PATTERN = re.compile(r"^\w+=")
-_INTERPRETER_NAMES = re.compile(r"^(?:python[0-9.]*|env)$")
-
-
 class Entrypoint(Rule):
     category = "CHARMCRAFT"
     number = 3
-    name = "entrypoint-issues"
+    name = "dispatch-entrypoint-issues"
     description = "Charm entrypoint missing or not executable"
     default_severity = models.Severity.ERROR
     reference_url = (
@@ -199,6 +191,9 @@ class Entrypoint(Rule):
         if not dispatch.is_file():
             return []
         try:
+            # Decoding never fails (errors="replace"), so this is only the
+            # environmental cases — unreadable mode, I/O error — where the
+            # charm itself is not at fault.
             content = dispatch.read_text(errors="replace")
         except OSError:
             return []
@@ -251,11 +246,14 @@ class Entrypoint(Rule):
         words = [word.strip("'\"") for word in command_line.split()]
         for index, word in enumerate(words):
             more_follow = index < len(words) - 1
-            # Skip the env assignments and ``env``/``python3`` wrappers that
-            # may sit in front of the entrypoint itself.
-            if _ASSIGNMENT_PATTERN.match(word):
+            # A leading ``VAR=`` assignment, e.g. ``PYTHONPATH=lib:venv``.
+            if re.match(r"^\w+=", word):
                 continue
-            if more_follow and _INTERPRETER_NAMES.match(pathlib.PurePosixPath(word).name):
+            # An interpreter run by name: ``python``, ``python3``,
+            # ``python3.12``, or ``/usr/bin/env`` (matched on basename).
+            if more_follow and re.match(
+                r"^(?:python[0-9.]*|env)$", pathlib.PurePosixPath(word).name
+            ):
                 via_interpreter = True
                 continue
             # An interpreter named by a variable, e.g. ``$PYTHON_BIN charm.py``:
@@ -269,7 +267,10 @@ class Entrypoint(Rule):
 
     def _command_line(self, dispatch_content: str) -> str | None:
         """Return the dispatch line that runs the charm, sans any ``exec``."""
-        match = _EXEC_PATTERN.search(dispatch_content)
+        # The command dispatch hands control to, e.g. the ``./src/charm.py``
+        # in ``PYTHONPATH=lib:venv exec ./src/charm.py``. Stops at a shell
+        # separator so a trailing redirect or ``&&`` is not swallowed in.
+        match = re.search(r"\bexec\s+(?P<rest>[^\n;&|<>]+)", dispatch_content)
         if match is not None:
             return match.group("rest")
         # No ``exec``: hand-written dispatch scripts often just run the charm
