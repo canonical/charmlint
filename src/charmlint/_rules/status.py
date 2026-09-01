@@ -127,12 +127,12 @@ class BlockedStatusInNonRepeatingHandler(Rule):
                 self.diagnostic(
                     f"BlockedStatus set in '{func.name}', observed for '{event}' "
                     f"— Juju does not re-emit {event}, so the charm cannot recover "
-                    f"once the operator fixes the problem",
+                    f"once the user fixes the problem",
                     path=module.path,
                     line=line,
                     fix_hint=(
                         "let the exception propagate so the hook fails and Juju "
-                        "retries it (or the operator runs `juju resolved`)"
+                        "retries it (or the user runs `juju resolved`)"
                     ),
                 )
                 for line in _blocked_status_lines(func)
