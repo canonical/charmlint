@@ -303,6 +303,6 @@ class OpsDependencyExactlyPinned(Rule):
                 "without a manual bump",
                 path=dep.source,
                 line=dep.line,
-                fix_hint="Replace the `==` pin with a range, e.g. `ops>=2.17,<4`",
+                fix_hint="Replace the `==` pin with a range, e.g. `ops>=2.23,<4`",
             )
         ]
