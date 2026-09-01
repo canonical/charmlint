@@ -5,7 +5,7 @@ import pathlib
 from charmlint._linter import lint
 from charmlint._models import CharmContext, Severity
 from charmlint._rules.charmcraft_compat import Entrypoint
-from tests.conftest import write_charmcraft_yaml
+from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 
 class TestDeprecatedSeries:
@@ -637,3 +637,164 @@ class TestUnknownResourceField:
         )
         report = lint(tmp_charm)
         assert "CHARMCRAFT-005" not in {d.rule_id for d in list(report)}
+
+
+class TestOpsMainCall:
+    """Tests for CHARMCRAFT-006 — missing ops.main() call."""
+
+    def test_no_ops_main_is_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-006"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert diags[0].path == "src/charm.py"
+
+    def test_ops_main_call(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n\n\nops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_legacy_main_import(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from ops.charm import CharmBase\nfrom ops.main import main\n\n\n"
+            "class C(CharmBase):\n    pass\n\n\nmain(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_aliased_import(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops as o\n\n\nclass C(o.CharmBase):\n    pass\n\n\no.main.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_import_ops_main_submodule(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops.main\nfrom ops.charm import CharmBase\n\n\n"
+            "class C(CharmBase):\n    pass\n\n\nops.main.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_main_module_attribute_call(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import CharmBase, main\n\n\nclass C(CharmBase):\n    pass\n\n\nmain.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_main_in_another_src_module_still_flags(self, tmp_charm: pathlib.Path):
+        # `ops.main()` only runs if it is in the file dispatch execs, so a
+        # call in a sibling module doesn't make src/charm.py an entrypoint.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nfrom charm import C\n\nops.main(C)\n",
+            filename="entrypoint.py",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
+
+    def test_configured_entrypoint_is_used(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "parts": {"charm": {"charm-entrypoint": "src/entrypoint.py"}},
+            },
+        )
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nfrom charm import C\n\nops.main(C)\n",
+            filename="entrypoint.py",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_configured_entrypoint_without_main_is_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "parts": {"charm": {"charm-entrypoint": "src/entrypoint.py"}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n\n\nops.main(C)\n",
+        )
+        write_charm_source(tmp_charm, "import ops\n", filename="entrypoint.py")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-006"]
+        assert len(diags) == 1
+        assert diags[0].path == "src/entrypoint.py"
+
+    def test_non_python_entrypoint_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "parts": {"charm": {"charm-entrypoint": "scripts/entrypoint"}},
+            },
+        )
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_missing_entrypoint_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_malformed_parts_falls_back_to_default(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "parts": {"charm": ["bundle"]}})
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
+
+    def test_non_ops_charm_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import subprocess\n\n\ndef install():\n    pass\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_ops_main_in_lib_does_not_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        lib_dir = tmp_charm / "lib" / "charms" / "example" / "v0"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "helper.py").write_text("import ops\n\nops.main(None)\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
+
+    def test_relative_main_import_does_not_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nfrom .helpers import main\n\n\nclass C(ops.CharmBase):\n    pass\n\n\nmain(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
+
+    def test_syntax_error_source_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\ndef broken(:\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
