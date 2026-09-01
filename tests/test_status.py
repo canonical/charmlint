@@ -204,8 +204,8 @@ class TestBlockedStatusInNonRepeatingHandler:
         )
         assert not found
 
-    def test_unnameable_event_expression_not_flagged(self, tmp_charm: pathlib.Path):
-        """An observe call we can't resolve is assumed to be a recovering event."""
+    def test_custom_event_not_flagged(self, tmp_charm: pathlib.Path):
+        """A custom event is not one of the four Juju delivers only once."""
         found = _lint_source(
             tmp_charm,
             """\
@@ -217,6 +217,28 @@ class TestBlockedStatusInNonRepeatingHandler:
                     super().__init__(framework)
                     framework.observe(self.on.install, self._reconcile)
                     framework.observe(self.database.on.ready, self._reconcile)
+
+                def _reconcile(self, event):
+                    self.unit.status = BlockedStatus("no db")
+            """,
+        )
+        assert not found
+
+    def test_unresolvable_event_expression_not_flagged(self, tmp_charm: pathlib.Path):
+        """An observe call we can't read is assumed to be a recovering event."""
+        found = _lint_source(
+            tmp_charm,
+            """\
+            import ops
+            from ops import BlockedStatus
+
+            EVENT = "config-changed"
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.install, self._reconcile)
+                    framework.observe(self.on[EVENT].changed, self._reconcile)
 
                 def _reconcile(self, event):
                     self.unit.status = BlockedStatus("no db")
@@ -304,6 +326,6 @@ class TestBlockedStatusInNonRepeatingHandler:
             """,
         )
         assert len(found) == 1
-        assert found[0].path == str(tmp_charm.resolve() / "src" / "charm.py")
+        assert found[0].path == "src/charm.py"
         assert found[0].fix_hint is not None
         assert found[0].reference_url is not None

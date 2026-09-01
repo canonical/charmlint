@@ -1,8 +1,8 @@
 """Status rules — how a charm reports its state to Juju."""
 
 import ast
-import pathlib
 
+from .. import _ast
 from .. import _models as models
 from ._base import Rule
 
@@ -14,50 +14,24 @@ from ._base import Rule
 _NON_REPEATING_EVENTS = frozenset({"install", "start", "stop", "remove"})
 
 
-def _lifecycle_event(event_expr: ast.AST) -> str | None:
-    """Return the observed event name, or ``None`` if it can't be named.
+def _non_repeating_handlers(module: models.Module) -> dict[str, set[str]]:
+    """Map each handler in *module* to the non-repeating events it observes.
 
-    Only the plain ``<...>.on.<event>`` attribute form is recognised —
-    that is how every charm observes the lifecycle events. Any other
-    expression (a subscript, a ``getattr``, a bound event held in a
-    variable) yields ``None``, which the caller treats as "this handler
-    also runs for something we can't identify" and therefore does not
-    flag.
+    A handler appears only when *every* observe call that names it resolves
+    to a non-repeating event. One repeating event — or one observe call
+    whose event expression could not be read statically — is enough to
+    leave the handler out, because either means the charm gets another go.
     """
-    if not isinstance(event_expr, ast.Attribute):
-        return None
-    parent = event_expr.value
-    if isinstance(parent, ast.Attribute) and parent.attr == "on":
-        return event_expr.attr
-    return None
-
-
-def _handler_name(handler_expr: ast.AST) -> str | None:
-    """Return the name of the function passed as an observer, else ``None``."""
-    if isinstance(handler_expr, ast.Attribute):
-        return handler_expr.attr
-    if isinstance(handler_expr, ast.Name):
-        return handler_expr.id
-    return None
-
-
-def _handler_events(tree: ast.AST) -> dict[str, set[str | None]]:
-    """Map each observed handler name to the set of events it is observed for.
-
-    ``None`` in the set marks an observe call whose event expression
-    could not be named.
-    """
-    events: dict[str, set[str | None]] = {}
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+    events: dict[str, set[str]] = {}
+    excluded: set[str] = set()
+    for observer in _ast.observers(module):
+        if observer.handler is None:
             continue
-        if node.func.attr != "observe" or len(node.args) < 2:
+        if not observer.resolved or observer.event not in _NON_REPEATING_EVENTS:
+            excluded.add(observer.handler)
             continue
-        handler = _handler_name(node.args[1])
-        if handler is None:
-            continue
-        events.setdefault(handler, set()).add(_lifecycle_event(node.args[0]))
-    return events
+        events.setdefault(observer.handler, set()).add(observer.event)
+    return {handler: found for handler, found in events.items() if handler not in excluded}
 
 
 def _is_blocked_status(node: ast.AST) -> bool:
@@ -124,7 +98,7 @@ class BlockedStatusInNonRepeatingHandler(Rule):
     is non-repeating. Charms commonly point one reconciler at ``install``
     and at ``config-changed`` or ``update-status`` as well; those recover
     on the next event, so they are left alone. The same applies when an
-    observe call's event expression can't be named statically — an
+    observe call's event expression can't be resolved statically — an
     unknown event is assumed to be a recovering one.
     """
 
@@ -137,38 +111,30 @@ class BlockedStatusInNonRepeatingHandler(Rule):
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
-        for path, content in sorted(context.python_sources.items()):
-            if "lib" in path.relative_to(context.charm_dir).parts:
-                continue
-            try:
-                tree = ast.parse(content)
-            except SyntaxError:
-                continue
-            diagnostics.extend(self._check_module(path, tree))
+        for module in context.charm_sources():
+            diagnostics.extend(self._check_module(module))
         return diagnostics
 
-    def _check_module(self, path: pathlib.Path, tree: ast.AST) -> list[models.Diagnostic]:
-        handler_events = _handler_events(tree)
+    def _check_module(self, module: models.Module) -> list[models.Diagnostic]:
+        handlers = _non_repeating_handlers(module)
         diagnostics: list[models.Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        for func in module.functions():
+            observed = handlers.get(func.name)
+            if not observed:
                 continue
-            observed = handler_events.get(node.name)
-            if not observed or not observed <= _NON_REPEATING_EVENTS:
-                continue
-            event = "/".join(sorted(e for e in observed if e is not None))
+            event = "/".join(sorted(observed))
             diagnostics.extend(
                 self.diagnostic(
-                    f"BlockedStatus set in '{node.name}', observed for '{event}' "
+                    f"BlockedStatus set in '{func.name}', observed for '{event}' "
                     f"— Juju does not re-emit {event}, so the charm cannot recover "
                     f"once the operator fixes the problem",
-                    path=str(path),
+                    path=module.path,
                     line=line,
                     fix_hint=(
                         "let the exception propagate so the hook fails and Juju "
                         "retries it (or the operator runs `juju resolved`)"
                     ),
                 )
-                for line in _blocked_status_lines(node)
+                for line in _blocked_status_lines(func)
             )
         return diagnostics
