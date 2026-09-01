@@ -278,7 +278,7 @@ class OpsDependencyUnpinned(Rule):
                 "resolvers do not silently pull a major bump",
                 path=dep.source,
                 line=dep.line,
-                fix_hint="Add a version range, e.g. `ops>=2.17,<4`",
+                fix_hint="Add a version range, e.g. `ops>=2.23,<4`",
             )
         ]
 
