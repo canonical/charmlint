@@ -34,10 +34,10 @@ def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
     means, so collecting a tree here does not put it in front of a rule
     that did not ask for it.
 
-    Only regular files are collected. Spread tests are laid out as a directory
-    per test case, and several charms name those directories after the test
-    file (e.g. ``tests/spread/integration/test_architecture.py/task.yaml``), so
-    a bare glob would pick up a directory that then fails to be read.
+    Only regular files are collected: some charms lay out spread tests as a
+    directory named after a test file (e.g.
+    ``tests/spread/integration/test_architecture.py/task.yaml``), which a bare
+    glob would pick up.
     """
     files: list[pathlib.Path] = []
     for subdir in ("src", "lib", "tests"):
@@ -91,8 +91,8 @@ def _check_tests(charm_dir: pathlib.Path) -> tuple[bool, bool]:
 
     Accepts ``tests/unit/`` and the reactive-charm ``unit_tests/`` layout
     for unit tests, and matches ``test_*.py`` at any depth so nested
-    suites (e.g. ``tests/unit/test_charm/test_charm.py``) count. A spread-test
-    directory named ``test_*.py`` is not a test file and does not count.
+    suites (e.g. ``tests/unit/test_charm/test_charm.py``) count. Only regular
+    files count.
     """
 
     def has_test_file(d: pathlib.Path) -> bool:
