@@ -175,6 +175,73 @@ class TestLintFiltering:
         assert "Could not load charmcraft.yaml" in diag.message
 
 
+class TestLintMultiCharm:
+    """Linting a repository that holds several charms.
+
+    Each charm gets its own context, so a rule that cross-references code
+    against metadata never reads one charm's ``charmcraft.yaml`` alongside
+    another charm's ``src/``. Paths are written relative to the repository
+    root so a finding says which charm it came from.
+    """
+
+    def _repo(self, tmp_path: pathlib.Path) -> pathlib.Path:
+        for name in ("alpha", "beta"):
+            charm_dir = tmp_path / "charms" / name
+            (charm_dir / "src").mkdir(parents=True)
+            make_full_charm(charm_dir)
+            write_charmcraft_yaml(charm_dir, {"name": name})
+        return tmp_path
+
+    def test_reports_findings_from_every_charm(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        paths = {d.path for d in lint(repo) if d.path}
+        assert any(p.startswith("charms/alpha/") for p in paths)
+        assert any(p.startswith("charms/beta/") for p in paths)
+
+    def test_report_charm_dir_is_the_repository_root(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        assert lint(repo).charm_dir == repo.resolve()
+
+    def test_paths_are_relative_to_the_repository_root(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        write_charm_source(repo / "charms" / "alpha", "import ops\n")
+        for diagnostic in lint(repo):
+            if diagnostic.path is not None:
+                assert diagnostic.path.startswith("charms/")
+
+    def test_single_charm_paths_are_left_charm_relative(self, tmp_charm: pathlib.Path):
+        # The common case must be untouched: no prefix when the path the
+        # user gave is itself the charm.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        for diagnostic in lint(tmp_charm):
+            if diagnostic.path is not None:
+                assert not diagnostic.path.startswith("test-charm/")
+
+    def test_each_charm_gets_its_own_metadata(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        # METADATA-001 fires on a charm with no name. Giving beta no name
+        # and alpha one proves the two contexts are not sharing metadata.
+        (repo / "charms" / "beta" / "charmcraft.yaml").write_text("summary: no name here\n")
+        fired = {d.path for d in lint(repo) if d.rule_id == "METADATA-001"}
+        assert fired == {"charms/beta/charmcraft.yaml"}
+
+    def test_no_charm_below_the_root_is_fatal(self, tmp_path: pathlib.Path):
+        (tmp_path / "docs").mkdir()
+        report = lint(tmp_path)
+        assert report.error_count == 1
+        assert next(iter(report)).rule_id == "FATAL"
+
+    def test_noqa_is_applied_per_charm(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        for name in ("alpha", "beta"):
+            (repo / "charms" / name / "charmcraft.yaml").write_text("summary: no name\n")
+        (repo / "charms" / "alpha" / "charmcraft.yaml").write_text(
+            "# charmlint: noqa: METADATA-001\nsummary: no name\n"
+        )
+        fired = {d.path for d in lint(repo) if d.rule_id == "METADATA-001"}
+        assert fired == {"charms/beta/charmcraft.yaml"}
+
+
 class TestCategoryOf:
     """Tests for the rule-ID category parser."""
 
