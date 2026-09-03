@@ -46,7 +46,7 @@ Each row below must reach a green `PR #` before this refactor is finished.
 | SEC002 | SEC002 | `_rules/security.py` | `test_security.py` | | pending |
 | STR001 | STR001 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | #138 | in review |
 | STRUCTURE-002 | STRUCTURE-002 (was STR002 pre-renumber) | `_rules/structure.py` | `test_rules.py::TestStructureRules` | #139 | in review |
-| STR003 | STR003 | `_rules/structure.py` | `test_rules.py::TestStructureRules` | | pending |
+| STRUCTURE-003 | STRUCTURE-003 (was STR003 pre-renumber) | `_rules/structure.py` | `test_rules.py::TestStructureRules` | #140 | in review |
 | TESTING-001 | TESTING-001 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | in review |
 | TEST002 | TEST002 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
 | TEST003 | TEST003 | `_rules/testing.py` | `test_rules.py::TestTestingRules` | | pending |
