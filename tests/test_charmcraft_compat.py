@@ -814,6 +814,57 @@ class TestLegacyBases:
         assert diags[0].severity == Severity.INFO
         assert diags[0].path == "charmcraft.yaml"
 
+    def test_bases_with_24_04_is_warning(self, tmp_charm: pathlib.Path):
+        """charmcraft refuses to pack 'bases' naming a post-2024 release."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "bases": [{"name": "ubuntu", "channel": "24.04"}]},
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "24.04 and later" in diags[0].message
+
+    def test_unquoted_channel_still_compared(self, tmp_charm: pathlib.Path):
+        """An unquoted channel parses as a float, not a string."""
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nbases:\n  - name: ubuntu\n    channel: 24.10\n"
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+
+    def test_run_on_24_04_is_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "bases": [
+                    {
+                        "build-on": [{"name": "ubuntu", "channel": "22.04"}],
+                        "run-on": [{"name": "ubuntu", "channel": "24.04"}],
+                    }
+                ],
+            },
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+
+    def test_channel_without_a_release_number_is_info(self, tmp_charm: pathlib.Path):
+        """A channel charmlint cannot read is not evidence of a pack failure."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "bases": [{"name": "centos", "channel": "7"}]},
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+
     def test_build_on_run_on_form_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,

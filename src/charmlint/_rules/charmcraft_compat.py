@@ -4,6 +4,7 @@ import ast
 import os
 import pathlib
 import re
+from collections.abc import Iterator
 
 from .. import _ast
 from .. import _models as models
@@ -309,10 +310,13 @@ class OpsMainCall(Rule):
 class LegacyBases(Rule):
     """Flag the charmcraft 2 ``bases:`` block.
 
-    charmcraft 3 still accepts ``bases:``, but ``base:`` plus ``platforms:``
-    is the form it documents and the one that expresses everything ``bases:``
-    could. Reported as info rather than a warning: the charm still builds, and
-    a third of the published corpus has yet to migrate.
+    ``base:`` plus ``platforms:`` is the form charmcraft documents and the
+    one that expresses everything ``bases:`` could. How much of a problem
+    the old block is depends on the release it names: ``bases`` is only
+    accepted for bases supported before 2024-01-01, so a charm that names
+    24.04 or later there will not pack at all, while one still on 22.04
+    builds fine and has only migration ahead of it. Reported as a warning
+    in the first case and info in the second.
     """
 
     category = "CHARMCRAFT"
@@ -330,9 +334,23 @@ class LegacyBases(Rule):
         # — so telling those charms to migrate would be wrong.
         if not bases.present or bases.source != "charmcraft.yaml":
             return []
+        unsupported = any(
+            (year := _release_year(channel)) is not None and year >= _FIRST_UNSUPPORTED_YEAR
+            for channel in _base_channels(bases)
+        )
+        if unsupported:
+            message = (
+                "'bases' is not accepted for Ubuntu 24.04 and later — charmcraft "
+                "will refuse to pack; use 'base' and 'platforms' instead"
+            )
+            severity = models.Severity.WARNING
+        else:
+            message = "'bases' is the charmcraft 2 form — use 'base' and 'platforms' instead"
+            severity = models.Severity.INFO
         return [
             self.diagnostic(
-                "'bases' is the charmcraft 2 form — use 'base' and 'platforms' instead",
+                message,
+                severity=severity,
                 path=bases.source,
                 line=bases.line,
                 fix_hint="Replace 'bases' with a 'base' key and a 'platforms' block",
@@ -477,6 +495,43 @@ _KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset(
         "upstream-source",
     }
 )
+
+
+# ``bases`` is only accepted for bases supported before 2024-01-01, so every
+# Ubuntu release from 24.04 on is out — which is every channel whose year is
+# 24 or later, there being no release earlier in 2024 than 24.04.
+_FIRST_UNSUPPORTED_YEAR = 24
+
+
+def _base_channels(bases: models.Yaml) -> Iterator[object]:
+    """Yield every channel named under a ``bases`` block.
+
+    Both forms are covered: the flat ``name``/``channel`` entry, and the
+    ``build-on``/``run-on`` entry whose sub-lists hold the entries instead.
+    """
+    for entry in bases.elements or ():
+        channel = entry.get("channel")
+        if channel.present:
+            yield channel.value
+        for key in ("build-on", "run-on"):
+            for sub_entry in entry.get(key).elements or ():
+                sub_channel = sub_entry.get("channel")
+                if sub_channel.present:
+                    yield sub_channel.value
+
+
+def _release_year(channel: object) -> int | None:
+    """Return the year of an Ubuntu channel such as ``22.04``, if it has one.
+
+    Channels are conventionally quoted, but an unquoted ``channel: 22.04``
+    parses as a float, so the value is matched as text either way. Only the
+    year is taken: every release in a year falls the same side of the 2024
+    cut-off, and an unquoted ``24.10`` would reach here as ``24.1`` anyway.
+    """
+    match = re.match(r"(\d\d)\.\d", str(channel).strip())
+    if match is None:
+        return None
+    return int(match[1])
 
 
 def _suggest_closest(typo: object, known: frozenset[str]) -> str | None:
