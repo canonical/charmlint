@@ -18,9 +18,7 @@ from being linted as though the user had asked for them, and it collapses
 the reactive layout — where a built ``src/metadata.yaml`` sits under a
 source ``metadata.yaml`` — back to the single charm it is. Everything else
 here exists to keep the walk off trees that contain charm-shaped files but
-no charm of the user's: virtualenvs (``.tox/**/site-packages`` accounts for
-1169 stray ``charmcraft.yaml`` files across the 678-repository Hyrum cache,
-more than every real nested charm combined), build output, and test data.
+no charm of the user's: virtualenvs, build output, and test data.
 """
 
 import pathlib
