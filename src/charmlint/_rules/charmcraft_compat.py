@@ -536,17 +536,18 @@ def _is_kubernetes_charm(context: models.CharmContext) -> bool:
     """Return whether the charm is a Kubernetes charm.
 
     A sidecar charm declares the workload containers it sits beside, so
-    ``containers`` is the reliable signal. ``assumes: [k8s-api]`` covers
-    the charm that has no container of its own but still targets
-    Kubernetes, and legacy ``series: [kubernetes]`` the pod-spec era.
-    None of the three is guaranteed, so a Kubernetes charm that declares
-    nothing at all reads as a machine charm here — a gap, rather than a
-    machine charm wrongly told to change its metadata.
+    ``containers`` is the reliable signal, and ``assumes: [k8s-api]``
+    covers the charm that has no container of its own but still targets
+    Kubernetes. Neither is guaranteed, so a Kubernetes charm that
+    declares nothing at all reads as a machine charm here — a gap,
+    rather than a machine charm wrongly told to change its metadata.
+
+    A pod-spec charm (``series: [kubernetes]``) is deliberately not
+    matched: ``charm-user`` arrived in Juju 3.6, by which point pod-spec
+    charms were no longer deployable, so there is nothing such a charm
+    could do about the finding.
     """
     if context.metadata.get("containers").children:
-        return True
-    series = context.metadata.get("series").value
-    if isinstance(series, list) and "kubernetes" in series:
         return True
     return _assumes_k8s(context.metadata.get("assumes").value)
 
