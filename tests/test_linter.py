@@ -71,6 +71,23 @@ class TestBuildContext:
         assert ctx.has_tests_unit is False
         assert ctx.has_tests_integration is False
 
+    def test_skips_directories_named_like_python_files(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n")
+        spread = tmp_charm / "tests" / "spread" / "integration" / "test_architecture.py"
+        spread.mkdir(parents=True)
+        (spread / "task.yaml").write_text("summary: a spread test\n")
+        ctx = build_context(tmp_charm)
+        assert [p.name for p in ctx.python_files] == ["charm.py"]
+
+    def test_directory_named_like_a_test_file_is_not_a_test(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "tests" / "unit" / "test_charm.py").mkdir(parents=True)
+        (tmp_charm / "tests" / "integration" / "test_charm.py").mkdir(parents=True)
+        ctx = build_context(tmp_charm)
+        assert ctx.has_tests_unit is False
+        assert ctx.has_tests_integration is False
+
     def test_metadata_source_charmcraft_yaml(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         ctx = build_context(tmp_charm)
