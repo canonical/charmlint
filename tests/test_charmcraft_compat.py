@@ -854,6 +854,24 @@ class TestLegacyBases:
         assert len(diags) == 1
         assert diags[0].severity == Severity.WARNING
 
+    def test_build_on_24_04_is_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "bases": [
+                    {
+                        "build-on": [{"name": "ubuntu", "channel": "24.04"}],
+                        "run-on": [{"name": "ubuntu", "channel": "22.04"}],
+                    }
+                ],
+            },
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+
     def test_channel_without_a_release_number_is_info(self, tmp_charm: pathlib.Path):
         """A channel charmlint cannot read is not evidence of a pack failure."""
         write_charmcraft_yaml(
@@ -898,6 +916,15 @@ class TestLegacyBases:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         report = lint(tmp_charm)
         assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_bases_without_a_channel_is_info(self, tmp_charm: pathlib.Path):
+        # Whether charmcraft accepts a base with no channel is its own
+        # business; all this rule has to say is that the block is legacy.
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "bases": [{"name": "ubuntu"}]})
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
 
     def test_points_at_the_bases_line(self, tmp_charm: pathlib.Path):
         (tmp_charm / "charmcraft.yaml").write_text(
