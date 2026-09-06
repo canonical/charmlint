@@ -99,6 +99,9 @@ class TestCharm(ops.CharmBase):
 
     def _on_resume(self, event: ops.ActionEvent) -> None:
         event.set_results({"status": "running"})
+
+if __name__ == "__main__":
+    ops.main(TestCharm)
 """,
     )
     # Add requirements with ops-tracing.

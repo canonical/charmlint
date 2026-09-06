@@ -1,9 +1,331 @@
 """Charmcraft-compatible rules — checks that mirror ``charmcraft analyse``."""
 
+import ast
+import os
+import pathlib
 import re
 
+from .. import _ast
 from .. import _models as models
 from ._base import Rule
+
+
+class DeprecatedSeries(Rule):
+    category = "CHARMCRAFT"
+    number = 1
+    name = "deprecated-series"
+    description = "Deprecated 'series' attribute in metadata"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        series = context.metadata.get("series")
+        if not series.present:
+            return []
+        return [
+            self.diagnostic(
+                "'series' is deprecated in charm metadata — use 'bases' or 'platforms' instead",
+                path=series.source,
+                line=series.line,
+                fix_hint="Remove 'series' and use 'bases' or 'platforms'",
+            )
+        ]
+
+
+class NamingConventions(Rule):
+    category = "CHARMCRAFT"
+    number = 2
+    name = "naming-conventions"
+    description = "Config option names use underscores instead of hyphens"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        # Juju/charmcraft reject underscored action names outright, and
+        # underscored action parameters are vanishingly rare in the wild,
+        # so this rule targets config options only.
+        diagnostics: list[models.Diagnostic] = []
+        for opt_name, option in context.config_options.items():
+            if isinstance(opt_name, str) and "_" in opt_name:
+                hyphenated = re.sub(r"[-_]+", "-", opt_name)
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Config option '{opt_name}' uses underscores — prefer hyphens ('{hyphenated}')",
+                        path=option.source,
+                        line=option.line,
+                        fix_hint=f"Rename to '{hyphenated}'",
+                    )
+                )
+        return diagnostics
+
+
+class Entrypoint(Rule):
+    category = "CHARMCRAFT"
+    number = 3
+    name = "dispatch-entrypoint-issues"
+    description = "Charm entrypoint missing or not executable"
+    default_severity = models.Severity.ERROR
+    reference_url = (
+        "https://canonical.com/juju/docs/charmcraft/stable/reference/files/dispatch-file/"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        # charmcraft generates dispatch at pack time, so most charm repos do
+        # not have one. Only a hand-written dispatch is worth checking.
+        dispatch = context.charm_dir / "dispatch"
+        if not dispatch.is_file():
+            return []
+        try:
+            # Decoding never fails (errors="replace"), so this is only the
+            # environmental cases — unreadable mode, I/O error — where the
+            # charm itself is not at fault.
+            content = dispatch.read_text(errors="replace")
+        except OSError:
+            return []
+
+        resolved = self._entrypoint(content)
+        if resolved is None:
+            return []
+        entrypoint_rel, via_interpreter = resolved
+        entrypoint = context.charm_dir / entrypoint_rel
+
+        if not entrypoint.exists():
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' referenced in dispatch does not exist",
+                    path="dispatch",
+                    fix_hint=f"Create {entrypoint_rel}, or point dispatch at the real entrypoint",
+                )
+            ]
+        if not entrypoint.is_file():
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' referenced in dispatch is not a regular file",
+                    path="dispatch",
+                )
+            ]
+        # An entrypoint handed to an interpreter does not need the executable
+        # bit — only one dispatch runs directly does.
+        if not via_interpreter and not os.access(entrypoint, os.X_OK):
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' is not executable",
+                    path=entrypoint_rel,
+                    fix_hint=f"Run: chmod +x {entrypoint_rel}",
+                )
+            ]
+        return []
+
+    def _entrypoint(self, dispatch_content: str) -> tuple[str, bool] | None:
+        """Resolve the entrypoint dispatch runs.
+
+        Returns the charm-relative path and whether it is handed to an
+        interpreter rather than executed directly, or ``None`` when dispatch
+        does something too dynamic to resolve statically.
+        """
+        command_line = self._command_line(dispatch_content)
+        if command_line is None:
+            return None
+
+        via_interpreter = False
+        words = [word.strip("'\"") for word in command_line.split()]
+        for index, word in enumerate(words):
+            more_follow = index < len(words) - 1
+            # A leading ``VAR=`` assignment, e.g. ``PYTHONPATH=lib:venv``.
+            if re.match(r"^\w+=", word):
+                continue
+            # An interpreter run by name: ``python``, ``python3``,
+            # ``python3.12``, or ``/usr/bin/env`` (matched on basename).
+            if more_follow and re.match(
+                r"^(?:python[0-9.]*|env)$", pathlib.PurePosixPath(word).name
+            ):
+                via_interpreter = True
+                continue
+            # An interpreter named by a variable, e.g. ``$PYTHON_BIN charm.py``:
+            # unresolvable as a command, but its argument is still the charm.
+            if more_follow and "$" in word:
+                via_interpreter = True
+                continue
+            relative = self._charm_relative(word)
+            return None if relative is None else (relative, via_interpreter)
+        return None
+
+    def _command_line(self, dispatch_content: str) -> str | None:
+        """Return the dispatch line that runs the charm, sans any ``exec``."""
+        # The command dispatch hands control to, e.g. the ``./src/charm.py``
+        # in ``PYTHONPATH=lib:venv exec ./src/charm.py``. Stops at a shell
+        # separator so a trailing redirect or ``&&`` is not swallowed in.
+        match = re.search(r"\bexec\s+(?P<rest>[^\n;&|<>]+)", dispatch_content)
+        if match is not None:
+            return match.group("rest")
+        # No ``exec``: hand-written dispatch scripts often just run the charm
+        # as their last statement. Only the last statement is considered, so a
+        # ``.py`` path mentioned earlier in the script is not mistaken for the
+        # entrypoint.
+        for line in reversed(dispatch_content.splitlines()):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            return line if ".py" in line else None
+        return None
+
+    def _charm_relative(self, command: str) -> str | None:
+        """Normalise a dispatch command to a charm-relative path, if it is one."""
+        # Anything with shell expansion in it, or pointing outside the charm,
+        # cannot be resolved statically.
+        if not command or "$" in command or "`" in command:
+            return None
+        path = pathlib.PurePosixPath(command)
+        if path.is_absolute() or ".." in path.parts:
+            return None
+        parts = [part for part in path.parts if part != "."]
+        return str(pathlib.PurePosixPath(*parts)) if parts else None
+
+
+class UnknownTopLevelField(Rule):
+    """Flag unrecognised top-level keys in charmcraft.yaml or metadata.yaml.
+
+    Catches typos like ``sumary`` instead of ``summary`` that would otherwise
+    go silently unnoticed. Only top-level keys are checked; user-defined
+    sub-keys inside ``config.options``, ``actions``, ``requires``, etc. are
+    left alone because their names are charm-specific.
+    """
+
+    category = "CHARMCRAFT"
+    number = 4
+    name = "unknown-top-level-field"
+    description = "Unrecognised top-level field in charm metadata (possible typo)"
+    default_severity = models.Severity.WARNING
+    reference_url = (
+        "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for key, field in context.metadata.items():
+            # A charm may split its metadata across both files, in which case
+            # each key is judged against the set for the file it came from.
+            source = field.source
+            known = (
+                _KNOWN_METADATA_FIELDS if source == "metadata.yaml" else _KNOWN_CHARMCRAFT_FIELDS
+            )
+            if key in known:
+                continue
+            # A key that is valid in the *other* file is a misplaced field
+            # rather than a typo, and saying so is more useful than a
+            # "did you mean" hint that has nothing close to suggest.
+            other = (
+                _KNOWN_CHARMCRAFT_FIELDS if source == "metadata.yaml" else _KNOWN_METADATA_FIELDS
+            )
+            if key in other:
+                other_source = "charmcraft.yaml" if source == "metadata.yaml" else "metadata.yaml"
+                message = f"Field '{key}' is valid in {other_source} but not {source}"
+                fix_hint = None
+            else:
+                message = f"Unrecognised top-level field '{key}' in {source} — possible typo"
+                fix_hint = _suggest_closest(key, known)
+            diagnostics.append(
+                self.diagnostic(
+                    message,
+                    path=source,
+                    line=field.line,
+                    fix_hint=fix_hint,
+                )
+            )
+        return diagnostics
+
+
+class UnknownResourceField(Rule):
+    """Flag unrecognised keys inside resource definitions."""
+
+    category = "CHARMCRAFT"
+    number = 5
+    name = "unknown-resource-field"
+    description = "Unrecognised field inside a resource definition (possible typo)"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-resources"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for res_name, resource in context.metadata.get("resources").items():
+            for key, field in resource.items():
+                if key not in _KNOWN_RESOURCE_FIELDS:
+                    diagnostics.append(
+                        self.diagnostic(
+                            f"Unrecognised field '{key}' in resource '{res_name}' — possible typo",
+                            path=field.source,
+                            line=field.line,
+                            fix_hint=_suggest_closest(key, _KNOWN_RESOURCE_FIELDS),
+                        )
+                    )
+        return diagnostics
+
+
+class OpsMainCall(Rule):
+    """Check that a charm's entrypoint calls ``ops.main()``.
+
+    Only the single file charmcraft designates as the entrypoint is
+    examined — ``parts.charm.charm-entrypoint``, or ``src/charm.py``
+    when unset. That is the file ``dispatch`` runs, so it is the only
+    one whose module-level code Juju executes: an ``ops.main()`` call in
+    a sibling module never runs unless the entrypoint imports it.
+
+    Charms whose entrypoint is not a collected Python file (a shell
+    wrapper, or a console script installed as a dependency) are skipped
+    rather than flagged — there is no charm source here to judge.
+    """
+
+    category = "CHARMCRAFT"
+    number = 6
+    name = "no-ops-main-call"
+    description = "Charm entrypoint does not call ops.main()"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/ops/latest/reference/ops-main-entrypoint/"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        entrypoint = _entrypoint(context)
+        module = next((m for m in context.modules() if m.path == entrypoint), None)
+        if module is None:
+            return []
+        imports = _ast.Imports.of(module)
+        # A charm that doesn't use ops has nothing to say about ops.main().
+        if not imports.imports_module("ops"):
+            return []
+        for call in module.walk(ast.Call):
+            if _ast.call_target(call, imports) in _OPS_MAIN_TARGETS:
+                return []
+        return [
+            self.diagnostic(
+                "Charm entrypoint imports ops but never calls ops.main()",
+                path=module.path,
+                fix_hint="Add `ops.main(MyCharm)` at the end of the charm entrypoint",
+            )
+        ]
+
+
+# --- Helpers ---------------------------------------------------------------
+
+
+def _entrypoint(context: models.CharmContext) -> str:
+    """Return the charm-relative path of the entrypoint charmcraft will use.
+
+    The charm plugin's ``charm-entrypoint`` names the file ``dispatch``
+    execs, relative to the project directory; charmcraft defaults it to
+    ``src/charm.py``. The value is a plain string in charmcraft.yaml, so
+    anything else (a list, say) falls back to the default.
+    """
+    configured = context.metadata.get("parts").get("charm").get("charm-entrypoint").value
+    if not isinstance(configured, str) or not configured:
+        configured = "src/charm.py"
+    return pathlib.PurePosixPath(configured).as_posix()
+
+
+# Every spelling of the ops entrypoint, canonicalised: ``ops.main`` is the
+# submodule and the function of the same name inside it, and both are
+# callable. ``_ast.Imports`` resolves the aliases, so ``main(MyCharm)``
+# after ``from ops import main`` lands on ``ops.main`` like the rest.
+_OPS_MAIN_TARGETS = frozenset({"ops.main", "ops.main.main"})
+
 
 # Top-level keys valid in charmcraft.yaml (modern and legacy forms). A
 # separate set is kept for metadata.yaml below, because the two files accept
@@ -121,134 +443,6 @@ _KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset(
         "upstream-source",
     }
 )
-
-
-class DeprecatedSeries(Rule):
-    category = "CHARMCRAFT"
-    number = 1
-    name = "deprecated-series"
-    description = "Deprecated 'series' attribute in metadata"
-    default_severity = models.Severity.WARNING
-    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
-
-    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        series = context.metadata.get("series")
-        if not series.present:
-            return []
-        return [
-            self.diagnostic(
-                "'series' is deprecated in charm metadata — use 'bases' or 'platforms' instead",
-                path=series.source,
-                line=series.line,
-                fix_hint="Remove 'series' and use 'bases' or 'platforms'",
-            )
-        ]
-
-
-class NamingConventions(Rule):
-    category = "CHARMCRAFT"
-    number = 2
-    name = "naming-conventions"
-    description = "Config option names use underscores instead of hyphens"
-    default_severity = models.Severity.WARNING
-    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config"
-
-    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        # Juju/charmcraft reject underscored action names outright, and
-        # underscored action parameters are vanishingly rare in the wild,
-        # so this rule targets config options only.
-        diagnostics: list[models.Diagnostic] = []
-        for opt_name, option in context.config_options.items():
-            if isinstance(opt_name, str) and "_" in opt_name:
-                hyphenated = re.sub(r"[-_]+", "-", opt_name)
-                diagnostics.append(
-                    self.diagnostic(
-                        f"Config option '{opt_name}' uses underscores — prefer hyphens ('{hyphenated}')",
-                        path=option.source,
-                        line=option.line,
-                        fix_hint=f"Rename to '{hyphenated}'",
-                    )
-                )
-        return diagnostics
-
-
-class UnknownTopLevelField(Rule):
-    """Flag unrecognised top-level keys in charmcraft.yaml or metadata.yaml.
-
-    Catches typos like ``sumary`` instead of ``summary`` that would otherwise
-    go silently unnoticed. Only top-level keys are checked; user-defined
-    sub-keys inside ``config.options``, ``actions``, ``requires``, etc. are
-    left alone because their names are charm-specific.
-    """
-
-    category = "CHARMCRAFT"
-    number = 4
-    name = "unknown-top-level-field"
-    description = "Unrecognised top-level field in charm metadata (possible typo)"
-    default_severity = models.Severity.WARNING
-    reference_url = (
-        "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/"
-    )
-
-    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        diagnostics: list[models.Diagnostic] = []
-        for key, field in context.metadata.items():
-            # A charm may split its metadata across both files, in which case
-            # each key is judged against the set for the file it came from.
-            source = field.source
-            known = (
-                _KNOWN_METADATA_FIELDS if source == "metadata.yaml" else _KNOWN_CHARMCRAFT_FIELDS
-            )
-            if key in known:
-                continue
-            # A key that is valid in the *other* file is a misplaced field
-            # rather than a typo, and saying so is more useful than a
-            # "did you mean" hint that has nothing close to suggest.
-            other = (
-                _KNOWN_CHARMCRAFT_FIELDS if source == "metadata.yaml" else _KNOWN_METADATA_FIELDS
-            )
-            if key in other:
-                other_source = "charmcraft.yaml" if source == "metadata.yaml" else "metadata.yaml"
-                message = f"Field '{key}' is valid in {other_source} but not {source}"
-                fix_hint = None
-            else:
-                message = f"Unrecognised top-level field '{key}' in {source} — possible typo"
-                fix_hint = _suggest_closest(key, known)
-            diagnostics.append(
-                self.diagnostic(
-                    message,
-                    path=source,
-                    line=field.line,
-                    fix_hint=fix_hint,
-                )
-            )
-        return diagnostics
-
-
-class UnknownResourceField(Rule):
-    """Flag unrecognised keys inside resource definitions."""
-
-    category = "CHARMCRAFT"
-    number = 5
-    name = "unknown-resource-field"
-    description = "Unrecognised field inside a resource definition (possible typo)"
-    default_severity = models.Severity.WARNING
-    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-resources"
-
-    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        diagnostics: list[models.Diagnostic] = []
-        for res_name, resource in context.metadata.get("resources").items():
-            for key, field in resource.items():
-                if key not in _KNOWN_RESOURCE_FIELDS:
-                    diagnostics.append(
-                        self.diagnostic(
-                            f"Unrecognised field '{key}' in resource '{res_name}' — possible typo",
-                            path=field.source,
-                            line=field.line,
-                            fix_hint=_suggest_closest(key, _KNOWN_RESOURCE_FIELDS),
-                        )
-                    )
-        return diagnostics
 
 
 def _suggest_closest(typo: object, known: frozenset[str]) -> str | None:
