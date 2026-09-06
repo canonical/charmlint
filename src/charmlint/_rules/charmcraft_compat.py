@@ -349,7 +349,10 @@ class CharmUser(Rule):
                 self.diagnostic(
                     "Kubernetes charm does not set 'charm-user', so Juju runs its hooks as root",
                     path=context.metadata.source,
-                    fix_hint="Add `charm-user: non-root` (or `sudoer`) to charmcraft.yaml",
+                    fix_hint=(
+                        "Add `charm-user: non-root` (or `sudoer`) to charmcraft.yaml — "
+                        f"{_NON_ROOT_SKILL}"
+                    ),
                 )
             ]
         if value == "root":
@@ -358,7 +361,10 @@ class CharmUser(Rule):
                     "'charm-user: root' runs the charm's hooks as root",
                     path=node.source,
                     line=node.line,
-                    fix_hint="Use `charm-user: non-root` (or `sudoer`) unless the hooks need root",
+                    fix_hint=(
+                        "Use `charm-user: non-root` (or `sudoer`) unless the hooks need root — "
+                        f"{_NON_ROOT_SKILL}"
+                    ),
                 )
             ]
         if value == "sudoer":
@@ -384,6 +390,14 @@ class ContainerRunsAsRoot(Rule):
     as root. Juju also reserves 1000-9999 for its own users: a value in
     that range is rejected rather than honoured.
 
+    A container that is non-root but off-convention is reported more
+    quietly. ``uid`` and ``gid`` that disagree are a warning: the two are
+    written together and a mismatch is almost always a typo, and it
+    leaves the process in a group the image never prepared for it. An ID
+    that is not 584792 is only an info — it works, but 584792 is the
+    shared ``_daemon_`` user rocks are built around, so anything else
+    means the image has to have been built to match.
+
     A container written as anything other than a mapping is skipped, the
     same as elsewhere in this module: a malformed section is not a
     privilege finding.
@@ -408,6 +422,7 @@ class ContainerRunsAsRoot(Rule):
         """Report on one container's ``uid`` and ``gid``."""
         diagnostics: list[models.Diagnostic] = []
         root: dict[str, str] = {}
+        ids: dict[str, int] = {}
         for key in ("uid", "gid"):
             node = container.get(key)
             if not node.present:
@@ -422,13 +437,15 @@ class ContainerRunsAsRoot(Rule):
                         path=node.source,
                         line=node.line,
                         fix_hint=(
-                            "Use 584792, the shared '_daemon_' user rocks run as; "
+                            f"Use {_DAEMON_ID}, the shared '_daemon_' user rocks run as; "
                             "Juju accepts 1-999 and 10000 and above"
                         ),
                     )
                 )
             elif node.value == 0:
                 root[key] = f"'{key}' is 0"
+            elif isinstance(node.value, int):
+                ids[key] = node.value
         if root:
             # Anchor on whichever of the two the charm wrote, so a noqa
             # directive sits on the line the reader is looking at; a
@@ -445,8 +462,39 @@ class ContainerRunsAsRoot(Rule):
                     path=container.source,
                     line=line,
                     fix_hint=(
-                        f"Set 'uid' and 'gid' on container '{name}' to 584792, the shared "
-                        "'_daemon_' user rocks run as"
+                        f"Set 'uid' and 'gid' on container '{name}' to {_DAEMON_ID}, the shared "
+                        f"'_daemon_' user rocks run as — {_NON_ROOT_SKILL}"
+                    ),
+                )
+            )
+            return diagnostics
+        if len(ids) < 2:
+            # One of the two was invalid; that error stands on its own.
+            return diagnostics
+        uid, gid = ids["uid"], ids["gid"]
+        if uid != gid:
+            diagnostics.append(
+                self.diagnostic(
+                    f"Container '{name}' has uid {uid} and gid {gid} — the two should match",
+                    path=container.source,
+                    line=container.get("uid").line,
+                    fix_hint=(
+                        f"Set both 'uid' and 'gid' on container '{name}' to {_DAEMON_ID}, the "
+                        "shared '_daemon_' user rocks run as"
+                    ),
+                )
+            )
+        elif uid != _DAEMON_ID:
+            diagnostics.append(
+                self.diagnostic(
+                    f"Container '{name}' runs as {uid}, not {_DAEMON_ID} — the shared "
+                    "'_daemon_' user rocks are built around",
+                    severity=models.Severity.INFO,
+                    path=container.source,
+                    line=container.get("uid").line,
+                    fix_hint=(
+                        f"Set 'uid' and 'gid' on container '{name}' to {_DAEMON_ID} unless the "
+                        f"image was built for {uid} — {_NON_ROOT_SKILL}"
                     ),
                 )
             )
@@ -536,6 +584,18 @@ def _entrypoint(context: models.CharmContext) -> str:
 
 
 _VALID_CHARM_USERS: frozenset[str] = frozenset({"root", "sudoer", "non-root"})
+
+# The shared ``_daemon_`` user, allocated for snaps and rocks alike so that a
+# workload has one identity wherever it runs. See
+# https://discourse.ubuntu.com/t/unifying-user-identity-across-snaps-and-rocks/36469
+_DAEMON_ID = 584792
+
+# Named in the hints for the findings that amount to "migrate this charm to
+# non-root", which is more work than a one-line edit: the skill walks the
+# charm, its containers and its rocks.
+_NON_ROOT_SKILL = (
+    "the non-root-charms skill (https://github.com/deusebio/non-root-skills) automates this"
+)
 
 
 def _is_kubernetes_charm(context: models.CharmContext) -> bool:

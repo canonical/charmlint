@@ -1104,12 +1104,52 @@ class TestContainerRunsAsRoot:
         write_charmcraft_yaml(tmp_charm, _k8s_charm())
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
 
-    def test_low_system_ids_are_clean(self, tmp_charm: pathlib.Path):
+    def test_low_system_ids_are_not_root(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,
             {"name": "test", "containers": {"w": {"resource": "img", "uid": 999, "gid": 999}}},
         )
-        assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert [d.severity for d in diags] == [Severity.INFO]
+
+    def test_off_convention_id_is_info(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 10001, "gid": 10001}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+        assert "runs as 10001, not 584792" in diags[0].message
+        assert diags[0].fix_hint is not None
+        assert "non-root-skills" in diags[0].fix_hint
+
+    def test_mismatched_ids_are_a_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 584792, "gid": 999}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "uid 584792 and gid 999" in diags[0].message
+
+    def test_mismatched_ids_do_not_also_report_the_convention(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 100, "gid": 200}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert "should match" in diags[0].message
+
+    def test_invalid_id_suppresses_the_convention_check(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 1000, "gid": 100}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert [d.severity for d in diags] == [Severity.ERROR]
 
     def test_reserved_id_range_is_an_error(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
