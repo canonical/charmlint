@@ -1,7 +1,8 @@
 """Correctness rules — runtime-correctness issues in charm source."""
 
 import ast
-from collections.abc import Callable
+import dataclasses
+from collections.abc import Callable, Iterator
 
 from .. import _ast
 from .. import _models as models
@@ -299,3 +300,404 @@ class NonDeferrableEventDeferred(Rule):
                     )
                 )
         return diagnostics
+
+
+# The events ``ops.CharmEvents`` declares for every charm, whatever its
+# metadata says. Kept as literals rather than read from an installed ops:
+# charmlint lints a charm it does not import, and the charm's ops version
+# is not charmlint's.
+_LIFECYCLE_EVENTS = frozenset(
+    {
+        "install",
+        "start",
+        "stop",
+        "remove",
+        "update_status",
+        "config_changed",
+        "upgrade_charm",
+        "pre_series_upgrade",
+        "post_series_upgrade",
+        "leader_elected",
+        "leader_settings_changed",
+        "collect_metrics",
+        "secret_changed",
+        "secret_expired",
+        "secret_rotate",
+        "secret_remove",
+        "collect_app_status",
+        "collect_unit_status",
+    }
+)
+
+# The per-name events ``CharmBase.__init__`` defines from the charm's
+# metadata, as ``<name><suffix>``. Each entry gives the suffix, the
+# metadata section the name has to be declared in, and how to describe
+# that declaration in a fix hint.
+_METADATA_EVENTS: tuple[tuple[str, str, str], ...] = (
+    ("_relation_created", "relations", "an endpoint under `provides:`, `requires:` or `peers:`"),
+    ("_relation_joined", "relations", "an endpoint under `provides:`, `requires:` or `peers:`"),
+    ("_relation_changed", "relations", "an endpoint under `provides:`, `requires:` or `peers:`"),
+    ("_relation_departed", "relations", "an endpoint under `provides:`, `requires:` or `peers:`"),
+    ("_relation_broken", "relations", "an endpoint under `provides:`, `requires:` or `peers:`"),
+    ("_storage_attached", "storage", "a storage under `storage:`"),
+    ("_storage_detaching", "storage", "a storage under `storage:`"),
+    ("_pebble_ready", "containers", "a container under `containers:`"),
+    ("_pebble_custom_notice", "containers", "a container under `containers:`"),
+    ("_pebble_check_failed", "containers", "a container under `containers:`"),
+    ("_pebble_check_recovered", "containers", "a container under `containers:`"),
+    ("_action", "actions", "an action under `actions:`"),
+)
+
+_CHARM_BASES = frozenset({"ops.CharmBase", "ops.charm.CharmBase"})
+_CHARM_EVENTS_BASES = frozenset({"ops.CharmEvents", "ops.charm.CharmEvents"})
+_EVENT_SOURCE = frozenset({"ops.EventSource", "ops.framework.EventSource"})
+
+
+def _names(section: models.Yaml) -> set[str]:
+    """Return the underscored declared names in a metadata section.
+
+    Juju spells endpoint, storage, container and action names with
+    hyphens; ops replaces them with underscores when it defines the
+    events, so that is the form to compare against. A key YAML did not
+    construct as a string (an unquoted ``on:`` is the boolean ``True``
+    under YAML 1.1) is not a name any of these sections can use.
+    """
+    return {key.replace("-", "_") for key in section if isinstance(key, str)}
+
+
+def _base_names(node: ast.ClassDef, imports: _ast.Imports) -> list[str | None]:
+    """Return each base of *node*, resolved through *imports*.
+
+    An entry is ``None`` for a base that is not a plain name chain — a
+    subscripted generic, say — which is a base this rule cannot identify.
+    """
+    return [imports.resolve(base) for base in node.bases]
+
+
+def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
+    """Return the event names the charm's own code defines, and whether that is all.
+
+    Two ways a charm adds an event to ``self.on``: an ``EventSource`` on
+    a ``CharmEvents`` subclass, or a ``define_event`` call. Both are
+    swept for over the *whole* charm, vendored libraries included — an
+    event a library defines is as real as one the charm defines, and
+    over-collecting here only ever makes the rule quieter.
+
+    The flag is ``False`` when a ``define_event`` call was found whose
+    name could not be read statically (``f"{alias}_database_created"``,
+    the data-platform libraries' idiom). The charm then has events this
+    rule cannot name, so no event name can be called impossible —
+    ``self.on`` is the same object throughout a charm, and there is no
+    telling from a call site which object a library's ``self.on`` was.
+    Handler names are unaffected, so that half of the rule still runs.
+    """
+    found: set[str] = set()
+    complete = True
+    for module in context.modules():
+        imports = _ast.Imports.of(module)
+        for node in module.walk(ast.ClassDef):
+            if not _CHARM_EVENTS_BASES.intersection(
+                base for base in _base_names(node, imports) if base
+            ):
+                continue
+            found.update(_event_sources(node, imports))
+        for call in module.walk(ast.Call):
+            if not (isinstance(call.func, ast.Attribute) and call.func.attr == "define_event"):
+                continue
+            name = _ast.dict_key(call.args[0]) if call.args else None
+            if name is None:
+                complete = False
+            else:
+                found.add(name)
+    return found, complete
+
+
+def _event_sources(node: ast.ClassDef, imports: _ast.Imports) -> Iterator[str]:
+    """Yield the ``x = EventSource(...)`` attribute names declared in *node*."""
+    for statement in node.body:
+        if not isinstance(statement, ast.Assign) or not isinstance(statement.value, ast.Call):
+            continue
+        if imports.resolve(statement.value.func) not in _EVENT_SOURCE:
+            continue
+        for target in statement.targets:
+            if isinstance(target, ast.Name):
+                yield target.id
+
+
+def _on_receiver(expr: ast.expr) -> str | None:
+    """Return the object an observed event hangs off, e.g. ``"self"``.
+
+    ``self.on.config_changed`` and ``self.on['db'].relation_changed`` both
+    give ``"self"``; ``self.database.on.database_created`` gives
+    ``"self.database"``, which is a library's own event source rather than
+    the charm's. Returns ``None`` when the expression is not an event
+    reference this rule recognises.
+    """
+    if isinstance(expr, ast.Call):
+        # getattr(self.on, '<event>')
+        target = expr.args[0] if expr.args else None
+        if isinstance(target, ast.Attribute) and target.attr == "on":
+            return _ast.dotted_name(target.value)
+        return None
+    if not isinstance(expr, ast.Attribute):
+        return None
+    parent = expr.value
+    if isinstance(parent, ast.Subscript):
+        parent = parent.value
+    if isinstance(parent, ast.Attribute) and parent.attr == "on":
+        return _ast.dotted_name(parent.value)
+    return None
+
+
+@dataclasses.dataclass(frozen=True)
+class _CharmClass:
+    """A charm class, with what its ``observe`` calls can legitimately name."""
+
+    node: ast.ClassDef
+    # Every name that could answer ``self.<name>`` — methods, class
+    # attributes and anything assigned to ``self`` in a method body.
+    # Deliberately over-collected: a name here silences the rule.
+    attributes: frozenset[str]
+    # False when the class does something that makes its attributes
+    # unknowable (``setattr``, a ``__getattr__``), so no handler can be
+    # called missing.
+    attributes_known: bool
+    # False when the class replaces ``on`` with an event source this rule
+    # could not resolve, so no event name can be called impossible.
+    events_known: bool
+
+
+def _charm_classes(module: models.Module, custom_events: set[str]) -> Iterator[_CharmClass]:
+    """Yield each class in *module* whose ``self.on`` is the charm's own.
+
+    Only a class whose bases are *all* ``ops.CharmBase`` qualifies. A charm
+    built on an intermediate base class — a shared base in another package,
+    or one of the framework wrappers — inherits handlers this rule cannot
+    see and may inherit a different ``on``, so it is skipped rather than
+    guessed at.
+    """
+    imports = _ast.Imports.of(module)
+    for node in module.walk(ast.ClassDef):
+        bases = _base_names(node, imports)
+        if not bases or any(base not in _CHARM_BASES for base in bases):
+            continue
+        yield _CharmClass(
+            node=node,
+            attributes=frozenset(_attribute_names(node)),
+            attributes_known=not _has_dynamic_attributes(node),
+            events_known=_events_are_known(node, custom_events),
+        )
+
+
+def _attribute_names(node: ast.ClassDef) -> Iterator[str]:
+    """Yield every name ``self.<name>`` could resolve to on *node*.
+
+    Methods (at any nesting, so one defined under ``if TYPE_CHECKING:``
+    still counts), class-level assignments, and attributes assigned to
+    ``self`` anywhere in the body.
+    """
+    for child in ast.walk(node):
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+            yield child.name
+        elif (
+            isinstance(child, ast.Attribute)
+            and isinstance(child.ctx, ast.Store)
+            and isinstance(child.value, ast.Name)
+            and child.value.id == "self"
+        ):
+            yield child.attr
+    for statement in node.body:
+        # A class-body import binds a class attribute, which is how a
+        # charm too big for one file hangs its action handlers off
+        # ``from actions.enable import on_enable_action``.
+        if isinstance(statement, ast.Import | ast.ImportFrom):
+            for alias in statement.names:
+                yield (alias.asname or alias.name).split(".", 1)[0]
+            continue
+        targets = (
+            [statement.target]
+            if isinstance(statement, ast.AnnAssign)
+            else statement.targets
+            if isinstance(statement, ast.Assign)
+            else []
+        )
+        for target in targets:
+            if isinstance(target, ast.Name):
+                yield target.id
+
+
+def _has_dynamic_attributes(node: ast.ClassDef) -> bool:
+    """Whether *node* can grow attributes this rule cannot enumerate."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id == "setattr":
+            return True
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) and child.name in (
+            "__getattr__",
+            "__getattribute__",
+        ):
+            return True
+    return False
+
+
+def _events_are_known(node: ast.ClassDef, custom_events: set[str]) -> bool:
+    """Whether *node*'s ``on`` is an event source this rule can enumerate.
+
+    A charm that declares its own ``on = MyCharmEvents()`` is understood
+    when ``MyCharmEvents`` is one of the ``CharmEvents`` subclasses found
+    in the charm tree. When it is not — a base class from a pip
+    dependency, say — the events it adds are invisible, and the rule
+    stays silent for the whole class.
+    """
+    for statement in node.body:
+        if not isinstance(statement, ast.AnnAssign | ast.Assign):
+            continue
+        targets = [statement.target] if isinstance(statement, ast.AnnAssign) else statement.targets
+        if not any(isinstance(t, ast.Name) and t.id == "on" for t in targets):
+            continue
+        value = statement.value
+        if not isinstance(value, ast.Call):
+            return False
+        name = _ast.dotted_name(value.func)
+        if name is None or name.rsplit(".", 1)[-1] not in custom_events:
+            return False
+    return True
+
+
+class ObserveTargetMismatch(Rule):
+    """Detect ``framework.observe()`` calls that cannot possibly work.
+
+    Both arguments are resolved: the event has to be one the charm
+    really has, and the handler has to be a method the charm class
+    really defines. Either one wrong is an ``AttributeError`` the first
+    time the charm is constructed, which is every hook — the charm is
+    completely dead, and only a deploy shows it. Rename refactors are
+    the usual cause: an endpoint renamed in ``charmcraft.yaml`` but not
+    in ``src/``, or a handler renamed and one observer missed.
+
+    Silence is the answer to anything the rule cannot resolve: an event
+    reference built from a variable, a handler on another object, a
+    charm class with a base this rule cannot see, a custom event source
+    it cannot find, or a ``define_event`` call with a computed name. A
+    charm that is merely hard to read must not be reported as broken.
+    Each half is silenced on its own, so a charm whose event names are
+    unknowable is still checked for handlers that do not exist.
+
+    At most one finding per ``observe`` call. When the event does not
+    exist the handler is not reported too: the arguments are evaluated
+    left to right, so the event is what actually raises, and the second
+    finding would only be noise on the same line.
+    """
+
+    category = "CORRECTNESS"
+    number = 8
+    name = "observe-target-mismatch"
+    description = "framework.observe() names an event or handler that cannot exist"
+    default_severity = models.Severity.ERROR
+    reference_url = (
+        "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Framework.observe"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        custom_events, complete = _custom_event_names(context)
+        known_events = self._known_events(context, custom_events) if complete else None
+        diagnostics: list[models.Diagnostic] = []
+        for module in context.charm_sources():
+            observers = _ast.observers(module)
+            for charm in _charm_classes(module, custom_events):
+                diagnostics.extend(self._check_class(charm, observers, module, known_events))
+        return diagnostics
+
+    def _known_events(
+        self, context: models.CharmContext, custom_events: set[str]
+    ) -> set[str] | None:
+        """Return every event the charm can have, or ``None`` if unknowable.
+
+        A charm with no metadata at all has nothing to derive event names
+        from, and reporting every metadata-derived event as impossible
+        would be a rule failure rather than a charm one.
+        """
+        if not context.metadata.present:
+            return None
+        known = set(_LIFECYCLE_EVENTS) | custom_events
+        sections = {
+            "relations": _names(context.metadata.get("provides"))
+            | _names(context.metadata.get("requires"))
+            | _names(context.metadata.get("peers")),
+            "storage": _names(context.metadata.get("storage")),
+            "containers": _names(context.metadata.get("containers")),
+            "actions": _names(context.actions),
+        }
+        for suffix, section, _ in _METADATA_EVENTS:
+            known.update(f"{name}{suffix}" for name in sections[section])
+        return known
+
+    def _check_class(
+        self,
+        charm: _CharmClass,
+        observers: list[_ast.Observer],
+        module: models.Module,
+        known_events: set[str] | None,
+    ) -> Iterator[models.Diagnostic]:
+        """Report each broken ``observe`` call in one charm class."""
+        nodes = {id(node) for node in ast.walk(charm.node)}
+        for observer in observers:
+            if id(observer.call) not in nodes:
+                continue
+            diagnostic = self._check_event(
+                observer, charm, module, known_events
+            ) or self._check_handler(observer, charm, module)
+            if diagnostic is not None:
+                yield diagnostic
+
+    def _check_event(
+        self,
+        observer: _ast.Observer,
+        charm: _CharmClass,
+        module: models.Module,
+        known_events: set[str] | None,
+    ) -> models.Diagnostic | None:
+        """Report an event the charm cannot have, if this is one."""
+        if known_events is None or not charm.events_known or observer.event is None:
+            return None
+        # Only the charm's own ``self.on`` is described by the charm's
+        # metadata; ``self.<lib>.on.<event>`` belongs to that library.
+        if _on_receiver(observer.call.args[0]) != "self":
+            return None
+        if observer.event in known_events:
+            return None
+        return self.diagnostic(
+            f"Charm has no event 'self.on.{observer.event}' — it is not a lifecycle event, "
+            f"and nothing declared in the charm's metadata defines it",
+            path=module.path,
+            line=observer.call.args[0].lineno,
+            fix_hint=self._event_hint(observer.event),
+        )
+
+    def _event_hint(self, event: str) -> str:
+        """Suggest the declaration a metadata-derived event name is missing."""
+        for suffix, _, declaration in _METADATA_EVENTS:
+            if event.endswith(suffix) and len(event) > len(suffix):
+                name = event[: -len(suffix)].replace("_", "-")
+                return (
+                    f"Declare '{name}' as {declaration} in charmcraft.yaml, "
+                    f"or correct the event name"
+                )
+        return "Correct the event name, or define it on the charm's `CharmEvents` subclass"
+
+    def _check_handler(
+        self, observer: _ast.Observer, charm: _CharmClass, module: models.Module
+    ) -> models.Diagnostic | None:
+        """Report a handler the charm class does not define, if this is one."""
+        if not charm.attributes_known or observer.handler is None:
+            return None
+        if observer.handler in charm.attributes:
+            return None
+        return self.diagnostic(
+            f"Observer handler 'self.{observer.handler}' is not defined on '{charm.node.name}'",
+            path=module.path,
+            line=observer.call.args[1].lineno,
+            fix_hint=(
+                f"Define `{observer.handler}` on '{charm.node.name}', "
+                f"or point the observer at the handler it was renamed to"
+            ),
+        )

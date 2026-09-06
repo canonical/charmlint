@@ -2,6 +2,7 @@
 
 import pathlib
 import textwrap
+from typing import Any
 
 from charmlint._linter import lint
 from charmlint._models import Severity
@@ -634,3 +635,386 @@ class TestNonDeferrableEventDeferred:
         hits = [d for d in report if d.rule_id == RULE_ID]
         assert hits[0].reference_url is not None
         assert "defer-guidance" in hits[0].reference_url
+
+
+_RULE = "CORRECTNESS-008"
+
+
+def _lint_source(charm_dir: pathlib.Path, source: str, **metadata: Any):
+    """Lint a charm with the given src/charm.py, returning CORRECTNESS-008 findings."""
+    write_charmcraft_yaml(charm_dir, {"name": "test", **metadata})
+    write_charm_source(charm_dir, textwrap.dedent(source))
+    return [d for d in lint(charm_dir) if d.rule_id == _RULE]
+
+
+def _charm_class(body: str) -> str:
+    """A charm class whose ``__init__`` and methods are *body*."""
+    return "import ops\n\nclass MyCharm(ops.CharmBase):\n" + textwrap.indent(
+        textwrap.dedent(body), "    "
+    )
+
+
+class TestObserveTargetMismatch:
+    """CORRECTNESS-008 — observe() must name a real event and a real handler."""
+
+    def test_missing_handler_is_error(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+            """),
+        )
+        assert len(findings) == 1
+        assert findings[0].severity == Severity.ERROR
+        assert "_on_start" in findings[0].message
+        assert "MyCharm" in findings[0].message
+        assert findings[0].path == "src/charm.py"
+        assert findings[0].line is not None
+
+    def test_defined_handler_is_clean(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event):
+                    pass
+            """),
+        )
+        assert not findings
+
+    def test_handler_assigned_in_init_is_clean(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self._on_start = lambda event: None
+                    framework.observe(self.on.start, self._on_start)
+            """),
+        )
+        assert not findings
+
+    def test_handler_on_another_object_is_ignored(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self.helper.on_start)
+            """),
+        )
+        assert not findings
+
+    def test_setattr_silences_the_handler_check(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    setattr(self, "_on_start", lambda event: None)
+                    framework.observe(self.on.start, self._on_start)
+            """),
+        )
+        assert not findings
+
+    def test_getattr_silences_the_handler_check(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def __getattr__(self, name):
+                    return lambda event: None
+            """),
+        )
+        assert not findings
+
+    def test_intermediate_base_class_is_skipped(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """
+            import ops
+            from somewhere import SharedBase
+
+            class MyCharm(SharedBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+            """,
+        )
+        assert not findings
+
+    def test_undeclared_relation_event_is_error(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.db_relation_changed, self._on_db)
+
+                def _on_db(self, event):
+                    pass
+            """),
+            requires={"database": {"interface": "db"}},
+        )
+        assert len(findings) == 1
+        assert findings[0].severity == Severity.ERROR
+        assert "db_relation_changed" in findings[0].message
+        assert findings[0].fix_hint is not None
+        assert "provides:" in findings[0].fix_hint
+
+    def test_declared_relation_event_is_clean(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.database_relation_changed, self._on_db)
+                    framework.observe(self.on.peers_relation_departed, self._on_db)
+                    framework.observe(self.on.web_ui_relation_broken, self._on_db)
+
+                def _on_db(self, event):
+                    pass
+            """),
+            requires={"database": {"interface": "db"}},
+            provides={"web-ui": {"interface": "http"}},
+            peers={"peers": {"interface": "peers"}},
+        )
+        assert not findings
+
+    def test_declared_container_storage_and_action_events_are_clean(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.web_pebble_ready, self._handle)
+                    framework.observe(self.on.web_pebble_check_failed, self._handle)
+                    framework.observe(self.on.data_storage_attached, self._handle)
+                    framework.observe(self.on.do_thing_action, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """),
+            containers={"web": {"resource": "image"}},
+            storage={"data": {"type": "filesystem"}},
+            actions={"do-thing": {"description": "x"}},
+        )
+        assert not findings
+
+    def test_undeclared_container_event_names_the_container(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.workload_pebble_ready, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """),
+            containers={"web": {"resource": "image"}},
+        )
+        assert len(findings) == 1
+        assert findings[0].fix_hint is not None
+        assert "'workload'" in findings[0].fix_hint
+        assert "containers:" in findings[0].fix_hint
+
+    def test_lifecycle_events_are_clean(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.install, self._handle)
+                    framework.observe(self.on.collect_unit_status, self._handle)
+                    framework.observe(self.on.secret_rotate, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """),
+        )
+        assert not findings
+
+    def test_subscript_form_resolves_the_endpoint(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on["web-ui"].relation_changed, self._handle)
+                    framework.observe(self.on["missing"].relation_changed, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """),
+            provides={"web-ui": {"interface": "http"}},
+        )
+        assert len(findings) == 1
+        assert "missing_relation_changed" in findings[0].message
+
+    def test_library_event_source_is_not_checked(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self.database = DatabaseRequires(self)
+                    framework.observe(self.database.on.database_created, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """),
+        )
+        assert not findings
+
+    def test_custom_charm_events_are_recognised(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """
+            import ops
+
+            class MyCharmEvents(ops.CharmEvents):
+                thing_happened = ops.EventSource(ops.EventBase)
+
+            class MyCharm(ops.CharmBase):
+                on = MyCharmEvents()
+
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.thing_happened, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """,
+        )
+        assert not findings
+
+    def test_unresolvable_custom_events_silence_the_event_check(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """
+            import ops
+            from somewhere import LibraryEvents
+
+            class MyCharm(ops.CharmBase):
+                on = LibraryEvents()
+
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.thing_happened, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """,
+        )
+        assert not findings
+
+    def test_dynamic_define_event_silences_the_event_check(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    for name in ("a", "b"):
+                        self.on.define_event(name, ops.EventBase)
+                    framework.observe(self.on.thing_happened, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """),
+        )
+        assert not findings
+
+    def test_dynamic_define_event_still_checks_handlers(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    for name in ("a", "b"):
+                        self.on.define_event(name, ops.EventBase)
+                    framework.observe(self.on.start, self._on_start)
+            """),
+        )
+        assert len(findings) == 1
+        assert "_on_start" in findings[0].message
+
+    def test_class_body_import_binds_a_handler(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                from actions.enable import on_enable_action
+
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.enable_action, self.on_enable_action)
+            """),
+            actions={"enable": {"description": "x"}},
+        )
+        assert not findings
+
+    def test_literal_define_event_is_recognised(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self.on.define_event("thing_happened", ops.EventBase)
+                    framework.observe(self.on.thing_happened, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """),
+        )
+        assert not findings
+
+    def test_dynamic_event_reference_is_ignored(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on[EVENT].relation_changed, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """),
+        )
+        assert not findings
+
+    def test_only_one_finding_per_broken_call(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm_class("""
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.nope_relation_changed, self._on_nope)
+            """),
+        )
+        assert len(findings) == 1
+        assert "nope_relation_changed" in findings[0].message
+
+    def test_charm_without_metadata_is_not_reported(self, tmp_charm: pathlib.Path):
+        write_charm_source(
+            tmp_charm,
+            textwrap.dedent(
+                _charm_class("""
+                    def __init__(self, framework):
+                        super().__init__(framework)
+                        framework.observe(self.on.db_relation_changed, self._handle)
+
+                    def _handle(self, event):
+                        pass
+                """)
+            ),
+        )
+        findings = [d for d in lint(tmp_charm) if d.rule_id == _RULE]
+        assert not findings
