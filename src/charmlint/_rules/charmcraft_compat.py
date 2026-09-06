@@ -421,7 +421,10 @@ class ContainerRunsAsRoot(Rule):
                         severity=models.Severity.ERROR,
                         path=node.source,
                         line=node.line,
-                        fix_hint="Use an ID in 0-999, or 10000 and above",
+                        fix_hint=(
+                            "Use 584792, the shared '_daemon_' user rocks run as; "
+                            "Juju accepts 1-999 and 10000 and above"
+                        ),
                     )
                 )
             elif node.value == 0:
@@ -441,7 +444,10 @@ class ContainerRunsAsRoot(Rule):
                     f"Container '{name}' runs its Pebble entry process {lead} — {detail}",
                     path=container.source,
                     line=line,
-                    fix_hint=f"Set 'uid' and 'gid' on container '{name}' to a non-root ID",
+                    fix_hint=(
+                        f"Set 'uid' and 'gid' on container '{name}' to 584792, the shared "
+                        "'_daemon_' user rocks run as"
+                    ),
                 )
             )
         return diagnostics
