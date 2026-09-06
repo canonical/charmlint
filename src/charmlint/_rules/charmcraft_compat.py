@@ -59,6 +59,32 @@ class NamingConventions(Rule):
         return diagnostics
 
 
+def _strip_shell_comments(text: str) -> str:
+    """Return *text* with shell comments removed, line structure intact.
+
+    A ``#`` starts a comment only at the start of a word and outside
+    quotes, so ``exec ./src/charm.py --tag=a#b`` and ``echo "a # b"``
+    keep their text while ``# use exec here`` loses all of it. Lines are
+    kept (emptied rather than dropped) so nothing that was on separate
+    lines is joined.
+    """
+    stripped: list[str] = []
+    for line in text.splitlines():
+        quote: str | None = None
+        cut = len(line)
+        for index, char in enumerate(line):
+            if quote is not None:
+                if char == quote:
+                    quote = None
+            elif char in "'\"":
+                quote = char
+            elif char == "#" and (index == 0 or line[index - 1].isspace()):
+                cut = index
+                break
+        stripped.append(line[:cut])
+    return "\n".join(stripped)
+
+
 class Entrypoint(Rule):
     category = "CHARMCRAFT"
     number = 3
@@ -152,19 +178,25 @@ class Entrypoint(Rule):
 
     def _command_line(self, dispatch_content: str) -> str | None:
         """Return the dispatch line that runs the charm, sans any ``exec``."""
+        # Comments are stripped first: a hand-written dispatch explaining
+        # itself in prose ("not bound by exec argument limits") is not
+        # declaring an entrypoint. The ``[ \t]`` rather than ``\s`` keeps
+        # the match on one line, so an ``exec`` at the end of a line cannot
+        # take the next line as its argument either.
+        code = _strip_shell_comments(dispatch_content)
         # The command dispatch hands control to, e.g. the ``./src/charm.py``
         # in ``PYTHONPATH=lib:venv exec ./src/charm.py``. Stops at a shell
         # separator so a trailing redirect or ``&&`` is not swallowed in.
-        match = re.search(r"\bexec\s+(?P<rest>[^\n;&|<>]+)", dispatch_content)
+        match = re.search(r"\bexec[ \t]+(?P<rest>[^\n;&|<>]+)", code)
         if match is not None:
             return match.group("rest")
         # No ``exec``: hand-written dispatch scripts often just run the charm
         # as their last statement. Only the last statement is considered, so a
         # ``.py`` path mentioned earlier in the script is not mistaken for the
         # entrypoint.
-        for line in reversed(dispatch_content.splitlines()):
+        for line in reversed(code.splitlines()):
             line = line.strip()
-            if not line or line.startswith("#"):
+            if not line:
                 continue
             return line if ".py" in line else None
         return None

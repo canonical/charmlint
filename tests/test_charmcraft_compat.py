@@ -246,6 +246,36 @@ class TestEntrypoint:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
 
+    def test_exec_in_a_comment_is_not_the_entrypoint(self, tmp_charm: pathlib.Path):
+        # A hand-written dispatch that explains itself in prose: the word
+        # "exec" in a comment is not a command, and the following line is
+        # not its argument.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "dispatch").write_text(
+            "#!/bin/sh\n"
+            "# the spec size is not bound by exec\n"
+            "# argument-size limits.\n"
+            "set -eu\n"
+            "echo nothing to do\n"
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_trailing_comment_does_not_hide_the_entrypoint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "exec ./src/charm.py  # run the charm")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "src/charm.py" in diags[0].message
+
+    def test_hash_inside_a_word_is_not_a_comment(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, 'echo "a # b"\nexec ./src/charm.py')
+        write_entrypoint(tmp_charm)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
     def test_unresolvable_entrypoints_are_skipped(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         for exec_line in (
