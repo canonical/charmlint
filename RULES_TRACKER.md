@@ -54,12 +54,12 @@ count lives here or as an issue label.
 
 Nothing else should be reviewed ahead of these.
 
-| Issue | Rule | Problem |
-|---|---|---|
-| #243 | CHARMCRAFT-003 | `exec` in a `dispatch` comment is parsed as the entrypoint and reported as an error |
-| #244 | ACTIONS-001 | Fires once per action on a charm with no Python sources at all |
-| #198 | LIBRARY-001 | Flags the charm's own published library, telling it to delete its own source |
-| #210 | CHARMCRAFT-004 | `bases`/`platforms` in `metadata.yaml` are treated as valid; fell out of the #209 corpus run |
+| Issue | PR | Rule | Problem |
+|---|---|---|---|
+| #243 | #245 | CHARMCRAFT-003 | `exec` in a `dispatch` comment is parsed as the entrypoint and reported as an error |
+| #244 | #246 | ACTIONS-001 | Fires once per action on a charm with no Python sources at all |
+| #198 | #247 | LIBRARY-001 | Flags the charm's own published library, telling it to delete its own source |
+| #210 | #248 | CHARMCRAFT-004 | `bases`/`platforms` in `metadata.yaml` are treated as valid; fell out of the #209 corpus run |
 
 ## Phase 1 — Engine work
 
