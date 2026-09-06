@@ -104,7 +104,7 @@ often, and detection is a literal-string or declared-name comparison.
 |---|---|---|---|
 | Unguarded `yaml.safe_load()`/`json.loads()` of config and relation data | #220 | | 42 of 136 charms; 18 independently proposed the rule |
 | Config parsing in `__init__` that can raise before any status is set | #221 | #20 (CORR007, overlaps) | The severe subset of #220 — the charm is stuck until `juju resolved` |
-| `observe()` references a handler or event that cannot exist | #148 | | error, near-zero FP |
+| `observe()` references a handler or event that cannot exist | #148 | #250 | error, near-zero FP |
 | `get_container()` name not declared in `containers:` | #149 | #207 | error, near-zero FP |
 | Juju secret read without catching `SecretNotFoundError`/`ModelError` | #230 | | Normal states (not yet granted) raise |
 | `ActiveStatus` reported without checking the Pebble service is running | #234 | | ~22 of 136 charms, ~10 mechanically checkable; wants #242 |
