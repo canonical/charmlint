@@ -392,6 +392,29 @@ class TestLibraryRules:
         report = lint(tmp_charm)
         assert len([d for d in report if d.rule_id == "LIBRARY-001"]) == 2
 
+    def test_own_published_lib_not_flagged(self, tmp_charm: pathlib.Path):
+        # The hydra charm publishes charmlibs-interfaces-oauth from this
+        # very file; telling it to delete its own source and depend on the
+        # package built from it is never right.
+        write_charmcraft_yaml(tmp_charm, {"name": "hydra"})
+        _vendor_lib(tmp_charm, "hydra", "v0", "oauth")
+        report = lint(tmp_charm)
+        assert "LIBRARY-001" not in {d.rule_id for d in report}
+
+    def test_own_published_lib_not_flagged_hyphenated_name(self, tmp_charm: pathlib.Path):
+        # Charmhub names are hyphenated, the lib/charms/ directory is not.
+        write_charmcraft_yaml(tmp_charm, {"name": "rolling-ops"})
+        _vendor_lib(tmp_charm, "rolling_ops", "v0", "rollingops")
+        report = lint(tmp_charm)
+        assert "LIBRARY-001" not in {d.rule_id for d in report}
+
+    def test_vendored_copy_of_another_charms_lib_still_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "hydra"})
+        _vendor_lib(tmp_charm, "traefik_k8s", "v2", "forward_auth")
+        report = lint(tmp_charm)
+        lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
+        assert len(lib001) == 1
+
     def test_no_lib_dir_no_diagnostics(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         report = lint(tmp_charm)
