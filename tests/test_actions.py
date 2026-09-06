@@ -31,6 +31,17 @@ class TestActionMissingObserver:
         assert actions[0].severity == Severity.WARNING
         assert "do-thing" in actions[0].message
 
+    def test_charm_with_no_python_sources_not_flagged(self, tmp_charm: pathlib.Path):
+        # A charm whose dispatch is a hand-written shell script has no ops
+        # charm to observe from, and handles its actions in the script.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {"description": "x"}}},
+        )
+        (tmp_charm / "dispatch").write_text("#!/bin/sh\nexec ./handle.sh\n")
+        report = lint(tmp_charm)
+        assert "ACTIONS-001" not in {d.rule_id for d in report}
+
     def test_action_with_observer_not_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,
