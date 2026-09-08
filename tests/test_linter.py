@@ -2,10 +2,8 @@
 
 import pathlib
 
-import pytest
-
 from charmlint._config import LintConfig
-from charmlint._linter import _category_of, build_context, lint
+from charmlint._linter import build_context, lint
 from charmlint._models import Severity
 from tests.conftest import (
     make_full_charm,
@@ -257,56 +255,3 @@ class TestLintMultiCharm:
         )
         fired = {d.path for d in lint(repo) if d.rule_id == "METADATA-001"}
         assert fired == {"charms/beta/charmcraft.yaml"}
-
-
-class TestCategoryOf:
-    """Tests for the rule-ID category parser."""
-
-    @pytest.mark.parametrize(
-        ("rule_id", "expected"),
-        [
-            ("OBSERVABILITY-001", "OBSERVABILITY"),
-            ("CHARMCRAFT-005", "CHARMCRAFT"),
-            ("TESTING-003", "TESTING"),
-            ("ATTESTATION-001", "ATTESTATION"),
-            ("ACTIONS-007", "ACTIONS"),
-        ],
-    )
-    def test_well_formed_ids(self, rule_id: str, expected: str):
-        assert _category_of(rule_id) == expected
-
-    @pytest.mark.parametrize(
-        "rule_id",
-        [
-            # No trailing digits.
-            "FOO",
-            # Missing separator.
-            "COS001",
-            # Trailing letter after the digits.
-            "COS-5G",
-            # Digits before the dash.
-            "COS9-001",
-            # Digit prefix.
-            "123",
-            # Empty string.
-            "",
-            # Lowercase prefix — ID convention is uppercase only.
-            "cos-001",
-        ],
-    )
-    def test_unrecognised_ids_round_trip(self, rule_id: str):
-        # An unrecognised ID returns itself so it cannot accidentally
-        # match a real category in select / ignore.
-        assert _category_of(rule_id) == rule_id
-
-    def test_real_registered_rules_round_trip(self):
-        # Every registered rule's ID must extract to a non-empty
-        # category string — guard against future IDs that drift from
-        # the convention.
-        from charmlint._rules import get_all_rules
-
-        for rule_id in get_all_rules():
-            category = _category_of(rule_id)
-            assert category
-            assert category != rule_id, f"{rule_id} did not produce a category"
-            assert rule_id.startswith(category)

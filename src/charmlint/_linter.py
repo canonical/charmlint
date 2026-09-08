@@ -3,28 +3,9 @@
 import contextlib
 import dataclasses
 import pathlib
-import re
 
 from . import _ast, _config, _discovery, _noqa, _rules, _selectors, _yaml
 from . import _models as models
-
-# Rule IDs follow ``<UPPERCASE-CATEGORY>-<DIGITS>`` (e.g.
-# ``METADATA-001``, ``SECURITY-003``). The category is everything before
-# the final dash-and-digits.
-_RULE_ID_PATTERN = re.compile(r"^([A-Z]+)-([0-9]+)$")
-
-
-def _category_of(rule_id: str) -> str:
-    """Return the category prefix for a rule ID.
-
-    Falls back to *rule_id* itself when the ID does not match the
-    ``<CATEGORY>-<DIGITS>`` convention so an unrecognised ID never
-    accidentally matches a category in ``select`` / ``ignore``.
-    """
-    match = _RULE_ID_PATTERN.match(rule_id)
-    if match is None:
-        return rule_id
-    return match.group(1)
 
 
 def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
