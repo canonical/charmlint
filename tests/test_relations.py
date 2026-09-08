@@ -57,53 +57,42 @@ class TestUnorderedValueInDatabag:
         assert not _hits(tmp_charm, "RELATIONS-003")
 
 
-class TestNondeterministicValueInDatabag:
-    """Tests for RELATIONS-004 — a fresh value into a databag."""
+class TestDatabagAlias:
+    """A databag bound to a local is still a databag."""
 
-    def test_uuid_flagged(self, tmp_charm: pathlib.Path):
-        _charm(tmp_charm, '    relation.data[self.app]["n"] = str(uuid.uuid4())\n')
-        hits = _hits(tmp_charm, "RELATIONS-004")
-        assert len(hits) == 1
-        assert hits[0].severity == Severity.WARNING
-
-    def test_timestamp_through_fstring_flagged(self, tmp_charm: pathlib.Path):
-        _charm(tmp_charm, '    relation.data[self.app]["t"] = f"at {time.time()}"\n')
-        assert len(_hits(tmp_charm, "RELATIONS-004")) == 1
-
-    def test_datetime_now_flagged(self, tmp_charm: pathlib.Path):
+    def test_alias_write_flagged(self, tmp_charm: pathlib.Path):
         _charm(
-            tmp_charm, '    relation.data[self.app]["t"] = datetime.datetime.now().isoformat()\n'
+            tmp_charm,
+            '    bag = relation.data[self.app]\n    bag["u"] = json.dumps(list(set(names)))\n',
         )
-        assert len(_hits(tmp_charm, "RELATIONS-004")) == 1
+        assert len(_hits(tmp_charm, "RELATIONS-003")) == 1
 
-    def test_token_in_update_flagged(self, tmp_charm: pathlib.Path):
-        _charm(tmp_charm, '    relation.data[self.app].update({"s": secrets.token_hex()})\n')
-        assert len(_hits(tmp_charm, "RELATIONS-004")) == 1
-
-    def test_stable_value_not_flagged(self, tmp_charm: pathlib.Path):
-        _charm(tmp_charm, '    relation.data[self.app]["h"] = self.hostname\n')
-        assert not _hits(tmp_charm, "RELATIONS-004")
-
-
-class TestUnsortedJsonInDatabag:
-    """Tests for RELATIONS-005 — json.dumps() without sort_keys."""
-
-    def test_opaque_mapping_flagged(self, tmp_charm: pathlib.Path):
-        _charm(tmp_charm, '    relation.data[self.app]["b"] = json.dumps(payload)\n')
-        hits = _hits(tmp_charm, "RELATIONS-005")
-        assert len(hits) == 1
-        assert hits[0].severity == Severity.INFO
-
-    def test_sort_keys_not_flagged(self, tmp_charm: pathlib.Path):
+    def test_alias_update_flagged(self, tmp_charm: pathlib.Path):
         _charm(
-            tmp_charm, '    relation.data[self.app]["b"] = json.dumps(payload, sort_keys=True)\n'
+            tmp_charm,
+            '    bag = relation.data[self.app]\n    bag.update({"u": ",".join(set(names))})\n',
         )
-        assert not _hits(tmp_charm, "RELATIONS-005")
+        assert len(_hits(tmp_charm, "RELATIONS-003")) == 1
 
-    def test_dict_literal_not_flagged(self, tmp_charm: pathlib.Path):
-        _charm(tmp_charm, '    relation.data[self.app]["b"] = json.dumps({"a": 1})\n')
-        assert not _hits(tmp_charm, "RELATIONS-005")
+    def test_unrelated_local_not_flagged(self, tmp_charm: pathlib.Path):
+        _charm(tmp_charm, '    bag = {}\n    bag["u"] = json.dumps(list(set(names)))\n')
+        assert not _hits(tmp_charm, "RELATIONS-003")
 
-    def test_sequence_argument_not_flagged(self, tmp_charm: pathlib.Path):
-        _charm(tmp_charm, '    relation.data[self.app]["b"] = json.dumps(sorted(names))\n')
-        assert not _hits(tmp_charm, "RELATIONS-005")
+
+class TestRegression:
+    """Shapes taken from the charms this rule was measured against."""
+
+    def test_set_comprehension_joined_into_two_databags(self, tmp_charm: pathlib.Path):
+        # postgresql-operator src/relations/db.py: rebuilding allowed_units
+        # from a set comprehension, joined into both the unit and the app
+        # databag. Set iteration order for strings varies per process, so
+        # every hook rewrites the same units in a new order.
+        _charm(
+            tmp_charm,
+            "    local_unit_data = relation.data[self.unit]\n"
+            "    local_app_data = relation.data[self.app]\n"
+            '    local_app_data["allowed_units"] = local_unit_data["allowed_units"] = " ".join({\n'
+            '        unit for unit in names.split() if unit != "x/0"\n'
+            "    })\n",
+        )
+        assert len(_hits(tmp_charm, "RELATIONS-003")) == 1

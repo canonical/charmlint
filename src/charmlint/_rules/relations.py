@@ -7,21 +7,18 @@ changed is republished as a change: the peer is woken with
 charms flap. See `Your charm might be flapping its databags
 <https://discourse.charmhub.io/t/your-charm-might-be-flapping-its-databags/20715>`_.
 
-The rules here catch the instability that is visible within a single
-expression — an unordered collection, a freshly generated value, a
-dictionary serialised without sorting its keys. A value that becomes
-unstable somewhere else and is carried to the databag through a local or
-a helper needs data flow to follow, and is out of scope.
+RELATIONS-003 catches the instability that is visible in the expression
+being written. A value that becomes unstable somewhere else and is
+carried to the databag through a helper needs the data flow analysis
+that issue #251 discusses, and is out of scope here.
 """
 
 import ast
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 
 from .. import _ast
 from .. import _models as models
 from ._base import Rule
-
-_FLAPPING_URL = "https://discourse.charmhub.io/t/your-charm-might-be-flapping-its-databags/20715"
 
 
 class UnorderedValueInDatabag(Rule):
@@ -32,7 +29,9 @@ class UnorderedValueInDatabag(Rule):
     name = "unordered-value-in-databag"
     description = "Unordered collection written to a relation databag"
     default_severity = models.Severity.WARNING
-    reference_url = _FLAPPING_URL
+    reference_url = (
+        "https://discourse.charmhub.io/t/your-charm-might-be-flapping-its-databags/20715"
+    )
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return [
@@ -48,84 +47,26 @@ class UnorderedValueInDatabag(Rule):
                     "time the contents are the same"
                 ),
             )
-            for path, line, reason in _findings(context, _unordered_source, _ORDER_SANITISERS)
+            for path, line, reason in _findings(context)
         ]
 
 
-class NondeterministicValueInDatabag(Rule):
-    """Flag a freshly generated value written into a relation databag."""
-
-    category = "RELATIONS"
-    number = 4
-    name = "nondeterministic-value-in-databag"
-    description = "Freshly generated value written to a relation databag"
-    default_severity = models.Severity.WARNING
-    reference_url = _FLAPPING_URL
-
-    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        return [
-            self.diagnostic(
-                f"{reason} is written to a relation databag — it differs "
-                "on every reconciliation, so Juju sees a change and wakes "
-                "the peer charm even when nothing has actually changed",
-                path=path,
-                line=line,
-                fix_hint=(
-                    "Write a value derived from the facts being shared, "
-                    "or generate the value once and keep it (in a peer "
-                    "databag or a secret) rather than regenerating it "
-                    "each time"
-                ),
-            )
-            for path, line, reason in _findings(context, _nondeterministic_source, frozenset())
-        ]
-
-
-class UnsortedJsonInDatabag(Rule):
-    """Flag ``json.dumps()`` into a databag without ``sort_keys=True``."""
-
-    category = "RELATIONS"
-    number = 5
-    name = "unsorted-json-in-databag"
-    description = "json.dumps() into a relation databag without sort_keys=True"
-    default_severity = models.Severity.INFO
-    reference_url = _FLAPPING_URL
-
-    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        return [
-            self.diagnostic(
-                "`json.dumps()` writes to a relation databag without "
-                "`sort_keys=True` — if the mapping is ever built in a "
-                "different order the bytes change, and Juju wakes the "
-                "peer charm for nothing",
-                path=path,
-                line=line,
-                fix_hint="Pass `sort_keys=True` to `json.dumps()`",
-            )
-            for path, line, _ in _findings(context, _unsorted_json_dump, frozenset())
-        ]
-
-
-# Callables whose result is as unstable as their argument, so a rule
-# should look through them to what was passed in. ``json.dumps`` is here
-# because ``sort_keys=True`` orders a mapping's keys and does nothing for
-# the order of a list — RELATIONS-005 is what asks about the keys.
+# Callables whose result is as unstable as their argument, so the rule
+# looks through them to what was passed in. ``json.dumps`` is one of
+# them: ``sort_keys=True`` orders a mapping's keys and does nothing for
+# the order of the list it was handed.
 _TRANSPARENT_CALLS = frozenset(
     {"list", "tuple", "dict", "str", "repr", "json.dumps", "yaml.dump", "yaml.safe_dump"}
 )
 
 # Methods that reformat their receiver without reordering it, so the
-# instability of ``",".join(x)`` or ``x.isoformat()`` is the instability
-# of ``x``.
+# instability of ``",".join(x)`` is the instability of ``x``.
 _TRANSPARENT_METHODS = frozenset(
     {"join", "format", "encode", "decode", "hex", "isoformat", "strftime"}
 )
 
 # Calls that settle an order, so nothing below them is unordered any more.
 _ORDER_SANITISERS = frozenset({"sorted"})
-
-# Calls that build a sequence rather than a mapping.
-_SEQUENCE_CALLS = frozenset({"sorted", "list", "tuple", "set", "frozenset"})
 
 # Calls whose result has no defined order. ``set`` and ``frozenset`` cover
 # the constructors; the set-algebra and directory-walking methods are
@@ -147,43 +88,14 @@ _UNORDERED_METHODS = {
     "rglob": "A glob result",
 }
 
-# Calls that answer differently every time they are made.
-_NONDETERMINISTIC_CALLS = {
-    "uuid.uuid1": "A freshly generated UUID",
-    "uuid.uuid4": "A freshly generated UUID",
-    "time.time": "The current time",
-    "time.time_ns": "The current time",
-    "time.monotonic": "The current time",
-    "datetime.datetime.now": "The current time",
-    "datetime.datetime.utcnow": "The current time",
-    "datetime.datetime.today": "The current time",
-    "os.urandom": "Freshly generated random bytes",
-    "secrets.token_bytes": "A freshly generated token",
-    "secrets.token_hex": "A freshly generated token",
-    "secrets.token_urlsafe": "A freshly generated token",
-    "random.random": "A random value",
-    "random.randint": "A random value",
-    "random.choice": "A random value",
-    "random.sample": "A random value",
-}
 
-
-def _findings(
-    context: models.CharmContext,
-    match: Callable[[ast.expr, _ast.Imports], str | None],
-    sanitisers: frozenset[str],
-) -> Iterator[tuple[str, int, str]]:
-    """Yield ``(path, line, reason)`` for each databag write *match* rejects.
-
-    *match* is applied to every expression whose value reaches a databag
-    write, stopping at *sanitisers* — a call that fixes the property
-    *match* is looking for makes everything below it uninteresting.
-    """
+def _findings(context: models.CharmContext) -> Iterator[tuple[str, int, str]]:
+    """Yield ``(path, line, reason)`` for each unordered databag write."""
     for module in context.charm_sources():
         imports = _ast.Imports.of(module)
         for written in _databag_values(module):
-            for expr in _reachable(written, imports, sanitisers):
-                reason = match(expr, imports)
+            for expr in _reachable(written, imports):
+                reason = _unordered_source(expr, imports)
                 if reason is not None:
                     yield module.path, expr.lineno, reason
                     break
@@ -195,26 +107,46 @@ def _databag_values(module: models.Module) -> Iterator[ast.expr]:
     ops models relation data as a mapping of mappings, so a write is
     recognised by that shape: ``<relation>.data[<entity>][<key>] = ...``
     for a single key, and ``<relation>.data[<entity>].update({...})`` for
-    several at once. A databag bound to a local first — ``bag =
-    relation.data[self.app]`` — needs data flow to follow and is missed.
+    several at once. A charm just as often binds the databag to a local
+    first, so a name assigned from one counts as a databag wherever else
+    the module writes through it — about a third of the write sites in
+    the charms charmlint has been measured against, and the shape both
+    of the findings this rule has to its name.
     """
+    aliases = _databag_aliases(module)
     for node in module.walk(ast.Assign, ast.AnnAssign, ast.Call):
         if isinstance(node, ast.Call):
-            yield from _update_values(node)
+            yield from _update_values(node, aliases)
             continue
         if node.value is None:
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        if any(_is_databag_entry(target) for target in targets):
+        if any(_is_databag_entry(target, aliases) for target in targets):
             yield node.value
 
 
-def _update_values(call: ast.Call) -> Iterator[ast.expr]:
+def _databag_aliases(module: models.Module) -> frozenset[str]:
+    """Return the names the module binds a whole databag to.
+
+    Module-wide rather than per-scope: a name that means a databag in one
+    method is not given a different meaning in the next, and the shape is
+    specific enough that a collision would be a surprise.
+    """
+    return frozenset(
+        target.id
+        for node in module.walk(ast.Assign)
+        if _is_databag(node.value)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    )
+
+
+def _update_values(call: ast.Call, aliases: frozenset[str]) -> Iterator[ast.expr]:
     """Yield the values a ``<databag>.update(...)`` call writes."""
     func = call.func
     if not isinstance(func, ast.Attribute) or func.attr != "update":
         return
-    if not _is_databag(func.value):
+    if not _is_databag(func.value) and not _is_alias(func.value, aliases):
         return
     for arg in call.args:
         if isinstance(arg, ast.Dict):
@@ -225,9 +157,11 @@ def _update_values(call: ast.Call) -> Iterator[ast.expr]:
             yield keyword.value
 
 
-def _is_databag_entry(node: ast.expr) -> bool:
+def _is_databag_entry(node: ast.expr, aliases: frozenset[str]) -> bool:
     """True for ``<relation>.data[<entity>][<key>]`` — one databag entry."""
-    return isinstance(node, ast.Subscript) and _is_databag(node.value)
+    if not isinstance(node, ast.Subscript):
+        return False
+    return _is_databag(node.value) or _is_alias(node.value, aliases)
 
 
 def _is_databag(node: ast.expr) -> bool:
@@ -239,41 +173,44 @@ def _is_databag(node: ast.expr) -> bool:
     )
 
 
-def _reachable(
-    expr: ast.expr, imports: _ast.Imports, sanitisers: frozenset[str]
-) -> Iterator[ast.expr]:
+def _is_alias(node: ast.expr, aliases: frozenset[str]) -> bool:
+    """True for a name the module bound a whole databag to."""
+    return isinstance(node, ast.Name) and node.id in aliases
+
+
+def _reachable(expr: ast.expr, imports: _ast.Imports) -> Iterator[ast.expr]:
     """Yield *expr* and every sub-expression whose value flows into it.
 
     Only the containers and wrappers that carry a value through unchanged
-    are followed: a call to something charmlint cannot see the body of
-    might do anything to what it was passed, so its arguments are not
-    reached. A call named in *sanitisers* ends the walk down that branch.
+    are followed: a call charmlint cannot see the body of might sort what
+    it was passed, so its arguments are not reached. A call that settles
+    an order ends the walk down that branch.
     """
     yield expr
     if isinstance(expr, ast.Call):
         target = _ast.call_target(expr, imports)
-        if target in sanitisers:
+        if target in _ORDER_SANITISERS:
             return
         if target in _TRANSPARENT_CALLS:
             for arg in expr.args:
-                yield from _reachable(arg, imports, sanitisers)
+                yield from _reachable(arg, imports)
         elif isinstance(expr.func, ast.Attribute) and expr.func.attr in _TRANSPARENT_METHODS:
-            yield from _reachable(expr.func.value, imports, sanitisers)
+            yield from _reachable(expr.func.value, imports)
             for arg in expr.args:
-                yield from _reachable(arg, imports, sanitisers)
+                yield from _reachable(arg, imports)
     elif isinstance(expr, ast.Dict):
         for value in expr.values:
-            yield from _reachable(value, imports, sanitisers)
+            yield from _reachable(value, imports)
     elif isinstance(expr, ast.List | ast.Tuple):
         for element in expr.elts:
-            yield from _reachable(element, imports, sanitisers)
+            yield from _reachable(element, imports)
     elif isinstance(expr, ast.JoinedStr):
         for part in expr.values:
             if isinstance(part, ast.FormattedValue):
-                yield from _reachable(part.value, imports, sanitisers)
+                yield from _reachable(part.value, imports)
     elif isinstance(expr, ast.BinOp):
-        yield from _reachable(expr.left, imports, sanitisers)
-        yield from _reachable(expr.right, imports, sanitisers)
+        yield from _reachable(expr.left, imports)
+        yield from _reachable(expr.right, imports)
 
 
 def _unordered_source(expr: ast.expr, imports: _ast.Imports) -> str | None:
@@ -288,31 +225,3 @@ def _unordered_source(expr: ast.expr, imports: _ast.Imports) -> str | None:
     if isinstance(expr.func, ast.Attribute):
         return _UNORDERED_METHODS.get(expr.func.attr)
     return None
-
-
-def _nondeterministic_source(expr: ast.expr, imports: _ast.Imports) -> str | None:
-    """Describe *expr* if it answers differently each call, else ``None``."""
-    if not isinstance(expr, ast.Call):
-        return None
-    return _NONDETERMINISTIC_CALLS.get(_ast.call_target(expr, imports) or "")
-
-
-def _unsorted_json_dump(expr: ast.expr, imports: _ast.Imports) -> str | None:
-    """Describe *expr* if it is a ``json.dumps()`` that does not sort keys.
-
-    A literal mapping is serialised in the order it is written, which is
-    the same order every time, so only an argument charmlint cannot see
-    the construction of is worth asking about.
-    """
-    if not isinstance(expr, ast.Call) or _ast.call_target(expr, imports) != "json.dumps":
-        return None
-    if _ast.keyword(expr, "sort_keys") is not None:
-        return None
-    argument = expr.args[0] if expr.args else None
-    if argument is None or isinstance(argument, ast.Dict | ast.List | ast.Tuple | ast.Constant):
-        return None
-    # A sequence has no keys for ``sort_keys`` to order, so asking for it
-    # would be noise; its own order is RELATIONS-003's question.
-    if isinstance(argument, ast.Call) and _ast.call_target(argument, imports) in _SEQUENCE_CALLS:
-        return None
-    return "An unsorted JSON serialisation"
