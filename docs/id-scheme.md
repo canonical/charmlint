@@ -46,3 +46,26 @@ exists in multiple categories. Configuration must use the full form.
 | SUPPLYCHAIN | Supply chain / maintainability |
 | OPS | Operational readiness |
 | EVENTS | Event lifecycle completeness |
+
+The catalogue is mirrored in code as `charmlint._rules.CATEGORIES`. A
+rule may only declare a category from that list, and configuration may
+only name one from it, so a typo in either is reported rather than
+silently matching nothing. Adding a category means adding it in both
+places.
+
+## Rule names
+
+Every rule also has a `name`: a kebab-case phrase saying what it checks,
+such as `secret-in-plain-config` for `SECURITY-001`. Names are ruff's
+wordier spelling, and charmlint accepts them anywhere an ID is accepted
+— `select`, `ignore`, `per-rule-severity`, `--select`, `--ignore`, and
+the codes inside a suppression comment.
+
+A name must be unique across rules, must be kebab-case, and must not
+spell a category: `ignore = ["security"]` would otherwise mean two
+different things. All three are enforced when the rule class is
+registered.
+
+Names are part of the public interface, so renaming one is a breaking
+change under [versioning.md](versioning.md), the same as renumbering an
+ID.

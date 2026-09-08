@@ -21,27 +21,29 @@ class TestLintConfig:
 
     def test_per_rule_severity_parsed(self):
         config = LintConfig.from_dict(
-            {"per-rule-severity": {"COS005": "error", "STR002": "warning"}}
+            {"per-rule-severity": {"OBSERVABILITY-005": "error", "STRUCTURE-002": "warning"}}
         )
-        assert config.severity_overrides["COS005"] == "error"
-        assert config.severity_overrides["STR002"] == "warning"
+        assert config.severity_overrides["OBSERVABILITY-005"] == "error"
+        assert config.severity_overrides["STRUCTURE-002"] == "warning"
 
     def test_select_and_ignore(self):
-        config = LintConfig.from_dict({"select": ["COS", "META"], "ignore": ["STR003"]})
-        assert config.select == ["COS", "META"]
-        assert config.ignore == ["STR003"]
+        config = LintConfig.from_dict(
+            {"select": ["OBSERVABILITY", "METADATA"], "ignore": ["STRUCTURE-003"]}
+        )
+        assert config.select == ["OBSERVABILITY", "METADATA"]
+        assert config.ignore == ["STRUCTURE-003"]
 
     def test_extend_select_and_extend_ignore(self):
         config = LintConfig.from_dict(
             {
-                "select": ["COS"],
-                "extend-select": ["META"],
-                "ignore": ["STR003"],
-                "extend-ignore": ["DEP001"],
+                "select": ["OBSERVABILITY"],
+                "extend-select": ["METADATA"],
+                "ignore": ["STRUCTURE-003"],
+                "extend-ignore": ["DEPRECATION-001"],
             }
         )
-        assert config.select == ["COS", "META"]
-        assert config.ignore == ["STR003", "DEP001"]
+        assert config.select == ["OBSERVABILITY", "METADATA"]
+        assert config.ignore == ["STRUCTURE-003", "DEPRECATION-001"]
 
     def test_severity_filter(self):
         config = LintConfig.from_dict({"severity": "warning"})
@@ -59,15 +61,15 @@ class TestLoadConfig:
         (tmp_path / "pyproject.toml").write_text(
             textwrap.dedent("""
                 [tool.charmlint]
-                ignore = ["STR002"]
+                ignore = ["STRUCTURE-002"]
 
                 [tool.charmlint.per-rule-severity]
-                COS005 = "error"
+                "OBSERVABILITY-005" = "error"
             """)
         )
         config = load_config(tmp_path)
-        assert config.severity_overrides["COS005"] == "error"
-        assert "STR002" in config.ignore
+        assert config.severity_overrides["OBSERVABILITY-005"] == "error"
+        assert "STRUCTURE-002" in config.ignore
 
     def test_pyproject_without_charmlint_section_ignored(self, tmp_path: pathlib.Path):
         (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 99\n")
@@ -75,39 +77,39 @@ class TestLoadConfig:
         assert config == LintConfig()
 
     def test_standalone_charmlint_toml(self, tmp_path: pathlib.Path):
-        (tmp_path / "charmlint.toml").write_text('select = ["COS"]\n')
+        (tmp_path / "charmlint.toml").write_text('select = ["OBSERVABILITY"]\n')
         config = load_config(tmp_path)
-        assert config.select == ["COS"]
+        assert config.select == ["OBSERVABILITY"]
 
     def test_dot_charmlint_toml(self, tmp_path: pathlib.Path):
-        (tmp_path / ".charmlint.toml").write_text('select = ["META"]\n')
+        (tmp_path / ".charmlint.toml").write_text('select = ["METADATA"]\n')
         config = load_config(tmp_path)
-        assert config.select == ["META"]
+        assert config.select == ["METADATA"]
 
     def test_standalone_preferred_over_pyproject(self, tmp_path: pathlib.Path):
-        (tmp_path / "pyproject.toml").write_text('[tool.charmlint]\nselect = ["FROM_PYPROJECT"]\n')
-        (tmp_path / "charmlint.toml").write_text('select = ["FROM_STANDALONE"]\n')
+        (tmp_path / "pyproject.toml").write_text('[tool.charmlint]\nselect = ["METADATA"]\n')
+        (tmp_path / "charmlint.toml").write_text('select = ["SECURITY"]\n')
         config = load_config(tmp_path)
-        assert config.select == ["FROM_STANDALONE"]
+        assert config.select == ["SECURITY"]
 
     def test_walks_up_parent_directories(self, tmp_path: pathlib.Path):
-        (tmp_path / "charmlint.toml").write_text('select = ["COS"]\n')
+        (tmp_path / "charmlint.toml").write_text('select = ["OBSERVABILITY"]\n')
         nested = tmp_path / "a" / "b"
         nested.mkdir(parents=True)
         config = load_config(nested)
-        assert config.select == ["COS"]
+        assert config.select == ["OBSERVABILITY"]
 
     def test_explicit_config_path_standalone(self, tmp_path: pathlib.Path):
         config_file = tmp_path / "custom.toml"
-        config_file.write_text('select = ["COS"]\n')
+        config_file.write_text('select = ["OBSERVABILITY"]\n')
         config = load_config(tmp_path, config_path=config_file)
-        assert config.select == ["COS"]
+        assert config.select == ["OBSERVABILITY"]
 
     def test_explicit_config_path_pyproject(self, tmp_path: pathlib.Path):
         config_file = tmp_path / "pyproject.toml"
-        config_file.write_text('[tool.charmlint]\nselect = ["COS"]\n')
+        config_file.write_text('[tool.charmlint]\nselect = ["OBSERVABILITY"]\n')
         config = load_config(tmp_path, config_path=config_file)
-        assert config.select == ["COS"]
+        assert config.select == ["OBSERVABILITY"]
 
     def test_malformed_standalone_raises(self, tmp_path: pathlib.Path):
         (tmp_path / "charmlint.toml").write_text("not = valid = toml\n")
@@ -123,9 +125,9 @@ class TestLoadConfig:
         nested = tmp_path / "charm"
         nested.mkdir()
         (nested / "pyproject.toml").write_text("not = valid = toml\n")
-        (tmp_path / "charmlint.toml").write_text('select = ["COS"]\n')
+        (tmp_path / "charmlint.toml").write_text('select = ["OBSERVABILITY"]\n')
         config = load_config(nested)
-        assert config.select == ["COS"]
+        assert config.select == ["OBSERVABILITY"]
         assert "Warning" in capsys.readouterr().err
 
     def test_pyproject_charmlint_not_a_table_raises(self, tmp_path: pathlib.Path):
@@ -136,8 +138,8 @@ class TestLoadConfig:
 
     def test_select_and_ignore_overlap_raises(self, tmp_path: pathlib.Path):
         config_file = tmp_path / "charmlint.toml"
-        config_file.write_text('select = ["FOO"]\nignore = ["FOO"]\n')
-        with pytest.raises(ConfigError, match="select and ignore both contain"):
+        config_file.write_text('select = ["SECURITY"]\nignore = ["SECURITY"]\n')
+        with pytest.raises(ConfigError, match="select and ignore both cover"):
             load_config(tmp_path)
 
     def test_malformed_explicit_config_raises(self, tmp_path: pathlib.Path):
