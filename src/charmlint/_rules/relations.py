@@ -6,11 +6,6 @@ changed is republished as a change: the peer is woken with
 ``relation-changed``, republishes its own unstable data, and the two
 charms flap. See `Your charm might be flapping its databags
 <https://discourse.charmhub.io/t/your-charm-might-be-flapping-its-databags/20715>`_.
-
-RELATIONS-003 catches the instability that is visible in the expression
-being written. A value that becomes unstable somewhere else and is
-carried to the databag through a helper needs the data flow analysis
-that issue #251 discusses, and is out of scope here.
 """
 
 import ast
