@@ -1124,6 +1124,21 @@ class TestContainerRunsAsRoot:
         assert diags[0].fix_hint is not None
         assert "non-root-skills" in diags[0].fix_hint
 
+    def test_deprecated_snap_daemon_id_is_a_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"w": {"resource": "img", "uid": 584788, "gid": 584788}},
+            },
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "deprecated 'snap_daemon' user" in diags[0].message
+        assert diags[0].fix_hint is not None
+        assert "584792" in diags[0].fix_hint
+
     def test_mismatched_ids_are_a_warning(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,

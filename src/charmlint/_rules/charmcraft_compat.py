@@ -315,8 +315,7 @@ class CharmUser(Rule):
     The advisory findings are limited to Kubernetes charms, because the
     key has no effect on a machine charm. An invalid *value* is reported
     wherever it appears: it is a malformed key rather than a question of
-    privilege, and a charm that grows a workload container later would
-    silently keep the typo.
+    privilege.
     """
 
     category = "CHARMCRAFT"
@@ -393,10 +392,13 @@ class ContainerRunsAsRoot(Rule):
     A container that is non-root but off-convention is reported more
     quietly. ``uid`` and ``gid`` that disagree are a warning: the two are
     written together and a mismatch is almost always a typo, and it
-    leaves the process in a group the image never prepared for it. An ID
+    leaves the process in a group the image never prepared for. An ID
     that is not 584792 is only an info — it works, but 584792 is the
     shared ``_daemon_`` user rocks are built around, so anything else
-    means the image has to have been built to match.
+    means the image has to have been built to match. 584788 is the
+    exception: it is the deprecated ``snap_daemon`` that ``_daemon_``
+    replaced, so a container still on it is on the old identity rather
+    than an arbitrary one, and that is a warning.
 
     A container written as anything other than a mapping is skipped, the
     same as elsewhere in this module: a malformed section is not a
@@ -481,6 +483,20 @@ class ContainerRunsAsRoot(Rule):
                     fix_hint=(
                         f"Set both 'uid' and 'gid' on container '{name}' to {_DAEMON_ID}, the "
                         "shared '_daemon_' user rocks run as"
+                    ),
+                )
+            )
+        elif uid == _SNAP_DAEMON_ID:
+            diagnostics.append(
+                self.diagnostic(
+                    f"Container '{name}' runs as {uid}, the deprecated 'snap_daemon' user — "
+                    f"{_DAEMON_ID} ('_daemon_') replaces it",
+                    severity=models.Severity.WARNING,
+                    path=container.source,
+                    line=container.get("uid").line,
+                    fix_hint=(
+                        f"Set 'uid' and 'gid' on container '{name}' to {_DAEMON_ID} once the "
+                        f"image is rebuilt with '_daemon_' — {_NON_ROOT_SKILL}"
                     ),
                 )
             )
@@ -589,6 +605,11 @@ _VALID_CHARM_USERS: frozenset[str] = frozenset({"root", "sudoer", "non-root"})
 # workload has one identity wherever it runs. See
 # https://discourse.ubuntu.com/t/unifying-user-identity-across-snaps-and-rocks/36469
 _DAEMON_ID = 584792
+
+# The predecessor of ``_daemon_``, deprecated in favour of it. A container
+# still on this ID is on the old identity rather than an arbitrary one. See
+# https://snapcraft.io/docs/explanation/snap-development/system-usernames/#snap-daemon-user-and-group
+_SNAP_DAEMON_ID = 584788
 
 # Named in the hints for the findings that amount to "migrate this charm to
 # non-root", which is more work than a one-line edit: the skill walks the
