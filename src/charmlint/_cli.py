@@ -1,12 +1,13 @@
 """Command-line interface for charmlint."""
 
 import argparse
+import collections.abc
 import json
 import os
 import pathlib
 import sys
 
-from . import __version__, _config, _discovery, _linter, _selectors
+from . import _config, _discovery, _linter, _selectors
 from . import _models as models
 
 # ---------------------------------------------------------------------------
@@ -88,6 +89,38 @@ def _format_summary_colour(
     )
 
 
+class _VersionAction(argparse.Action):
+    """``--version``, resolving the version only when the flag is given.
+
+    ``argparse``'s own ``version`` action wants the string up front, which
+    would import ``importlib.metadata`` on every run. See ``__init__.py``.
+    """
+
+    def __init__(
+        self,
+        option_strings: list[str],
+        dest: str = argparse.SUPPRESS,
+        default: str = argparse.SUPPRESS,
+        help: str | None = None,
+    ):
+        super().__init__(
+            option_strings=option_strings, dest=dest, default=default, nargs=0, help=help
+        )
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | collections.abc.Sequence[object] | None,
+        option_string: str | None = None,
+    ) -> None:
+        del namespace, values, option_string
+        from . import __version__
+
+        print(f"charmlint {__version__}")
+        parser.exit()
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="charmlint",
@@ -160,8 +193,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--version",
-        action="version",
-        version=f"charmlint {__version__}",
+        action=_VersionAction,
+        help="Show the version number and exit",
     )
     return parser
 
