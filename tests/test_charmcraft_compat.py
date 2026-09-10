@@ -1182,9 +1182,9 @@ class TestContainerRunsAsRoot:
             {"name": "test", "containers": {"w": {"resource": "img", "uid": "584792", "gid": 0}}},
         )
         diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
-        errors = [d for d in diags if d.severity == Severity.ERROR]
-        assert len(errors) == 1
-        assert "IDs must be integers" in errors[0].message
+        # The string uid is an error; gid 0 is separately a root warning.
+        assert [d.severity for d in diags] == [Severity.ERROR, Severity.WARNING]
+        assert "IDs must be integers" in diags[0].message
 
     def test_boolean_id_is_an_error(self, tmp_charm: pathlib.Path):
         (tmp_charm / "charmcraft.yaml").write_text(

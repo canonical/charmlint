@@ -408,7 +408,9 @@ class ContainerRunsAsRoot(Rule):
     category = "CHARMCRAFT"
     number = 9
     name = "container-runs-as-root"
-    description = "Workload container runs its Pebble entry process as root"
+    description = (
+        "Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity"
+    )
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers"
 
@@ -527,7 +529,7 @@ class ContainerRunsAsRoot(Rule):
         if value < 0:
             return "IDs cannot be negative"
         if 1000 <= value <= 9999:
-            return "Juju reserves 1000-9999 for users; use 0-999 or 10000 and above"
+            return "Juju reserves 1000-9999 for users; use 1-999 or 10000 and above"
         return None
 
 
