@@ -236,11 +236,28 @@ def _find_ops_in_requirements(requirements: pathlib.Path) -> _OpsDependency | No
 #: plus a lock file. Any ``requirements.txt`` alongside one of these is a
 #: generated artefact, not a hand-written declaration, so the pinning
 #: rules must not read it.
+#:
+#: This is a narrow guard, and deliberately so. Across the corpus it
+#: changes the outcome for two charms — the ``kubernetes`` and ``machine``
+#: charms of ``opensearch-dashboards-operator``, which export a
+#: ``requirements.txt`` from ``poetry.lock`` (``--only main``) purely so
+#: the pins are visible inside the built ``.charm``. That export pins
+#: ``ops`` exactly, which is what a lock file is for; without this guard
+#: SUPPLYCHAIN-006 would flag it.
 _LOCKFILE_PLUGINS = frozenset({"poetry", "uv"})
 
 
 def _uses_lockfile_plugin(metadata: models.Yaml) -> bool:
-    """Report whether any ``parts`` entry uses a lock-file-based plugin."""
+    """Report whether any ``parts`` entry uses a lock-file-based plugin.
+
+    Asked of the whole ``parts`` mapping rather than of one designated
+    part, because a charm does not have a single plugin: the corpus's
+    most common plugins are ``uv`` (198 charms), ``nil`` (189) and
+    ``dump`` (175), and a charm routinely combines a build plugin with
+    both. There is no reliable way to pick "the charm's part", so this
+    asks the only question the rules need — is a lock file in play at
+    all.
+    """
     return any(
         part.get("plugin").value in _LOCKFILE_PLUGINS for _, part in metadata.get("parts").items()
     )
