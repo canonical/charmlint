@@ -6,7 +6,7 @@ import os
 import pathlib
 import sys
 
-from . import __version__, _config, _linter
+from . import __version__, _config, _discovery, _linter
 from . import _models as models
 
 # ---------------------------------------------------------------------------
@@ -199,6 +199,11 @@ def main(argv: list[str] | None = None) -> int:
         config.ignore.extend(s.strip() for s in args.ignore.split(","))
     if args.min_severity:
         config.min_severity = models.Severity(args.min_severity)
+
+    if args.verbose:
+        charm_dirs = _discovery.discover_charms(charm_dir)
+        if charm_dirs != [charm_dir]:
+            print(f"Found {len(charm_dirs)} charms under {charm_dir}", file=sys.stderr)
 
     report = _linter.lint(charm_dir, config)
 

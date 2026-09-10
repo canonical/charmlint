@@ -1,10 +1,11 @@
 """Core linter engine — loads charm context, discovers rules, runs them."""
 
 import contextlib
+import dataclasses
 import pathlib
 import re
 
-from . import _ast, _config, _noqa, _rules, _yaml
+from . import _ast, _config, _discovery, _noqa, _rules, _yaml
 from . import _models as models
 
 # Rule IDs follow ``<UPPERCASE-CATEGORY>-<DIGITS>`` (e.g.
@@ -216,47 +217,33 @@ def _effective_severity(rule: _rules.Rule, config: _config.LintConfig) -> models
     return None
 
 
-def lint(
-    charm_dir: pathlib.Path,
-    config: _config.LintConfig | None = None,
-) -> models.LintReport:
-    """Run all enabled rules against a charm directory.
+def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[models.Diagnostic]:
+    """Run the enabled rules against one charm, and apply its ``noqa`` directives.
 
-    This is the main public API.
+    Diagnostic paths are relative to *charm_dir*, as a rule reports them.
     """
-    if config is None:
-        config = _config.LintConfig()
-
     try:
         context = build_context(charm_dir)
     except _yaml.FileLoadError as exc:
-        return models.LintReport.from_diagnostics(
-            charm_dir=charm_dir,
-            diagnostics=[
-                models.Diagnostic(
-                    rule_id="FATAL",
-                    severity=models.Severity.ERROR,
-                    message=f"Could not load {exc.path.name}: {exc.reason}",
-                    path=str(exc.path.relative_to(charm_dir))
-                    if exc.path.is_relative_to(charm_dir)
-                    else str(exc.path),
-                )
-            ],
-        )
+        return [
+            models.Diagnostic(
+                rule_id="FATAL",
+                severity=models.Severity.ERROR,
+                message=f"Could not load {exc.path.name}: {exc.reason}",
+                path=str(exc.path.relative_to(charm_dir))
+                if exc.path.is_relative_to(charm_dir)
+                else str(exc.path),
+            )
+        ]
 
     if not context.metadata:
-        return models.LintReport.from_diagnostics(
-            charm_dir=charm_dir,
-            diagnostics=[
-                models.Diagnostic(
-                    rule_id="FATAL",
-                    severity=models.Severity.ERROR,
-                    message=(
-                        "No charmcraft.yaml or metadata.yaml found — is this a charm directory?"
-                    ),
-                )
-            ],
-        )
+        return [
+            models.Diagnostic(
+                rule_id="FATAL",
+                severity=models.Severity.ERROR,
+                message="No charmcraft.yaml or metadata.yaml found — is this a charm directory?",
+            )
+        ]
 
     all_diagnostics: list[models.Diagnostic] = []
 
@@ -295,9 +282,64 @@ def lint(
 
         all_diagnostics.extend(diagnostics)
 
-    all_diagnostics = _apply_noqa(charm_dir, all_diagnostics)
+    return _apply_noqa(charm_dir, all_diagnostics)
 
-    return models.LintReport.from_diagnostics(charm_dir=charm_dir, diagnostics=all_diagnostics)
+
+def _prefixed(diagnostic: models.Diagnostic, prefix: pathlib.PurePosixPath) -> models.Diagnostic:
+    """Return *diagnostic* with its path moved from charm-relative to root-relative.
+
+    Only reached when one run covers several charms, where a bare
+    ``src/charm.py`` would not say which charm it came from.
+    """
+    if diagnostic.path is None:
+        return diagnostic
+    return dataclasses.replace(diagnostic, path=str(prefix / diagnostic.path))
+
+
+def lint(
+    path: pathlib.Path,
+    config: _config.LintConfig | None = None,
+) -> models.LintReport:
+    """Run all enabled rules against a charm directory.
+
+    This is the main public API.
+
+    *path* is normally a single charm. It may also be a repository holding
+    several charms, in which case every charm below it is linted and the
+    findings are gathered into one report, with each diagnostic's path
+    written relative to *path* so it names the charm it belongs to.
+    """
+    if config is None:
+        config = _config.LintConfig()
+
+    path = path.resolve()
+    charm_dirs = _discovery.discover_charms(path)
+
+    if not charm_dirs:
+        return models.LintReport.from_diagnostics(
+            charm_dir=path,
+            diagnostics=[
+                models.Diagnostic(
+                    rule_id="FATAL",
+                    severity=models.Severity.ERROR,
+                    message=(
+                        "No charmcraft.yaml or metadata.yaml found here or in any "
+                        "directory below — is this a charm directory?"
+                    ),
+                )
+            ],
+        )
+
+    if charm_dirs == [path]:
+        return models.LintReport.from_diagnostics(
+            charm_dir=path, diagnostics=_lint_charm(path, config)
+        )
+
+    diagnostics: list[models.Diagnostic] = []
+    for charm_dir in charm_dirs:
+        prefix = pathlib.PurePosixPath(charm_dir.relative_to(path))
+        diagnostics.extend(_prefixed(d, prefix) for d in _lint_charm(charm_dir, config))
+    return models.LintReport.from_diagnostics(charm_dir=path, diagnostics=diagnostics)
 
 
 # YAML files are the only ones scanned for ``noqa`` directives.

@@ -11,6 +11,7 @@ from . import libraries as _libraries  # noqa: F401
 from . import metadata as _metadata  # noqa: F401
 from . import pebble as _pebble  # noqa: F401
 from . import security as _security  # noqa: F401
+from . import status as _status  # noqa: F401
 from . import structure as _structure  # noqa: F401
 from . import testing as _testing  # noqa: F401
 from ._base import Rule, get_all_rules
