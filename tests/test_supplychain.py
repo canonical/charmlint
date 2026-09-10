@@ -255,6 +255,53 @@ class TestOpsDependencyParsing:
         assert dep is not None
         assert dep.section == "tool.poetry.group.dev.dependencies"
 
+    def test_testing_extra_is_skipped(self):
+        """`ops[testing]` is the test harness, not the charm's runtime dependency."""
+        dep = _supplychain._find_ops_in_pyproject(
+            {"project": {"optional-dependencies": {"dev": ["ops[testing]"]}}}
+        )
+        assert dep is None
+
+    def test_runtime_wins_over_a_testing_extra(self):
+        """A test-group declaration is stepped over, not returned in place of the runtime one."""
+        dep = _supplychain._find_ops_in_pyproject(
+            {
+                "project": {"dependencies": ["ops>=3,<4"]},
+                "dependency-groups": {"unit": ["ops[testing]"]},
+            }
+        )
+        assert dep is not None
+        assert dep.section == "project.dependencies"
+        assert dep.specifier == ">=3,<4"
+
+    def test_testing_extra_skipped_in_dependency_groups(self):
+        dep = _supplychain._find_ops_in_pyproject(
+            {"dependency-groups": {"unit": ["ops[testing]"]}}
+        )
+        assert dep is None
+
+    def test_testing_extra_skipped_for_poetry(self):
+        dep = _supplychain._find_ops_in_pyproject(
+            {
+                "tool": {
+                    "poetry": {
+                        "dependencies": {"ops": {"version": "*", "extras": ["testing"]}},
+                        "group": {
+                            "unit": {
+                                "dependencies": {"ops": {"version": "*", "extras": ["testing"]}}
+                            }
+                        },
+                    }
+                }
+            }
+        )
+        assert dep is None
+
+    def test_testing_extra_skipped_in_requirements(self, tmp_charm: pathlib.Path):
+        path = tmp_charm / "requirements.txt"
+        path.write_text("ops[testing]\n")
+        assert _supplychain._find_ops_in_requirements(path) is None
+
     def test_requirements_line_recorded(self, tmp_charm: pathlib.Path):
         path = tmp_charm / "requirements.txt"
         path.write_text("# a comment\n-r other.txt\n\nops==3.7.1\n")

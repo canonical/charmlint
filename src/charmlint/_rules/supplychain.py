@@ -24,7 +24,7 @@ _PEP508_RE = re.compile(
 
 @dataclasses.dataclass(frozen=True)
 class _OpsDependency:
-    """One charm's declared ``ops`` dependency, and where it was declared.
+    """A charm's declared ``ops`` dependency, and where it was declared.
 
     Every rule about the ``ops`` dependency works from one of
     these, so the charm's packaging is parsed once and interrogated
@@ -61,6 +61,18 @@ class _OpsDependency:
     def is_exact(self) -> bool:
         """Whether it is pinned to a single version with ``==``."""
         return self.specifier.startswith("==")
+
+    @property
+    def is_test_only(self) -> bool:
+        """Whether this declaration is the testing harness rather than the runtime.
+
+        ``ops[testing]`` pulls in ``ops.testing``, which runs in the
+        test environment and never ships in the charm. Neither pinning
+        rule has anything useful to say about it: a test harness wants
+        the version the tests were written against, not a range chosen
+        so security fixes flow into production.
+        """
+        return "testing" in self.extras
 
     @property
     def where(self) -> str:
@@ -124,7 +136,8 @@ def _split_extras(extras: str | None) -> tuple[str, ...]:
     """Split the bracketed extras of a PEP 508 requirement into a tuple."""
     if not extras:
         return ()
-    return tuple(part.strip() for part in extras.split(",") if part.strip())
+    stripped = (part.strip() for part in extras.split(","))
+    return tuple(part for part in stripped if part)
 
 
 def _walk_pep508_list(entries: Any):
@@ -150,14 +163,14 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
     if isinstance(project, dict):
         for entry in _walk_pep508_list(project.get("dependencies")):
             dep = _parse_pep508(entry, source, "project.dependencies")
-            if dep is not None:
+            if dep is not None and not dep.is_test_only:
                 return dep
         optional = project.get("optional-dependencies")
         if isinstance(optional, dict):
             for name, entries in optional.items():
                 for entry in _walk_pep508_list(entries):
                     dep = _parse_pep508(entry, source, f"project.optional-dependencies.{name}")
-                    if dep is not None:
+                    if dep is not None and not dep.is_test_only:
                         return dep
 
     # PEP 735 — [dependency-groups.*]
@@ -166,7 +179,7 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
         for name, entries in groups.items():
             for entry in _walk_pep508_list(entries):
                 dep = _parse_pep508(entry, source, f"dependency-groups.{name}")
-                if dep is not None:
+                if dep is not None and not dep.is_test_only:
                     return dep
 
     # Poetry — [tool.poetry.dependencies], legacy [tool.poetry.dev-dependencies],
@@ -180,7 +193,9 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
                 if isinstance(deps, dict):
                     for name, value in deps.items():
                         if _normalize(name) == "ops":
-                            return _parse_poetry(value, source, f"tool.poetry.{key}")
+                            dep = _parse_poetry(value, source, f"tool.poetry.{key}")
+                            if not dep.is_test_only:
+                                return dep
             poetry_groups = poetry.get("group")
             if isinstance(poetry_groups, dict):
                 for group_name, group in poetry_groups.items():
@@ -190,11 +205,13 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
                     if isinstance(deps, dict):
                         for name, value in deps.items():
                             if _normalize(name) == "ops":
-                                return _parse_poetry(
+                                dep = _parse_poetry(
                                     value,
                                     source,
                                     f"tool.poetry.group.{group_name}.dependencies",
                                 )
+                                if not dep.is_test_only:
+                                    return dep
 
     return None
 
@@ -210,7 +227,7 @@ def _find_ops_in_requirements(requirements: pathlib.Path) -> _OpsDependency | No
         if not stripped or stripped.startswith("-"):
             continue
         dep = _parse_pep508(stripped, "requirements.txt", "requirements.txt", lineno)
-        if dep is not None:
+        if dep is not None and not dep.is_test_only:
             return dep
     return None
 
@@ -239,13 +256,18 @@ def _find_ops_requirements(charm_dir: pathlib.Path) -> _OpsDependency | None:
 
 
 def _find_ops_dep(context: models.CharmContext) -> _OpsDependency | None:
-    """Return the charm's declared ``ops`` dependency, or ``None``.
+    """Return the charm's runtime ``ops`` dependency, or ``None``.
 
-    Both pinning rules share this scan and stop at the first hit — a charm
-    should only declare ``ops`` in one place. ``pyproject.toml`` wins
-    over ``requirements.txt`` when both are present, and
-    ``requirements.txt`` is skipped altogether for charms whose
-    charmcraft plugin generates it from a lock file.
+    Both pinning rules share this scan and stop at the first hit that
+    is not the test harness. Declaring ``ops`` more than once is the
+    norm rather than the exception — 245 of the 417 corpus charms that
+    declare it at all do so twice or more, almost always runtime
+    ``ops`` alongside ``ops[testing]`` in a test group — so
+    :attr:`_OpsDependency.is_test_only` declarations are stepped over
+    rather than returned. ``pyproject.toml`` wins over
+    ``requirements.txt`` when both are present, and ``requirements.txt``
+    is skipped altogether for charms whose charmcraft plugin generates
+    it from a lock file.
     """
     if context.pyproject is not None:
         dep = _find_ops_in_pyproject(context.pyproject)
