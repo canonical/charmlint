@@ -148,6 +148,7 @@ def _charm_config_reads(module: models.Module) -> Iterator[ast.expr]:
     """Yield every string-literal config key read in *module*."""
     imports = _ast.Imports.of(module)
     yield from _keys_read_from(module.tree, _MODEL_CONFIG_SPELLINGS)
+    # Check for `self.config` only in charm classes.
     for node in module.walk(ast.ClassDef):
         if _is_charm_class(node, imports):
             yield from _keys_read_from(node, {_SELF_CONFIG})
