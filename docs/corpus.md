@@ -4,15 +4,15 @@ A new or changed rule is reviewed on its true-positive / false-positive rate ove
 
 ## The cache
 
-`~/.cache/hyrum/charms/<owner>/<repo>/…`, populated by hyrum. It is a working cache, not a curated corpus: it holds build trees, vendored copies, and the same charm mirrored under more than one owner.
+The default location for the cache is `~/.cache/hyrum/charms/<owner>/<repo>/…`, populated by hyrum. It is a working cache, not a curated corpus: it holds build trees, vendored copies, and the same charm mirrored under more than one owner.
 
 ## Enumerating charms
 
-A **charm** is the outermost directory holding a `charmcraft.yaml`, after dropping build and vendor noise, deduplicated by the `name` it declares. Nothing else gives a stable count.
+A **charm** is the outermost directory holding a `charmcraft.yaml`, after dropping build and vendor noise, deduplicated by the `name` it declares. This gives a stable count.
 
 - **Outermost.** A charm's own build tree can contain other charms (`.tox/`, test fixtures, cookiecutter templates). Counting every `charmcraft.yaml` in the cache gives ~1970 rather than ~655.
 - **Excluding noise.** Skip any path containing `.tox`, `/tests/`, `/.template/`, `cookiecutter`, `/node_modules/`, `/.venv/`, `/build/`.
-- **Deduplicated by name.** `git.launchpad.net/charm-kubernetes-worker` and `charmed-kubernetes/charm-kubernetes-worker` are one charm. 788 directories collapse to 655 charms.
+- **Deduplicated by name.** `git.launchpad.net/charm-kubernetes-worker` and `charmed-kubernetes/charm-kubernetes-worker` are one charm.
 
 Monorepo layouts (`repo/charms/*`, `repo/charm/`, `repo/kubernetes/`, `repo/machine/`) are each their own charm, and the outermost rule picks them up without needing to be listed.
 
@@ -75,6 +75,6 @@ for charm in charm_dirs():
 Two numbers matter, and they answer different questions.
 
 - **The absolute table** — TP / FP / UNK per rule, and the FP rate. Every finding is verified against the source file by a re-parse written separately from the rule, so a bug in the rule cannot validate itself. Beware the obvious trap: `ops.interface_aws` normalises to `ops-interface-aws`, so a verifier matching on `startswith("ops")` will disagree with a correct rule.
-- **The delta against the previous tip** — run the same script against the commit before the change, and diff the findings by `(charm, rule_id)`. This is what shows a guard removed exactly the false positives it was meant to and nothing else. Use `git worktree add` to get the old tree without disturbing the branch.
+- **The delta against main** — for changed rules, run the same script against the latest main revision, and diff the findings by `(charm, rule_id)`. This is what shows a guard removed exactly the false positives it was meant to and nothing else.
 
-Quote both. An absolute table alone cannot show what a change did.
+For new rules, there will be no findings on main, so only report the first. For changed rules, quote both.
