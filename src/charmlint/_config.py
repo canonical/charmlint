@@ -11,7 +11,7 @@ Keys under ``[tool.charmlint]``:
 - ``select`` / ``extend-select``: rules to enable
 - ``ignore`` / ``extend-ignore``: rules to skip
 - ``per-rule-severity``: per-rule severity overrides (e.g.
-  ``"OBSERVABILITY-005" = "error"``)
+  ``"SECURITY-001" = "error"``)
 
 Everywhere a rule is named — ``select``, ``ignore``, and the keys of
 ``per-rule-severity`` — it may be spelled as a rule ID
@@ -93,7 +93,7 @@ def _validate(config: "LintConfig", path: pathlib.Path) -> None:
         {
             token
             for token in (*config.select, *config.ignore, *config.severity_overrides)
-            if not _selectors.is_known(token)
+            if not _selectors.resolve(token)
         }
     )
     if unknown:
@@ -105,20 +105,28 @@ def _validate(config: "LintConfig", path: pathlib.Path) -> None:
     # Only tokens of the same specificity can contradict each other: a
     # rule named in ``select`` and its category named in ``ignore`` is
     # the ordinary way to run one rule out of a category.
-    for categories in (False, True):
-        selected = _covered(config.select, categories=categories)
-        ignored = _covered(config.ignore, categories=categories)
-        overlap = sorted(selected & ignored)
+    for covered in (_rules_covered, _categories_covered):
+        overlap = sorted(covered(config.select) & covered(config.ignore))
         if overlap:
             raise ConfigError(path, f"select and ignore both cover: {', '.join(overlap)}")
 
 
-def _covered(tokens: list[str], *, categories: bool) -> set[str]:
-    """The rule IDs named by the category — or non-category — *tokens*."""
+def _rules_covered(tokens: list[str]) -> set[str]:
+    """The rule IDs named specifically — by ID or name — among *tokens*."""
     return {
         rule_id
         for token in tokens
-        if _selectors.is_category(token) is categories
+        if not _selectors.is_category(token)
+        for rule_id in _selectors.resolve(token)
+    }
+
+
+def _categories_covered(tokens: list[str]) -> set[str]:
+    """The rule IDs named by the category tokens among *tokens*."""
+    return {
+        rule_id
+        for token in tokens
+        if _selectors.is_category(token)
         for rule_id in _selectors.resolve(token)
     }
 

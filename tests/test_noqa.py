@@ -48,9 +48,15 @@ class TestInlineNoqa:
         _write(tmp_charm, _TWO_SECRETS.format(comment="  # noqa: METADATA-001"))
         assert _sec_options(tmp_charm) == {"admin-password", "api-token"}
 
-    def test_noqa_case_insensitive(self, tmp_charm: pathlib.Path):
-        _write(tmp_charm, _TWO_SECRETS.format(comment="  # NoQA: security-001"))
+    def test_keyword_is_case_insensitive(self, tmp_charm: pathlib.Path):
+        _write(tmp_charm, _TWO_SECRETS.format(comment="  # NoQA: SECURITY-001"))
         assert _sec_options(tmp_charm) == {"api-token"}
+
+    def test_codes_are_case_sensitive(self, tmp_charm: pathlib.Path):
+        # The keyword may be spelled any way, but a code may not: an ID is
+        # upper-case and a name lower-case, everywhere they are accepted.
+        _write(tmp_charm, _TWO_SECRETS.format(comment="  # noqa: security-001"))
+        assert _sec_options(tmp_charm) == {"admin-password", "api-token"}
 
     def test_trailing_reason_is_ignored(self, tmp_charm: pathlib.Path):
         _write(tmp_charm, _TWO_SECRETS.format(comment="  # noqa: SECURITY-001 legacy field"))

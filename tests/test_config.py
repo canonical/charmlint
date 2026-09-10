@@ -21,29 +21,29 @@ class TestLintConfig:
 
     def test_per_rule_severity_parsed(self):
         config = LintConfig.from_dict(
-            {"per-rule-severity": {"OBSERVABILITY-005": "error", "STRUCTURE-002": "warning"}}
+            {"per-rule-severity": {"SECURITY-001": "error", "STRUCTURE-002": "warning"}}
         )
-        assert config.severity_overrides["OBSERVABILITY-005"] == "error"
+        assert config.severity_overrides["SECURITY-001"] == "error"
         assert config.severity_overrides["STRUCTURE-002"] == "warning"
 
     def test_select_and_ignore(self):
         config = LintConfig.from_dict(
-            {"select": ["OBSERVABILITY", "METADATA"], "ignore": ["STRUCTURE-003"]}
+            {"select": ["SECURITY", "METADATA"], "ignore": ["CONFIG-003"]}
         )
-        assert config.select == ["OBSERVABILITY", "METADATA"]
-        assert config.ignore == ["STRUCTURE-003"]
+        assert config.select == ["SECURITY", "METADATA"]
+        assert config.ignore == ["CONFIG-003"]
 
     def test_extend_select_and_extend_ignore(self):
         config = LintConfig.from_dict(
             {
-                "select": ["OBSERVABILITY"],
+                "select": ["SECURITY"],
                 "extend-select": ["METADATA"],
-                "ignore": ["STRUCTURE-003"],
-                "extend-ignore": ["DEPRECATION-001"],
+                "ignore": ["CONFIG-003"],
+                "extend-ignore": ["LIBRARY-001"],
             }
         )
-        assert config.select == ["OBSERVABILITY", "METADATA"]
-        assert config.ignore == ["STRUCTURE-003", "DEPRECATION-001"]
+        assert config.select == ["SECURITY", "METADATA"]
+        assert config.ignore == ["CONFIG-003", "LIBRARY-001"]
 
     def test_severity_filter(self):
         config = LintConfig.from_dict({"severity": "warning"})
@@ -64,11 +64,11 @@ class TestLoadConfig:
                 ignore = ["STRUCTURE-002"]
 
                 [tool.charmlint.per-rule-severity]
-                "OBSERVABILITY-005" = "error"
+                "SECURITY-001" = "error"
             """)
         )
         config = load_config(tmp_path)
-        assert config.severity_overrides["OBSERVABILITY-005"] == "error"
+        assert config.severity_overrides["SECURITY-001"] == "error"
         assert "STRUCTURE-002" in config.ignore
 
     def test_pyproject_without_charmlint_section_ignored(self, tmp_path: pathlib.Path):
@@ -77,9 +77,9 @@ class TestLoadConfig:
         assert config == LintConfig()
 
     def test_standalone_charmlint_toml(self, tmp_path: pathlib.Path):
-        (tmp_path / "charmlint.toml").write_text('select = ["OBSERVABILITY"]\n')
+        (tmp_path / "charmlint.toml").write_text('select = ["SECURITY"]\n')
         config = load_config(tmp_path)
-        assert config.select == ["OBSERVABILITY"]
+        assert config.select == ["SECURITY"]
 
     def test_dot_charmlint_toml(self, tmp_path: pathlib.Path):
         (tmp_path / ".charmlint.toml").write_text('select = ["METADATA"]\n')
@@ -93,23 +93,23 @@ class TestLoadConfig:
         assert config.select == ["SECURITY"]
 
     def test_walks_up_parent_directories(self, tmp_path: pathlib.Path):
-        (tmp_path / "charmlint.toml").write_text('select = ["OBSERVABILITY"]\n')
+        (tmp_path / "charmlint.toml").write_text('select = ["SECURITY"]\n')
         nested = tmp_path / "a" / "b"
         nested.mkdir(parents=True)
         config = load_config(nested)
-        assert config.select == ["OBSERVABILITY"]
+        assert config.select == ["SECURITY"]
 
     def test_explicit_config_path_standalone(self, tmp_path: pathlib.Path):
         config_file = tmp_path / "custom.toml"
-        config_file.write_text('select = ["OBSERVABILITY"]\n')
+        config_file.write_text('select = ["SECURITY"]\n')
         config = load_config(tmp_path, config_path=config_file)
-        assert config.select == ["OBSERVABILITY"]
+        assert config.select == ["SECURITY"]
 
     def test_explicit_config_path_pyproject(self, tmp_path: pathlib.Path):
         config_file = tmp_path / "pyproject.toml"
-        config_file.write_text('[tool.charmlint]\nselect = ["OBSERVABILITY"]\n')
+        config_file.write_text('[tool.charmlint]\nselect = ["SECURITY"]\n')
         config = load_config(tmp_path, config_path=config_file)
-        assert config.select == ["OBSERVABILITY"]
+        assert config.select == ["SECURITY"]
 
     def test_malformed_standalone_raises(self, tmp_path: pathlib.Path):
         (tmp_path / "charmlint.toml").write_text("not = valid = toml\n")
@@ -125,9 +125,9 @@ class TestLoadConfig:
         nested = tmp_path / "charm"
         nested.mkdir()
         (nested / "pyproject.toml").write_text("not = valid = toml\n")
-        (tmp_path / "charmlint.toml").write_text('select = ["OBSERVABILITY"]\n')
+        (tmp_path / "charmlint.toml").write_text('select = ["SECURITY"]\n')
         config = load_config(nested)
-        assert config.select == ["OBSERVABILITY"]
+        assert config.select == ["SECURITY"]
         assert "Warning" in capsys.readouterr().err
 
     def test_pyproject_charmlint_not_a_table_raises(self, tmp_path: pathlib.Path):

@@ -14,9 +14,9 @@ says what is being turned off, where ``ignore = ["SECURITY-001"]`` has to
 be looked up. Both work, and one token resolves to the same rules either
 way, so a config can mix them.
 
-IDs and categories are matched case-insensitively, as they were before
-names existed. Names are lower-case by construction; a rule may not take
-a name that spells a category, so a token never resolves two ways.
+Case is significant: IDs and categories are upper-case, names are
+lower-case, and a token in the wrong case names nothing. A rule may not
+take a name that spells a category, so a token never resolves two ways.
 """
 
 from ._rules import CATEGORIES, get_all_rules
@@ -34,36 +34,14 @@ def resolve(token: str) -> frozenset[str]:
     if not token:
         return frozenset()
     rules = get_all_rules()
-    upper = token.upper()
-    if upper in rules:
-        return frozenset({upper})
-    lower = token.lower()
+    if token in rules:
+        return frozenset({token})
     for rule_id, rule in rules.items():
-        if rule.name == lower:
+        if rule.name == token:
             return frozenset({rule_id})
-    if upper in CATEGORIES:
-        return frozenset(rule_id for rule_id, rule in rules.items() if rule.category == upper)
+    if token in CATEGORIES:
+        return frozenset(rule_id for rule_id, rule in rules.items() if rule.category == token)
     return frozenset()
-
-
-def is_known(token: str) -> bool:
-    """Whether *token* names anything charmlint knows about.
-
-    Wider than ``bool(resolve(token))``: a category with no rules yet,
-    and a well-formed ID within a known category, are both accepted even
-    though they match nothing today. Naming a rule that has not landed
-    yet is a forward-looking choice, not a typo, and it starts matching
-    the day the rule does land — whereas a misspelled category or name
-    would silently never match, which is what this rejects.
-    """
-    token = token.strip()
-    if resolve(token):
-        return True
-    upper = token.upper()
-    if upper in CATEGORIES:
-        return True
-    category, _, number = upper.rpartition("-")
-    return category in CATEGORIES and number.isdigit()
 
 
 def is_category(token: str) -> bool:
@@ -73,14 +51,18 @@ def is_category(token: str) -> bool:
     a rule name when ``select`` and ``ignore`` disagree.
     """
     token = token.strip()
-    return token.upper() in CATEGORIES and token.upper() not in get_all_rules()
+    return token in CATEGORIES and token not in get_all_rules()
 
 
-def matches(tokens: list[str], rule_id: str, *, categories: bool) -> bool:
-    """Whether any of *tokens* names *rule_id*.
+def matches_rule(tokens: list[str], rule_id: str) -> bool:
+    """Whether any of *tokens* names *rule_id* specifically, by ID or name.
 
-    *categories* selects which half of *tokens* to consider: the category
-    tokens, or the ones naming a single rule. Callers ask twice so that
-    the specific spelling can win over the broad one.
+    The specific spelling and the broad one are asked about separately so
+    that the specific one can win when ``select`` and ``ignore`` disagree.
     """
-    return any(rule_id in resolve(token) for token in tokens if is_category(token) is categories)
+    return any(rule_id in resolve(token) for token in tokens if not is_category(token))
+
+
+def matches_category(tokens: list[str], rule_id: str) -> bool:
+    """Whether any of *tokens* names a category that contains *rule_id*."""
+    return any(rule_id in resolve(token) for token in tokens if is_category(token))

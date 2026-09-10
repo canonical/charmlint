@@ -174,14 +174,14 @@ def _should_run_rule(rule: _rules.Rule, config: _config.LintConfig) -> bool:
     """
     rule_id = rule.id
 
-    if _selectors.matches(config.ignore, rule_id, categories=False):
+    if _selectors.matches_rule(config.ignore, rule_id):
         return False
-    if _selectors.matches(config.select, rule_id, categories=False):
+    if _selectors.matches_rule(config.select, rule_id):
         return True
-    if _selectors.matches(config.ignore, rule_id, categories=True):
+    if _selectors.matches_category(config.ignore, rule_id):
         return False
     if config.select:
-        return _selectors.matches(config.select, rule_id, categories=True)
+        return _selectors.matches_category(config.select, rule_id)
     return True
 
 

@@ -52,11 +52,11 @@ directory, in the manner of ruff.
 ```toml
 [tool.charmlint]
 severity = "warning"  # minimum severity to report
-select = ["OBSERVABILITY", "METADATA"]
-ignore = ["ATTESTATION-002"]
+select = ["SECURITY", "METADATA"]
+ignore = ["METADATA-002"]
 
 [tool.charmlint.per-rule-severity]
-"OBSERVABILITY-005" = "error"
+"SECURITY-001" = "error"
 ```
 
 Everywhere a rule is named — `select`, `ignore`, the keys of
@@ -75,10 +75,13 @@ to the rule catalogue. Both spellings resolve to the same rule, so a
 config can mix them.
 
 A spelling that names nothing charmlint knows about is an error rather
-than a rule that silently never fires, so a typo is caught at startup. A
-category with no rules yet, and a well-formed ID within one
-(`OBSERVABILITY-005`), are both accepted: they start matching when the
-rule lands.
+than a rule that silently never fires, so a typo is caught at startup.
+Only rules that exist in the running charmlint count as known: a
+category with no rules yet, and a well-formed ID for a rule that has not
+landed (`OBSERVABILITY-005`), are both rejected.
+
+Case is significant. Rule IDs and categories are upper-case, rule names
+lower-case; `security-001` names nothing.
 
 When `select` and `ignore` disagree, the more specific spelling wins:
 `select = ["secret-in-plain-config"]` with `ignore = ["SECURITY"]` runs
@@ -101,10 +104,14 @@ config:
   options:
     admin-password:  # charmlint: ignore[SECURITY-001]
       type: string
+    # charmlint: ignore[secret-in-plain-config]  # set by the operator
     api-token:
-      # charmlint: ignore[secret-in-plain-config]  # set by the operator
       type: string
 ```
+
+A directive on its own line must start that line: free text belongs
+after it, not before, or the directive is read as trailing the comment
+line itself.
 
 `# charmlint: file-ignore[...]`, wherever it appears, suppresses the
 listed rules across the whole file:

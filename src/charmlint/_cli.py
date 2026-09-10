@@ -110,7 +110,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--select",
         help=(
             "Comma-separated list of rules to enable, each named by category, "
-            "rule ID or rule name (e.g. OBSERVABILITY,METADATA-001,no-readme)"
+            "rule ID or rule name (e.g. SECURITY,METADATA-001,no-readme)"
         ),
     )
     parser.add_argument(
@@ -203,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         config.min_severity = models.Severity(args.min_severity)
 
     unknown = sorted(
-        {token for token in (*config.select, *config.ignore) if not _selectors.is_known(token)}
+        {token for token in (*config.select, *config.ignore) if not _selectors.resolve(token)}
     )
     if unknown:
         print(

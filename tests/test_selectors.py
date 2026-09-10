@@ -19,14 +19,14 @@ class TestResolve:
     def test_rule_id(self):
         assert _selectors.resolve("SECURITY-001") == {"SECURITY-001"}
 
-    def test_rule_id_case_insensitive(self):
-        assert _selectors.resolve("security-001") == {"SECURITY-001"}
+    def test_rule_id_wrong_case(self):
+        assert _selectors.resolve("security-001") == frozenset()
 
     def test_rule_name(self):
         assert _selectors.resolve("secret-in-plain-config") == {"SECURITY-001"}
 
-    def test_rule_name_case_insensitive(self):
-        assert _selectors.resolve("Secret-In-Plain-Config") == {"SECURITY-001"}
+    def test_rule_name_wrong_case(self):
+        assert _selectors.resolve("Secret-In-Plain-Config") == frozenset()
 
     def test_category(self):
         resolved = _selectors.resolve("METADATA")
@@ -36,35 +36,18 @@ class TestResolve:
     def test_unknown_token(self):
         assert _selectors.resolve("no-such-rule") == frozenset()
 
+    @pytest.mark.parametrize("token", ["OBSERVABILITY", "OBSERVABILITY-005"])
+    def test_rule_that_does_not_exist_yet(self, token: str):
+        # A real category with no rules, and a well-formed ID in one:
+        # only what exists today is a known token.
+        assert _selectors.resolve(token) == frozenset()
+
     def test_category_prefix_is_not_a_match(self):
         # ``METADATAA`` is not ``METADATA``: categories match exactly.
         assert _selectors.resolve("METADATAA") == frozenset()
 
     def test_empty_token(self):
         assert _selectors.resolve("   ") == frozenset()
-
-
-class TestIsKnown:
-    """A token is known if it could ever name a rule."""
-
-    @pytest.mark.parametrize(
-        "token",
-        [
-            "SECURITY-001",
-            "secret-in-plain-config",
-            "SECURITY",
-            # A category with no rules yet, and a rule not yet written in
-            # one: naming either is forward-looking, not a typo.
-            "OBSERVABILITY",
-            "OBSERVABILITY-005",
-        ],
-    )
-    def test_known(self, token: str):
-        assert _selectors.is_known(token)
-
-    @pytest.mark.parametrize("token", ["SECRUITY", "SECRUITY-001", "no-such-rule", "", "-001"])
-    def test_unknown(self, token: str):
-        assert not _selectors.is_known(token)
 
 
 class TestIsCategory:
@@ -78,6 +61,9 @@ class TestIsCategory:
 
     def test_rule_name(self):
         assert not _selectors.is_category("secret-in-plain-config")
+
+    def test_wrong_case(self):
+        assert not _selectors.is_category("security")
 
 
 class TestNamesInConfig:
