@@ -30,14 +30,18 @@ def _is_non_deferrable(event: str) -> bool:
     return event in _NON_DEFERRABLE_EVENTS or event.endswith("_action")
 
 
-def _non_deferrable_handlers(module: models.Module) -> dict[str, str]:
-    """Map handler method name -> non-deferrable event it is registered for."""
-    handlers: dict[str, str] = {}
+def _non_deferrable_handlers(module: models.Module) -> dict[str, list[str]]:
+    """Map handler method name -> non-deferrable events it is registered for.
+
+    One handler can be observed for several events, so every non-deferrable
+    one is kept: a ``defer()`` in the handler raises for all of them.
+    """
+    handlers: dict[str, list[str]] = {}
     for observer in _ast.observers(module):
         if observer.event is None or observer.handler is None:
             continue
         if _is_non_deferrable(observer.event):
-            handlers[observer.handler] = observer.event
+            handlers.setdefault(observer.handler, []).append(observer.event)
     return handlers
 
 
@@ -91,22 +95,24 @@ class NonDeferrableEventDeferred(Rule):
         if not handlers:
             return []
         diagnostics: list[models.Diagnostic] = []
+        # `handlers` was built from the module's observe calls; walk the
+        # module's functions to find the ones those calls named.
         for func in module.functions():
-            event = handlers.get(func.name)
-            if event is None:
+            if func.name not in handlers:
                 continue
+            events = handlers[func.name]
             # The event argument is the handler's second parameter; a
             # `defer()` on any other local name is a different object.
             params = [arg.arg for arg in func.args.args]
             if len(params) < 2:
                 continue
             event_param = params[1]
-            pretty = event.replace("_", "-")
+            pretty = ", ".join(f"'{event.replace('_', '-')}'" for event in events)
             for call in _defer_calls(func, event_param):
                 diagnostics.append(
                     self.diagnostic(
                         f"'{func.name}' calls {event_param}.defer(), but is registered for "
-                        f"'{pretty}', which cannot be deferred — this raises RuntimeError "
+                        f"{pretty}, which cannot be deferred — this raises RuntimeError "
                         f"at runtime",
                         path=module.path,
                         line=call.lineno,
