@@ -22,7 +22,11 @@ linter to collide with:
 - ``# charmlint: noqa`` suppresses the whole file — the blanket
   file-level form, which ``file-ignore[...]`` has no spelling for, since
   its codes are required. ``# charmlint: noqa: SECURITY-001`` suppresses
-  the listed rules across the file.
+  the listed rules across the file. Both are file-level wherever they
+  appear, trailing a line included: position narrows ``ignore[...]``,
+  but never the ``noqa`` forms that carry the tool name. Ruff is
+  stricter — it takes ``# ruff: noqa`` as file-level only on a line of
+  its own, and ignores one that trails code.
 
 A code is a rule ID (``SECURITY-001``), a rule name
 (``secret-in-plain-config``) or a category (``SECURITY``) — the same

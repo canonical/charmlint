@@ -132,6 +132,11 @@ SECURITY-001, METADATA-002` suppresses the listed rules, and a file-level
 still the only way to suppress a whole file blanket, since
 `file-ignore[...]` requires codes.
 
+`# charmlint: noqa` is file-level wherever it appears, including trailing
+a line: unlike `ignore[...]`, its position does not narrow it, so writing
+it after a config option silences the whole file rather than that one
+line. To suppress one line, use `# noqa` or `# charmlint: ignore[...]`.
+
 ```yaml
 # charmlint: noqa: SECURITY-001
 config:
