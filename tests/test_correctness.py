@@ -990,7 +990,7 @@ class TestObserveTargetMismatch:
         )
         assert not findings
 
-    def test_only_one_finding_per_broken_call(self, tmp_charm: pathlib.Path):
+    def test_both_halves_reported_when_both_are_broken(self, tmp_charm: pathlib.Path):
         findings = _lint_source(
             tmp_charm,
             _charm_class("""
@@ -999,8 +999,10 @@ class TestObserveTargetMismatch:
                     framework.observe(self.on.nope_relation_changed, self._on_nope)
             """),
         )
-        assert len(findings) == 1
+        assert len(findings) == 2
         assert "nope_relation_changed" in findings[0].message
+        assert "_on_nope" in findings[1].message
+        assert findings[0].line == findings[1].line
 
     def test_charm_without_metadata_is_not_reported(self, tmp_charm: pathlib.Path):
         write_charm_source(

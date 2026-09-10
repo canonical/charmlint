@@ -582,10 +582,10 @@ class ObserveTargetMismatch(Rule):
     Each half is silenced on its own, so a charm whose event names are
     unknowable is still checked for handlers that do not exist.
 
-    At most one finding per ``observe`` call. When the event does not
-    exist the handler is not reported too: the arguments are evaluated
-    left to right, so the event is what actually raises, and the second
-    finding would only be noise on the same line.
+    Both halves are reported when both are broken. Only the event
+    raises at runtime — the arguments are evaluated left to right — but
+    a rename refactor that missed both wants both listed, so that one
+    pass over the findings fixes the call rather than two.
     """
 
     category = "CORRECTNESS"
@@ -643,11 +643,12 @@ class ObserveTargetMismatch(Rule):
         for observer in observers:
             if id(observer.call) not in nodes:
                 continue
-            diagnostic = self._check_event(
-                observer, charm, module, known_events
-            ) or self._check_handler(observer, charm, module)
-            if diagnostic is not None:
-                yield diagnostic
+            for diagnostic in (
+                self._check_event(observer, charm, module, known_events),
+                self._check_handler(observer, charm, module),
+            ):
+                if diagnostic is not None:
+                    yield diagnostic
 
     def _check_event(
         self,
