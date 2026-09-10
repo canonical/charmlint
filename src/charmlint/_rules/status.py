@@ -14,8 +14,10 @@ from ._base import Rule
 _NON_REPEATING_EVENTS = frozenset({"install", "start", "stop", "remove"})
 
 
-def _non_repeating_handlers(module: models.Module) -> dict[str, set[str]]:
+def _non_repeating_handlers(module: models.Module) -> dict[str, list[str]]:
     """Map each handler in *module* to the non-repeating events it observes.
+
+    Events are sorted, so callers can use them directly in messages.
 
     A handler appears only when *every* observe call that names it resolves
     to a non-repeating event. One repeating event — or one observe call
@@ -31,7 +33,7 @@ def _non_repeating_handlers(module: models.Module) -> dict[str, set[str]]:
             excluded.add(observer.handler)
             continue
         events.setdefault(observer.handler, set()).add(observer.event)
-    return {handler: found for handler, found in events.items() if handler not in excluded}
+    return {handler: sorted(found) for handler, found in events.items() if handler not in excluded}
 
 
 def _is_blocked_status(node: ast.AST) -> bool:
@@ -122,7 +124,7 @@ class BlockedStatusInNonRepeatingHandler(Rule):
             observed = handlers.get(func.name)
             if not observed:
                 continue
-            event = "/".join(sorted(observed))
+            event = "/".join(observed)
             diagnostics.extend(
                 self.diagnostic(
                     f"BlockedStatus set in '{func.name}', observed for '{event}' "
