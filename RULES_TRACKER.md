@@ -76,6 +76,7 @@ Nothing else should be reviewed ahead of these.
 | #236 | | Report suppressed diagnostics in JSON | A consumer cannot tell "passes" from "silenced" |
 | #195 | #177 | noqa style | #236 says suppression already works, #177 asks for it — one of the two is stale; check before starting |
 | #192 | | Split `_rules/correctness.py` | Do this when the first two CORRECTNESS rules land, not before |
+| #261 | | Ledger of the rules that need type information | Several rules match on names instead; the list stops us re-litigating it one review at a time |
 
 ## Phase 2 — Rules that are ready to review
 
@@ -91,7 +92,7 @@ down.
 | #208 | CONFIG-006 (config-option-undeclared) — implements #150 | ready |
 | #190 | STATUS-001 (blocked status in a non-repeating handler) — implements #27 | ready |
 | #21 | CORRECTNESS-004 (non-deferrable event deferred) | ready |
-| #40 | CORRECTNESS-003 (`container.exec()` result not consumed) | ready |
+| #40 | CORRECTNESS-003 (`container.exec()` result not consumed) | approved |
 | #38 | CORRECTNESS-001/002 (`defer()` without return) | changes requested |
 
 ## Phase 3 — Tier A rules: runtime failures, high yield, low FP risk
