@@ -304,6 +304,235 @@ class OpsMainCall(Rule):
         ]
 
 
+class CharmUser(Rule):
+    """Check a Kubernetes charm's ``charm-user`` declaration.
+
+    ``charm-user`` says what kind of user Juju runs the charm's hook
+    code as. It is one of ``root``, ``sudoer`` or ``non-root``, and Juju
+    assumes ``root`` when it is not set, so a Kubernetes charm that says
+    nothing runs its hooks with full privileges.
+
+    The advisory findings are limited to Kubernetes charms, because the
+    key has no effect on a machine charm. An invalid *value* is reported
+    wherever it appears: it is a malformed key rather than a question of
+    privilege.
+    """
+
+    category = "CHARMCRAFT"
+    number = 8
+    name = "charm-user"
+    description = "Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user'"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-charm-user"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        node = context.metadata.get("charm-user")
+        value = node.value
+        if node.present and (not isinstance(value, str) or value not in _VALID_CHARM_USERS):
+            hint = _suggest_closest(value, _VALID_CHARM_USERS) or (
+                "Use 'root', 'sudoer' or 'non-root'"
+            )
+            return [
+                self.diagnostic(
+                    f"'charm-user' is {value!r} — it must be one of 'root', 'sudoer' or 'non-root'",
+                    severity=models.Severity.ERROR,
+                    path=node.source,
+                    line=node.line,
+                    fix_hint=hint,
+                )
+            ]
+        if not _is_kubernetes_charm(context):
+            return []
+        if not node.present:
+            return [
+                self.diagnostic(
+                    "Kubernetes charm does not set 'charm-user', so Juju runs its hooks as root",
+                    path=context.metadata.source,
+                    fix_hint=(
+                        "Add `charm-user: non-root` (or `sudoer`) to charmcraft.yaml — "
+                        f"{_NON_ROOT_SKILL}"
+                    ),
+                )
+            ]
+        if value == "root":
+            return [
+                self.diagnostic(
+                    "'charm-user: root' runs the charm's hooks as root",
+                    path=node.source,
+                    line=node.line,
+                    fix_hint=(
+                        "Use `charm-user: non-root` (or `sudoer`) unless the hooks need root — "
+                        f"{_NON_ROOT_SKILL}"
+                    ),
+                )
+            ]
+        if value == "sudoer":
+            return [
+                self.diagnostic(
+                    "'charm-user: sudoer' runs the charm's hooks as a user that can elevate "
+                    "to root through sudo",
+                    severity=models.Severity.INFO,
+                    path=node.source,
+                    line=node.line,
+                    fix_hint="Use `charm-user: non-root` if the hooks never need to elevate",
+                )
+            ]
+        return []
+
+
+class ContainerRunsAsRoot(Rule):
+    """Check the ``uid``/``gid`` of each workload container.
+
+    Juju runs a container's Pebble entry process as the ``uid`` and
+    ``gid`` the container declares, defaulting both to 0 — so a
+    container that leaves them out, or sets them to 0, runs its workload
+    as root. Juju also reserves 1000-9999 for its own users: a value in
+    that range is rejected rather than honoured.
+
+    A container that is non-root but off-convention is reported more
+    quietly. ``uid`` and ``gid`` that disagree are a warning: the two are
+    written together and a mismatch is almost always a typo, and it
+    leaves the process in a group the image never prepared for. An ID
+    that is not 584792 is only an info — it works, but 584792 is the
+    shared ``_daemon_`` user rocks are built around, so anything else
+    means the image has to have been built to match. 584788 is the
+    exception: it is the deprecated ``snap_daemon`` that ``_daemon_``
+    replaced, so a container still on it is on the old identity rather
+    than an arbitrary one, and that is a warning.
+
+    A container written as anything other than a mapping is skipped, the
+    same as elsewhere in this module: a malformed section is not a
+    privilege finding.
+    """
+
+    category = "CHARMCRAFT"
+    number = 9
+    name = "container-runs-as-root"
+    description = (
+        "Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity"
+    )
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for name, container in context.metadata.get("containers").items():
+            if container.children is None:
+                continue
+            diagnostics.extend(self._check_container(name, container))
+        return diagnostics
+
+    def _check_container(self, name: object, container: models.Yaml) -> list[models.Diagnostic]:
+        """Report on one container's ``uid`` and ``gid``."""
+        diagnostics: list[models.Diagnostic] = []
+        root: dict[str, str] = {}
+        ids: dict[str, int] = {}
+        for key in ("uid", "gid"):
+            node = container.get(key)
+            if not node.present:
+                root[key] = f"'{key}' is unset, defaulting to 0"
+                continue
+            invalid = self._invalid_reason(node.value)
+            if invalid is not None:
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Container '{name}' has {key} {node.value!r} — {invalid}",
+                        severity=models.Severity.ERROR,
+                        path=node.source,
+                        line=node.line,
+                        fix_hint=(
+                            f"Use {_DAEMON_ID}, the shared '_daemon_' user rocks run as; "
+                            "Juju accepts 1-999 and 10000 and above"
+                        ),
+                    )
+                )
+            elif node.value == 0:
+                root[key] = f"'{key}' is 0"
+            elif isinstance(node.value, int):
+                ids[key] = node.value
+        if root:
+            # Anchor on whichever of the two the charm wrote, so a noqa
+            # directive sits on the line the reader is looking at; a
+            # container that declares neither anchors on its own name.
+            line = next(
+                (container.get(key).line for key in ("uid", "gid") if container.get(key).present),
+                container.line,
+            )
+            lead = "as root" if "uid" in root else "in the root group"
+            detail = " and ".join(root[key] for key in ("uid", "gid") if key in root)
+            diagnostics.append(
+                self.diagnostic(
+                    f"Container '{name}' runs its Pebble entry process {lead} — {detail}",
+                    path=container.source,
+                    line=line,
+                    fix_hint=(
+                        f"Set 'uid' and 'gid' on container '{name}' to {_DAEMON_ID}, the shared "
+                        f"'_daemon_' user rocks run as — {_NON_ROOT_SKILL}"
+                    ),
+                )
+            )
+            return diagnostics
+        if len(ids) < 2:
+            # One of the two was invalid; that error stands on its own.
+            return diagnostics
+        uid, gid = ids["uid"], ids["gid"]
+        if uid != gid:
+            diagnostics.append(
+                self.diagnostic(
+                    f"Container '{name}' has uid {uid} and gid {gid} — the two should match",
+                    path=container.source,
+                    line=container.get("uid").line,
+                    fix_hint=(
+                        f"Set both 'uid' and 'gid' on container '{name}' to {_DAEMON_ID}, the "
+                        "shared '_daemon_' user rocks run as"
+                    ),
+                )
+            )
+        elif uid == _SNAP_DAEMON_ID:
+            diagnostics.append(
+                self.diagnostic(
+                    f"Container '{name}' runs as {uid}, the deprecated 'snap_daemon' user — "
+                    f"{_DAEMON_ID} ('_daemon_') replaces it",
+                    severity=models.Severity.WARNING,
+                    path=container.source,
+                    line=container.get("uid").line,
+                    fix_hint=(
+                        f"Set 'uid' and 'gid' on container '{name}' to {_DAEMON_ID} once the "
+                        f"image is rebuilt with '_daemon_' — {_NON_ROOT_SKILL}"
+                    ),
+                )
+            )
+        elif uid != _DAEMON_ID:
+            diagnostics.append(
+                self.diagnostic(
+                    f"Container '{name}' runs as {uid}, not {_DAEMON_ID} — the shared "
+                    "'_daemon_' user rocks are built around",
+                    severity=models.Severity.INFO,
+                    path=container.source,
+                    line=container.get("uid").line,
+                    fix_hint=(
+                        f"Set 'uid' and 'gid' on container '{name}' to {_DAEMON_ID} unless the "
+                        f"image was built for {uid} — {_NON_ROOT_SKILL}"
+                    ),
+                )
+            )
+        return diagnostics
+
+    def _invalid_reason(self, value: object) -> str | None:
+        """Return why *value* is not a usable ID, or ``None`` if it is.
+
+        ``bool`` is excluded explicitly: it is a subclass of ``int``, so
+        an unquoted ``uid: yes`` would otherwise pass as 1.
+        """
+        if isinstance(value, bool) or not isinstance(value, int):
+            return "IDs must be integers"
+        if value < 0:
+            return "IDs cannot be negative"
+        if 1000 <= value <= 9999:
+            return "Juju reserves 1000-9999 for users; use 1-999 or 10000 and above"
+        return None
+
+
 # --- Helpers ---------------------------------------------------------------
 
 
@@ -370,6 +599,62 @@ def _entrypoint(context: models.CharmContext) -> str:
     if not isinstance(configured, str) or not configured:
         configured = "src/charm.py"
     return pathlib.PurePosixPath(configured).as_posix()
+
+
+_VALID_CHARM_USERS: frozenset[str] = frozenset({"root", "sudoer", "non-root"})
+
+# The shared ``_daemon_`` user, allocated for snaps and rocks alike so that a
+# workload has one identity wherever it runs. See
+# https://discourse.ubuntu.com/t/unifying-user-identity-across-snaps-and-rocks/36469
+_DAEMON_ID = 584792
+
+# The predecessor of ``_daemon_``, deprecated in favour of it. A container
+# still on this ID is on the old identity rather than an arbitrary one. See
+# https://snapcraft.io/docs/explanation/snap-development/system-usernames/#snap-daemon-user-and-group
+_SNAP_DAEMON_ID = 584788
+
+# Named in the hints for the findings that amount to "migrate this charm to
+# non-root", which is more work than a one-line edit: the skill walks the
+# charm, its containers and its rocks.
+_NON_ROOT_SKILL = (
+    "the non-root-charms skill (https://github.com/deusebio/non-root-skills) automates this"
+)
+
+
+def _is_kubernetes_charm(context: models.CharmContext) -> bool:
+    """Return whether the charm is a Kubernetes charm.
+
+    A sidecar charm declares the workload containers it sits beside, so
+    ``containers`` is the reliable signal, and ``assumes: [k8s-api]``
+    covers the charm that has no container of its own but still targets
+    Kubernetes. Neither is guaranteed, so a Kubernetes charm that
+    declares nothing at all reads as a machine charm here — a gap,
+    rather than a machine charm wrongly told to change its metadata.
+
+    A pod-spec charm (``series: [kubernetes]``) is deliberately not
+    matched: ``charm-user`` arrived in Juju 3.6, by which point pod-spec
+    charms were no longer deployable, so there is nothing such a charm
+    could do about the finding.
+    """
+    if context.metadata.get("containers").children:
+        return True
+    return _assumes_k8s(context.metadata.get("assumes").value)
+
+
+def _assumes_k8s(assumes: object) -> bool:
+    """Return whether an ``assumes`` block requires the Kubernetes API.
+
+    The block nests ``any-of``/``all-of`` mappings around its feature
+    strings to any depth, and either branch of an ``any-of`` may be the
+    Kubernetes one, so every leaf counts.
+    """
+    if isinstance(assumes, str):
+        return assumes == "k8s-api"
+    if isinstance(assumes, list):
+        return any(_assumes_k8s(item) for item in assumes)
+    if isinstance(assumes, dict):
+        return any(_assumes_k8s(item) for item in assumes.values())
+    return False
 
 
 # Every spelling of the ops entrypoint, canonicalised: ``ops.main`` is the
