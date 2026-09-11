@@ -26,6 +26,10 @@ uv run --group dev ty check src tests
 
 `pre-commit` runs the same tools through `uv run` (config in `.pre-commit-config.yaml`); tool versions live in `pyproject.toml`'s `dev` dependency group.
 
+## Corpus measurements
+
+A new or changed rule needs a TP/FP table over the hyrum cache (`~/.cache/hyrum/charms`) before review. Enumerate charms and report results as described in [docs/corpus.md](docs/corpus.md) — the cache contains build trees and mirrored repos, so an ad-hoc `rglob` gives a different denominator every time (~1970 directories vs 655 charms).
+
 ## Conventions
 
 - Commits and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/); PR-title types enforced by `.github/workflows/validate-pr-title.yaml` (see [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) for the list).
