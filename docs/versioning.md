@@ -70,6 +70,8 @@ Under that model, new rules would not go straight into the default rule set. Ins
 
 While a rule (or any other behaviour) is gated behind preview mode, **we reserve the right to change any of its behaviour** — including its diagnostics, its message, its severity, or removing it entirely — in a patch release. Preview exists precisely so that new checks can be refined without waiting on the stable-version cadence. If you enable preview mode, expect churn.
 
+Preview mode also affects how a rule can be named. `select`, `ignore`, `per-rule-severity` and the codes in a suppression comment reject a token that names nothing charmlint knows about, and a preview rule is something charmlint knows about even when it is not running. Naming a preview rule while preview is off should therefore be an error that says so, and names `--preview`, rather than the generic "not a known rule ID" or a silent no-op.
+
 Introducing preview mode will itself be a minor release, since it changes how new rules reach the default rule set, and the rules of this document will be updated at the same time.
 
 ## Deprecation

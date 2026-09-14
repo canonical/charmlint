@@ -6,7 +6,7 @@ import os
 import pathlib
 import sys
 
-from . import __version__, _config, _discovery, _linter
+from . import __version__, _config, _discovery, _linter, _selectors
 from . import _models as models
 
 # ---------------------------------------------------------------------------
@@ -109,13 +109,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--select",
         help=(
-            "Comma-separated list of rule categories or IDs to enable "
-            "(e.g. OBSERVABILITY,METADATA-001)"
+            "Comma-separated list of rules to enable, each named by category, "
+            "rule ID or rule name (e.g. SECURITY,METADATA-001,no-readme)"
         ),
     )
     parser.add_argument(
         "--ignore",
-        help="Comma-separated list of rule IDs or categories to skip",
+        help=(
+            "Comma-separated list of rules to skip, each named by category, rule ID or rule name"
+        ),
     )
     parser.add_argument(
         "--min-severity",
@@ -199,6 +201,16 @@ def main(argv: list[str] | None = None) -> int:
         config.ignore.extend(s.strip() for s in args.ignore.split(","))
     if args.min_severity:
         config.min_severity = models.Severity(args.min_severity)
+
+    unknown = sorted(
+        {token for token in (*config.select, *config.ignore) if not _selectors.resolve(token)}
+    )
+    if unknown:
+        print(
+            f"error: not a known rule ID, rule name or category: {', '.join(unknown)}",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.verbose:
         charm_dirs = _discovery.discover_charms(charm_dir)
