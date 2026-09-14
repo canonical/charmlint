@@ -216,8 +216,17 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
     return None
 
 
-def _find_ops_in_requirements(requirements: pathlib.Path) -> _OpsDependency | None:
-    """Look for an ``ops`` line in a ``requirements.txt``-style file."""
+def _find_ops_in_requirements(
+    requirements: pathlib.Path, name: str = "requirements.txt"
+) -> _OpsDependency | None:
+    """Look for an ``ops`` line in a ``requirements.txt``-style file.
+
+    *name* is what the diagnostic calls the file. It defaults to
+    ``requirements.txt`` because that is the file almost every charm
+    uses, but the ``python`` plugin lets a charm name its requirements
+    files itself, and a finding should point at the file the charm
+    actually declared rather than at one it does not have.
+    """
     try:
         text = requirements.read_text()
     except OSError:
@@ -226,7 +235,7 @@ def _find_ops_in_requirements(requirements: pathlib.Path) -> _OpsDependency | No
         stripped = raw.split("#", 1)[0].strip()
         if not stripped or stripped.startswith("-"):
             continue
-        dep = _parse_pep508(stripped, "requirements.txt", "requirements.txt", lineno)
+        dep = _parse_pep508(stripped, name, name, lineno)
         if dep is not None and not dep.is_test_only:
             return dep
     return None
@@ -246,30 +255,72 @@ def _find_ops_in_requirements(requirements: pathlib.Path) -> _OpsDependency | No
 #: SUPPLYCHAIN-006 would flag it.
 _LOCKFILE_PLUGINS = frozenset({"poetry", "uv"})
 
+#: Every charmcraft plugin that builds the charm's Python environment,
+#: and so decides where the charm's dependencies are declared. The rest
+#: of the plugins a charm uses — ``nil``, ``dump``, ``reactive`` — put
+#: files in the payload without resolving anything, and say nothing
+#: about where ``ops`` is declared.
+_DEPENDENCY_PLUGINS = _LOCKFILE_PLUGINS | frozenset({"charm", "python"})
 
-def _uses_lockfile_plugin(metadata: models.Yaml) -> bool:
-    """Report whether any ``parts`` entry uses a lock-file-based plugin.
 
-    Asked of the whole ``parts`` mapping rather than of one designated
-    part, because a charm does not have a single plugin: the corpus's
-    most common plugins are ``uv`` (198 charms), ``nil`` (189) and
-    ``dump`` (175), and a charm routinely combines a build plugin with
-    both. There is no reliable way to pick "the charm's part", so this
-    asks the only question the rules need — is a lock file in play at
-    all.
+def _dependency_part(metadata: models.Yaml) -> models.Yaml | None:
+    """Return the ``parts`` entry that builds the charm's Python environment.
+
+    A charm has at most one. Across the corpus, 329 of 655 charms
+    declare exactly one part using a dependency-resolving plugin and
+    **none declares two**; the sets are disjoint as well as unique
+    (``uv`` 198, ``poetry`` 79, ``charm`` 52). The remaining 326 either
+    declare ``parts`` using only ``nil``, ``dump`` or ``reactive``, or
+    declare no ``parts`` at all — so "no dependency-resolving part" is
+    the common case, not an error, and the caller falls back to the
+    default ``requirements.txt`` for it.
     """
-    return any(
-        part.get("plugin").value in _LOCKFILE_PLUGINS for _, part in metadata.get("parts").items()
-    )
+    for _, part in metadata.get("parts").items():
+        if part.get("plugin").value in _DEPENDENCY_PLUGINS:
+            return part
+    return None
+
+
+def _requirements_files(context: models.CharmContext) -> tuple[tuple[pathlib.Path, str], ...]:
+    """Return the requirements files the charm's build plugin actually reads.
+
+    Each entry is the path to read and the name to call it in a
+    diagnostic. An empty tuple means the plugin resolves dependencies
+    from ``pyproject.toml`` and a lock file, so there is no hand-written
+    requirements file to read at all.
+    """
+    part = _dependency_part(context.metadata)
+    default = ((context.charm_dir / "requirements.txt", "requirements.txt"),)
+    if part is None:
+        return default
+    plugin = part.get("plugin").value
+    if plugin in _LOCKFILE_PLUGINS:
+        return ()
+    if plugin == "python":
+        # The python plugin names its own requirements files, and a
+        # charm using it need not call them requirements.txt.
+        declared = tuple(
+            (context.charm_dir / str(entry.value), str(entry.value))
+            for entry in part.get("python-requirements").elements or ()
+            if entry.value
+        )
+        if declared:
+            return declared
+    return default
 
 
 @functools.cache
-def _find_ops_requirements(charm_dir: pathlib.Path) -> _OpsDependency | None:
-    """Scan ``requirements.txt`` once per charm, for both pinning rules."""
-    requirements = charm_dir / "requirements.txt"
-    if not requirements.is_file():
-        return None
-    return _find_ops_in_requirements(requirements)
+def _find_ops_requirements(
+    files: tuple[tuple[pathlib.Path, str], ...],
+) -> _OpsDependency | None:
+    """Scan the charm's requirements files once, for both pinning rules."""
+    for path, name in files:
+        if not path.is_file():
+            continue
+        dep = _find_ops_in_requirements(path, name)
+        if dep is not None:
+            return dep
+    return None
 
 
 def _find_ops_dep(context: models.CharmContext) -> _OpsDependency | None:
@@ -281,20 +332,17 @@ def _find_ops_dep(context: models.CharmContext) -> _OpsDependency | None:
     declare it at all do so twice or more, almost always runtime
     ``ops`` alongside ``ops[testing]`` in a test group — so
     :attr:`_OpsDependency.is_test_only` declarations are stepped over
-    rather than returned. ``pyproject.toml`` wins over
-    ``requirements.txt`` when both are present, and ``requirements.txt``
-    is skipped altogether for charms whose charmcraft plugin generates
-    it from a lock file.
+    rather than returned. ``pyproject.toml`` wins over the requirements
+    files when both are present, and which requirements files those are
+    is decided by the charm's build plugin — see
+    :func:`_requirements_files`.
     """
     if context.pyproject is not None:
         dep = _find_ops_in_pyproject(context.pyproject)
         if dep is not None:
             return dep
 
-    if _uses_lockfile_plugin(context.metadata):
-        return None
-
-    return _find_ops_requirements(context.charm_dir)
+    return _find_ops_requirements(_requirements_files(context))
 
 
 class OpsDependencyUnpinned(Rule):

@@ -185,6 +185,49 @@ class TestOpsPinningRules:
         report = lint(tmp_charm)
         assert [d for d in report if d.rule_id == "SUPPLYCHAIN-006"]
 
+    def test_non_dependency_plugin_checks_requirements_txt(self, tmp_charm: pathlib.Path):
+        # nil and dump put files in the payload without resolving
+        # anything, so they say nothing about where ops is declared and
+        # the default requirements.txt still applies.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "parts": {"files": {"plugin": "dump"}, "hooks": {"plugin": "nil"}}},
+        )
+        (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "SUPPLYCHAIN-006"]
+
+    def test_python_plugin_reads_declared_requirements_files(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "parts": {
+                    "my-charm": {
+                        "plugin": "python",
+                        "python-requirements": ["deps/runtime.txt"],
+                    }
+                },
+            },
+        )
+        (tmp_charm / "deps").mkdir()
+        (tmp_charm / "deps" / "runtime.txt").write_text("ops==3.7.1\n")
+        # A requirements.txt that the plugin does not read is not the
+        # charm's declaration, so it must not be what we report on.
+        (tmp_charm / "requirements.txt").write_text("ops>=2.23,<4\n")
+        report = lint(tmp_charm)
+        pinned = [d for d in report if d.rule_id == "SUPPLYCHAIN-006"]
+        assert len(pinned) == 1
+        assert pinned[0].path == "deps/runtime.txt"
+
+    def test_python_plugin_without_declaration_falls_back(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm, {"name": "x", "parts": {"my-charm": {"plugin": "python"}}}
+        )
+        (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "SUPPLYCHAIN-006"]
+
 
 class TestOpsDependencyParsing:
     """The parsed ops dependency, which every JUJU pinning rule works from."""
