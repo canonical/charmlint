@@ -5,30 +5,33 @@ refactor: the rules that are still to be restored from the strip, the
 new rules that have been proposed since, the engine work they depend
 on, and the bugs in rules that already ship.
 
-As of 2026-09-06 there are 74 open PRs and 77 open issues. That queue
+As of 2026-09-14 there are 71 open PRs and 85 open issues. That queue
 is longer than the team can review in the order it was opened, so the
 sections below are ordered by expected value rather than by number.
 
 ## Where we are
 
-30 rules are registered, across 10 modules:
+40 rules are registered, across 12 modules:
 
 | Category | Landed |
 |---|---|
 | ACTIONS | 001, 002, 003, 004 |
-| CHARMCRAFT | 001, 002, 003, 004, 005, 006 |
-| CONFIG | 001, 002, 003 |
+| CHARMCRAFT | 001–009 |
+| CONFIG | 001, 002, 003, 006 |
+| CORRECTNESS | 001, 002, 003, 004 |
 | DOCUMENTATION | 001 |
 | LIBRARY | 001 |
 | METADATA | 001–010 |
 | PEBBLE | 005 |
 | SECURITY | 001 |
+| STATUS | 001 |
 | STRUCTURE | 001, 002 |
-| TESTING | 001 |
+| TESTING | 001, 003 |
 
-The strip-and-re-add refactor (#94) is roughly half done: of the 61
-pre-strip rule IDs, 30 are back, and the rest are listed in the
-restoration ledger below. Every rule still lands via its own PR.
+The strip-and-re-add refactor (#94) is half done: of the 61 pre-strip
+rule IDs, 31 are back, and the rest are listed in the restoration
+ledger below. The other nine registered rules are new since the strip.
+Every rule still lands via its own PR.
 
 ## How this list is ordered
 
@@ -44,7 +47,7 @@ risk`, with two things jumping the queue:
 
 Counts come from two corpora and are quoted from the issue that
 records them: the charm-review corpus (136–149 charms deployed and
-read one at a time) and the hyrum charm cache (~550–910 charm
+read one at a time) and the hyrum charm cache (~550–1026 charm
 directories). Both count *charms where the defect exists*, not charms
 the rule would fire on, so they are an upper bound on recall — see
 #239 for the caveats, and for the decision still owed on whether the
@@ -52,7 +55,8 @@ count lives here or as an issue label.
 
 ## Phase 0 — Bugs in shipped rules
 
-Nothing else should be reviewed ahead of these.
+Nothing else should be reviewed ahead of these. All four PRs are
+open and awaiting review.
 
 | Issue | PR | Rule | Problem |
 |---|---|---|---|
@@ -66,16 +70,26 @@ Nothing else should be reviewed ahead of these.
 | Issue | PR | Work | Why now |
 |---|---|---|---|
 | #181 | | Isolate rule crashes into a diagnostic | One rule raising aborts the whole run, for every charm |
-| #213 | #240 | `_scope_of` misses nested charms | Every AST rule silently under-reports on multi-charm repos |
 | #191 | | Handle `SyntaxError` in one place | Otherwise every future AST rule re-implements the same skip |
 | #204 | | Normalised `Action`/`ConfigOption` objects | Each actions/config rule re-derives the same shape |
 | #242 | | Shared Pebble layer discovery | Blocks the layer rules (PEB003, #234, #173) from sharing one discovery |
 | #212 | | Give rules the repository root and its workflows | Blocks every CI-shaped rule (#52, #59, and the listing-review items) |
+| #260 | | Iterate over well-formed observers | Every event-handler rule re-derives "is this a usable handler"; CORRECTNESS-004 is the current example |
+| #266 | | Gather every `ops` declaration and pick by section role | 245 of 417 charms declare `ops` more than once; first-hit is wrong in principle and already wrong twice in the corpus |
+| #265 | | Validate `pyproject.toml` shape once in the core | Otherwise every rule guards with its own `isinstance` ladder |
+| #263 | | Resolve charm base classes defined in the charm's own tree | Subclasses of a local base are silently skipped by every AST rule |
 | #200 | | Parse URLs in one place, report non-URLs | METADATA-010 swallows values that are not URLs at all |
 | #206 | | Decide centrally whether placeholder library charms are in scope | Currently the largest single source of genuine FPs, re-litigated per rule |
+| #252 | | Resolve config per charm, not per run | Since #240 a run covers many charms, and a charm's own `[tool.charmlint]` is silently ignored |
 | #236 | | Report suppressed diagnostics in JSON | A consumer cannot tell "passes" from "silenced" |
-| #195 | #177 | noqa style | #236 says suppression already works, #177 asks for it — one of the two is stale; check before starting |
-| #192 | | Split `_rules/correctness.py` | Do this when the first two CORRECTNESS rules land, not before |
+| #177 | | Inline per-line suppression (`noqa`-style) | #236 says suppression already works; confirm what ships before starting |
+| #254 | | Ruff-style range suppression (disable/enable) | Follows #177 |
+| #258 | | Report suppression comments that aren't suppressing anything | Follows #177 |
+| #267 | | Make a leftover `# charmlint: noqa` directive an error | Follows #177 |
+| #259 | | Make rule-name validation aware of preview rules | Blocks shipping anything as preview |
+| #175 | | Optional `breaks_backwards_compatibility` flag on rules | Wanted before the next batch of rules lands, not retrofitted |
+| #176 | | LIBRARY-001: use the charmlibs `libs.yaml` as the deprecation map | Hand-maintained map goes stale; see also #198 |
+| #192 | | Split `_rules/correctness.py` | Four CORRECTNESS rules have landed — this is now due |
 | #261 | | Ledger of the rules that need type information | Several rules match on names instead; the list stops us re-litigating it one review at a time |
 
 ## Phase 2 — Rules that are ready to review
@@ -87,13 +101,9 @@ down.
 | PR | Rule | State |
 |---|---|---|
 | #67 | SUPPLYCHAIN-005/006 (ops pinning) | approved |
-| #209 | CHARMCRAFT-007 (legacy `bases:`) — implements #202, 173 of 551 charms | approved |
-| #240 | multi-charm discovery — fixes #213 | ready |
-| #208 | CONFIG-006 (config-option-undeclared) — implements #150 | ready |
-| #190 | STATUS-001 (blocked status in a non-repeating handler) — implements #27 | ready |
-| #21 | CORRECTNESS-004 (non-deferrable event deferred) | ready |
-| #40 | CORRECTNESS-003 (`container.exec()` result not consumed) | approved |
-| #38 | CORRECTNESS-001/002 (`defer()` without return) | changes requested |
+| #245, #246, #247, #248 | the Phase 0 false-positive fixes | ready |
+| #253 | RELATIONS-003 (unordered-value-in-databag) — implements #229 | ready |
+| #257 | only import `importlib.metadata` for `--version` | ready |
 
 ## Phase 3 — Tier A rules: runtime failures, high yield, low FP risk
 
@@ -109,11 +119,12 @@ often, and detection is a literal-string or declared-name comparison.
 | Juju secret read without catching `SecretNotFoundError`/`ModelError` | #230 | | Normal states (not yet granted) raise |
 | `ActiveStatus` reported without checking the Pebble service is running | #234 | | ~22 of 136 charms, ~10 mechanically checkable; wants #242 |
 | Relation observed for joined/changed but never departed/broken | #237 | #65 (EVNT001, narrower) | ~20 of 136 charms |
-| Unit status compared (`==`) instead of assigned | #152 | | error, near-zero FP |
+| Unit status compared (`==`) instead of assigned | #152 | #63 (JUJU001/007) | error, near-zero FP |
 | No return after `event.fail()` / early `set_results()` | #153 | | error |
 | `container.restart()`/`replan()` without `ChangeError` handling | #154 | | |
+| Privileged command, or a write outside the charm dir, on a `non-root` charm | #249 | | The pair of findings that decide a non-root migration; CHARMCRAFT-008/009 only read the YAML |
 | `ActiveStatus` added unconditionally in a collect-status handler | #233 | | Defeats the point of `collect_unit_status` |
-| Unsorted set iteration feeding relation data or a rendered file | #229 | | Databag "changes" every hook |
+| Truthiness check on an int/bool-typed config option | #151 | | `if self.config["port"]:` silently drops 0/False |
 | `cached_property` on a charm or an object it constructs | #226 | | Steady supply of corpus bugs |
 
 ## Phase 4 — Tier B rules: migration, deprecation, security
@@ -131,7 +142,7 @@ or about to break on a Juju/charmcraft version bump.
 | `charmhelpers` imported in an ops charm | #165 | | |
 | Direct `os.environ` `JUJU_*` access | #166 | | |
 | Juju hook tools invoked via subprocess | #167 | | |
-| Unit tests still use `ops.testing.Harness` | #238 | #143 | 39 of 136 charms. Same rule as #143 — close one |
+| Tracing wiring: endpoint name mismatch, removed `ops_tracing.setup()` | #161 | | |
 | Integration tests on pytest-operator/python-libjuju | #162 | | |
 | Jubilant misuse | #163 | | |
 | `testing.Context` with legacy `meta=`/`config=` kwargs | | #55 | |
@@ -165,6 +176,12 @@ declares or documents is wrong.
 | Numeric config option with no minimum or maximum | #222 | 13 charms proposed it |
 | Config description enumerates values it doesn't constrain | #223 | 12 charms proposed it |
 | Terraform module endpoints drift from `charmcraft.yaml` | #235 | 97 of 136 charms ship a module, nothing checks it |
+| Relation data aggregated with plain assignment in a loop over relations | #156 | |
+| `MaintenanceStatus` with an exit path that never restores status | #157 | |
+| `BlockedStatus`/`WaitingStatus` semantics mixed up in the message | #158 | |
+| Shipped Grafana dashboard JSON (hardcoded uid, non-COS variables) | #159 | |
+| Shipped Prometheus/Loki alert rules (empty matchers, `for: 0m`) | #160 | |
+| Interface definitions linted against the OP083 spec | #256 | Dropped from 26.10 and 27.04; pydantic-shaped |
 | Unknown keys inside config/action bodies | #179 | |
 | Full charmcraft schema, starting with underscored action names | #174 | |
 | Actions/config in both `charmcraft.yaml` and the legacy file | #171 | |
@@ -196,7 +213,8 @@ large fraction of the fleet by design. They need a decision on scope
 
 | Rule | Issue | PR | The question |
 |---|---|---|---|
-| `platforms:` covers amd64 only | #203 | | 140 of 370 charms; many are amd64-only for good reason. Narrow to framework extensions? Also wants CHARMCRAFT-008, which #241 is using |
+| `platforms:` covers amd64 only | #203 | | 140 of 370 charms; many are amd64-only for good reason. Narrow to framework extensions? Needs a new ID — CHARMCRAFT-008 has landed as `charm-user` |
+| Flapping databags | #251 | | Borrow from flaplint, run it, or rebuild on our AST walking? #229/#253 is the first piece |
 | No diagnostic action | | #60 | Is "should have this action" charmlint's business? |
 | No restart/replan/reload action | | #68 | Same |
 | Stateful charm without backup/restore actions | | #62 | Same |
@@ -230,10 +248,11 @@ module or a factory. Every one of these has a draft PR cut from
 | SECURITY | SEC001 | SECURITY-001 | #136 | landed |
 | STRUCTURE | STR001, STR002 | STRUCTURE-001, -002 | #138, #139 | landed |
 | TESTING | TEST001 | TESTING-001 | #141 | landed |
+| TEST003 | TEST003 | TESTING-003 | #143 | landed |
 | PEBBLE | (new) | PEBBLE-005 | #194 | landed |
 | COS 001–004 | COS001–COS004 | OBSERVABILITY-00x | #96 | draft |
 | COS 005 | COS005 | OBSERVABILITY-00x | #97 | draft |
-| STS 001–003 | STS001–STS003 | STATUS-00x | #98 | draft, after #190 |
+| STS 001–003 | STS001–STS003 | STATUS-00x | #98 | draft, renumber after STATUS-001 |
 | DEP 001–004 | DEP001–DEP004 | DEPRECATION-00x | #99 | draft |
 | ACT 001–003 | ACT001–ACT003 | ACTIONS-00x | #100 | draft (Tier D shape: "expected operational actions") |
 | ACT007 | ACT007 | ACTIONS-00x | #103 (helpers), #105 | draft |
@@ -241,7 +260,7 @@ module or a factory. Every one of these has a draft PR cut from
 | PEB001 | PEB001 | PEBBLE-001 | #114 (helpers), #115 | draft |
 | PEB002 | PEB002 | PEBBLE-002 | #116 **closed** | needs a new PR |
 | PEB003 | PEB003 | PEBBLE-003 | #117 | draft |
-| CFG004 | CFG004 | CONFIG-004 | #121 **closed** | needs a new PR; #208 is its inverse |
+| CFG004 | CFG004 | CONFIG-004 | #121 **closed** | needs a new PR; CONFIG-006 is its inverse |
 | CFG005 | CFG005 | CONFIG-005 | #122 | draft |
 | DOC002–005 | DOC002–DOC005 | DOCUMENTATION-00x | #124 (helpers), #125–#128 | draft, Tier D |
 | LIB002 | LIB002 | LIBRARY-002 | #129 (helpers), #131 | draft |
@@ -250,26 +269,28 @@ module or a factory. Every one of these has a draft PR cut from
 | SEC002 | SEC002 | SECURITY-002 | #137 | draft, Tier D (no-tls-support) |
 | STR003 | STR003 | STRUCTURE-003 | #140 | draft, Tier D |
 | TEST002 | TEST002 | TESTING-002 | #142 | draft, Tier D |
-| TEST003 | TEST003 | TESTING-003 | #143 | draft; duplicates #238 |
 
 ## Housekeeping
 
 **ID collisions to settle.** #201 asks for CHARMCRAFT-006, which
 `no-ops-main-call` (#109) already holds. #203 asks for CHARMCRAFT-008,
-which #241 is using for `charm-user`. Issues #148–#171 and #26–#33
-were all filed under the pre-renumber `PREFIX###` scheme and need
-`CATEGORY-###` IDs assigned when they are picked up — the number in
-the title is not reserved.
+which has now landed as `charm-user` (#241). #253 claims RELATIONS-003
+while RELATIONS-001/002 are still in draft (#134, #135). Issues
+#148–#171 and #26–#33 were all filed under the pre-renumber
+`PREFIX###` scheme and need `CATEGORY-###` IDs assigned when they are
+picked up — the number in the title is not reserved.
 
-**Duplicates to close.** #238 and #143 are the same rule. #149/#207,
-#150/#208, #202/#209 and #27/#190 are issue/PR pairs; close the issue
-when the PR lands. #35 (rename `STS` → `STAT`) is obsolete: the
-category is `STATUS` under the full-word scheme in `docs/id-scheme.md`.
+**Duplicates to close.** #238 is the issue for the Harness rule that
+landed as TESTING-003 in #143 — close it. #149/#207, #229/#253 and
+#152/#63 are issue/PR pairs; close the issue when the PR lands. #35
+(rename `STS` → `STAT`) is obsolete: the category is `STATUS` under
+the full-word scheme in `docs/id-scheme.md`, and STATUS-001 has
+shipped.
 
-**Stale drafts.** 66 of the 74 open PRs are drafts, most
-untouched since late August, and the Tier D ones will not be reviewed
-soon. Better to close them with a pointer from the tracking issue than
-to keep them open and rebasing.
+**Stale drafts.** 64 of the 71 open PRs are drafts, most untouched
+since late August, and the Tier D ones will not be reviewed soon.
+Better to close them with a pointer from the tracking issue than to
+keep them open and rebasing.
 
 ## Process for a rule PR
 
