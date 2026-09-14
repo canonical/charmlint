@@ -67,31 +67,48 @@ class TestInlineNoqa:
         assert _sec_options(tmp_charm) == {"api-token"}
 
 
-class TestFileLevelNoqa:
-    """File-level ``# charmlint: noqa`` anywhere in the file."""
+class TestFileLevelIgnore:
+    """File-level ``# charmlint: file-ignore`` anywhere in the file."""
 
-    def test_bare_file_level_suppresses_all(self, tmp_charm: pathlib.Path):
-        _write(tmp_charm, "# charmlint: noqa\n" + _TWO_SECRETS.format(comment=""))
+    def test_bare_file_ignore_suppresses_all(self, tmp_charm: pathlib.Path):
+        _write(tmp_charm, "# charmlint: file-ignore\n" + _TWO_SECRETS.format(comment=""))
         assert _sec_options(tmp_charm) == set()
 
     def test_file_level_rule_id(self, tmp_charm: pathlib.Path):
-        _write(tmp_charm, "# charmlint: noqa: SECURITY-001\n" + _TWO_SECRETS.format(comment=""))
+        _write(
+            tmp_charm,
+            "# charmlint: file-ignore[SECURITY-001]\n" + _TWO_SECRETS.format(comment=""),
+        )
         assert _sec_options(tmp_charm) == set()
 
     def test_file_level_category(self, tmp_charm: pathlib.Path):
-        _write(tmp_charm, "# charmlint: noqa: SECURITY\n" + _TWO_SECRETS.format(comment=""))
+        _write(tmp_charm, "# charmlint: file-ignore[SECURITY]\n" + _TWO_SECRETS.format(comment=""))
         assert _sec_options(tmp_charm) == set()
 
     def test_file_level_wrong_code_keeps_all(self, tmp_charm: pathlib.Path):
-        _write(tmp_charm, "# charmlint: noqa: METADATA\n" + _TWO_SECRETS.format(comment=""))
+        _write(tmp_charm, "# charmlint: file-ignore[METADATA]\n" + _TWO_SECRETS.format(comment=""))
         assert _sec_options(tmp_charm) == {"admin-password", "api-token"}
 
     def test_file_level_suppresses_rule_without_line(self, tmp_charm: pathlib.Path):
         # METADATA-001 (no-title) anchors to the file with no line, so it
         # can only be silenced file-wide.
-        _write(tmp_charm, "name: test\n# charmlint: noqa: METADATA-001\n")
+        _write(tmp_charm, "name: test\n# charmlint: file-ignore[METADATA-001]\n")
         rule_ids = {d.rule_id for d in lint(tmp_charm)}
         assert "METADATA-001" not in rule_ids
+
+    def test_trailing_file_ignore_still_covers_the_file(self, tmp_charm: pathlib.Path):
+        # ``file-ignore`` says what it means wherever it is written.
+        _write(
+            tmp_charm,
+            _TWO_SECRETS.format(comment="  # charmlint: file-ignore[SECURITY-001]"),
+        )
+        assert _sec_options(tmp_charm) == set()
+
+    def test_charmlint_noqa_is_not_a_directive(self, tmp_charm: pathlib.Path):
+        # ``# charmlint: noqa`` is gone: file-level scope is spelled
+        # ``file-ignore`` and nothing else.
+        _write(tmp_charm, "# charmlint: noqa\n" + _TWO_SECRETS.format(comment=""))
+        assert _sec_options(tmp_charm) == {"admin-password", "api-token"}
 
 
 class TestNoqaScoping:
@@ -137,8 +154,8 @@ class TestParse:
         parsed = _noqa.parse('default: "a#noqa"\n')
         assert not parsed.suppresses("SECURITY-001", line=1)
 
-    def test_file_level_takes_precedence_over_inline_shape(self):
-        parsed = _noqa.parse("# charmlint: noqa: SECURITY\n")
+    def test_file_ignore_takes_precedence_over_inline_shape(self):
+        parsed = _noqa.parse("# charmlint: file-ignore[SECURITY]\n")
         assert parsed.suppresses("SECURITY-001", line=99)
         assert not parsed.suppresses("METADATA-001", line=99)
 
@@ -167,6 +184,16 @@ class TestIgnoreComment:
 
     def test_trailing_ignore_suppresses_that_line(self, tmp_charm: pathlib.Path):
         _write(tmp_charm, _TWO_SECRETS.format(comment="  # charmlint: ignore[SECURITY-001]"))
+        assert _sec_options(tmp_charm) == {"api-token"}
+
+    def test_bare_ignore_suppresses_everything_on_that_line(self, tmp_charm: pathlib.Path):
+        _write(tmp_charm, _TWO_SECRETS.format(comment="  # charmlint: ignore"))
+        assert _sec_options(tmp_charm) == {"api-token"}
+
+    def test_bare_own_line_ignore_covers_the_next_line(self, tmp_charm: pathlib.Path):
+        text = _TWO_SECRETS.format(comment="")
+        text = text.replace("    admin-password:", "    # charmlint: ignore\n    admin-password:")
+        _write(tmp_charm, text)
         assert _sec_options(tmp_charm) == {"api-token"}
 
     def test_rule_name_suppresses(self, tmp_charm: pathlib.Path):
@@ -315,7 +342,7 @@ class TestPythonSuppression:
         write_charm_source(tmp_charm, _DEFER.format(comment="  # noqa: CORRECTNESS-001"))
         assert _correctness_hits(tmp_charm) == 1
 
-    def test_charmlint_noqa_is_not_honoured_in_python(self, tmp_charm: pathlib.Path):
+    def test_charmlint_noqa_is_not_a_directive_in_python(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
         write_charm_source(tmp_charm, "# charmlint: noqa\n" + _DEFER.format(comment=""))
         assert _correctness_hits(tmp_charm) == 1

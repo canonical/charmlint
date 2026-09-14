@@ -1,8 +1,11 @@
 """Ruff-style suppression comments, applied to a charm's YAML and Python files.
 
-charmlint mirrors ruff's directive syntax as closely as the setting
-allows. The preferred forms carry the tool name and bracket their codes,
-as ruff's do since 0.16:
+charmlint borrows ruff's directive syntax, but only where ruff's shape
+is a design rather than an inheritance: ruff carries ``# noqa`` for
+flake8 compatibility and grew the bracketed verbs alongside it, and
+charmlint has no such compatibility to keep. So there are two verbs, and
+the scope of a directive is decided by where it is written and by
+nothing else:
 
 - ``# charmlint: ignore[SECURITY-001]`` suppresses the listed rules on
   one line. At the end of a line it covers that line; on a line of its
@@ -11,22 +14,18 @@ as ruff's do since 0.16:
 - ``# charmlint: file-ignore[SECURITY-001]`` suppresses the listed rules
   across the whole file, wherever it appears.
 
+The code list is optional on both. ``# charmlint: ignore`` suppresses
+every diagnostic on the line it governs, and ``# charmlint: file-ignore``
+every diagnostic in the file — the same relationship a bare ``# noqa``
+has to ``# noqa: CODES``. Nothing silences a file from the end of a line
+of config: for that, write ``file-ignore`` and mean it.
+
 Carrying the tool name matters in Python files, where a bare ``# noqa``
 belongs to ruff: charmlint must neither eat ruff's directives nor make a
 charm write a directive that ruff would then report as unused. So the
-legacy bare forms are honoured in YAML only, where there is no other
-linter to collide with:
-
-- ``# noqa`` suppresses every diagnostic on that line, and ``# noqa:
-  SECURITY-001, METADATA-002`` only the listed rules.
-- ``# charmlint: noqa`` suppresses the whole file — the blanket
-  file-level form, which ``file-ignore[...]`` has no spelling for, since
-  its codes are required. ``# charmlint: noqa: SECURITY-001`` suppresses
-  the listed rules across the file. Both are file-level wherever they
-  appear, trailing a line included: position narrows ``ignore[...]``,
-  but never the ``noqa`` forms that carry the tool name. Ruff is
-  stricter — it takes ``# ruff: noqa`` as file-level only on a line of
-  its own, and ignores one that trails code.
+legacy bare form is honoured in YAML only, where there is no other
+linter to collide with: ``# noqa`` suppresses every diagnostic on that
+line, and ``# noqa: SECURITY-001, METADATA-002`` only the listed rules.
 
 A code is a rule ID (``SECURITY-001``), a rule name
 (``secret-in-plain-config``) or a category (``SECURITY``) — the same
@@ -51,15 +50,16 @@ import re
 
 from . import _selectors
 
-# The bracketed forms, spelled with the tool name. ``file-ignore`` must be
-# tried before ``ignore``, since the latter's pattern also appears in it.
-_FILE_IGNORE_RE = re.compile(r"(?:^|\s)#\s*charmlint:\s*file-ignore\[(?P<codes>[^\]]*)\]")
-_IGNORE_RE = re.compile(r"(?:^|\s)#\s*charmlint:\s*ignore\[(?P<codes>[^\]]*)\]")
+# The forms spelled with the tool name. ``file-ignore`` must be tried
+# before ``ignore``, since the latter's pattern also appears in it. The
+# code list is optional: without one, the directive is blanket.
+_FILE_IGNORE_RE = re.compile(
+    r"(?:^|\s)#\s*charmlint:\s*file-ignore(?:\[(?P<codes>[^\]]*)\]|(?![\w-]))"
+)
+_IGNORE_RE = re.compile(r"(?:^|\s)#\s*charmlint:\s*ignore(?:\[(?P<codes>[^\]]*)\]|(?![\w-]))")
 
-# The legacy bare forms, YAML-only. ``# charmlint: noqa`` (file-level)
-# must be tried before the bare inline form, since the latter's pattern
-# also appears inside it.
-_LEGACY_FILE_RE = re.compile(r"(?:^|\s)#\s*charmlint:\s*noqa(?::(?P<codes>[^#]*))?", re.IGNORECASE)
+# The legacy bare form, YAML-only: line-level, like the trailing
+# ``ignore`` it predates.
 _LEGACY_INLINE_RE = re.compile(r"(?:^|\s)#\s*noqa(?::(?P<codes>[^#]*))?", re.IGNORECASE)
 
 # In a legacy bare directive the codes are not delimited, so anything
@@ -71,6 +71,17 @@ _CODE_RE = re.compile(r"^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
 def _split_codes(raw: str) -> frozenset[str]:
     """Split a comma- or whitespace-separated code list."""
     return frozenset(token for token in re.split(r"[,\s]+", raw.strip()) if token)
+
+
+def _optional_codes(raw: str | None) -> frozenset[str] | None:
+    """Parse the codes bracketed after ``ignore`` or ``file-ignore``.
+
+    Returns ``None`` when there were no brackets at all — a blanket
+    directive — and the frozenset of codes otherwise.
+    """
+    if raw is None:
+        return None
+    return _split_codes(raw)
 
 
 def _parse_legacy_codes(raw: str | None) -> frozenset[str] | None:
@@ -151,12 +162,12 @@ def _scan(
     """
     file_ignore = _FILE_IGNORE_RE.search(line)
     if file_ignore is not None:
-        file_level.append(_Directive(_split_codes(file_ignore.group("codes"))))
+        file_level.append(_Directive(_optional_codes(file_ignore.group("codes"))))
         return True
 
     ignore = _IGNORE_RE.search(line)
     if ignore is not None:
-        directive = _Directive(_split_codes(ignore.group("codes")))
+        directive = _Directive(_optional_codes(ignore.group("codes")))
         if line[: ignore.start()].strip():
             # Trailing: it covers the line it is written on.
             by_line.setdefault(lineno, []).append(directive)
@@ -167,11 +178,6 @@ def _scan(
 
     if not legacy_noqa:
         return False
-
-    legacy_file = _LEGACY_FILE_RE.search(line)
-    if legacy_file is not None:
-        file_level.append(_Directive(_parse_legacy_codes(legacy_file.group("codes"))))
-        return True
 
     legacy_inline = _LEGACY_INLINE_RE.search(line)
     if legacy_inline is not None:

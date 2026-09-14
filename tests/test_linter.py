@@ -251,7 +251,7 @@ class TestLintMultiCharm:
         for name in ("alpha", "beta"):
             (repo / "charms" / name / "charmcraft.yaml").write_text("summary: no name\n")
         (repo / "charms" / "alpha" / "charmcraft.yaml").write_text(
-            "# charmlint: noqa: METADATA-001\nsummary: no name\n"
+            "# charmlint: file-ignore[METADATA-001]\nsummary: no name\n"
         )
         fired = {d.path for d in lint(repo) if d.rule_id == "METADATA-001"}
         assert fired == {"charms/beta/charmcraft.yaml"}

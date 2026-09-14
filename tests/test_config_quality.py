@@ -207,9 +207,9 @@ class TestConfigNoqa:
         ids = self._lint_options_block(tmp_charm, "    foo:\n      type: string  # noqa\n")
         assert ids == {"CONFIG-002", "CONFIG-003"}
 
-    def test_file_level_noqa(self, tmp_charm: pathlib.Path):
+    def test_file_level_ignore(self, tmp_charm: pathlib.Path):
         (tmp_charm / "charmcraft.yaml").write_text(
-            "# charmlint: noqa: CONFIG-002\nname: test\nconfig:\n  options:\n"
+            "# charmlint: file-ignore[CONFIG-002]\nname: test\nconfig:\n  options:\n"
             "    foo:\n      type: string\n      description: An option\n"
         )
         assert not {d.rule_id for d in lint(tmp_charm) if d.rule_id.startswith("CONFIG-")}

@@ -123,31 +123,41 @@ listed rules across the whole file:
 Findings that anchor to a whole file rather than a line — a missing
 metadata field, say — can only be silenced by a file-level directive.
 
-### The bare `# noqa` forms
+### Suppressing everything
 
-In YAML, charmlint also honours the bare forms it has always accepted: an
-inline `# noqa` suppresses every finding on that line, `# noqa:
-SECURITY-001, METADATA-002` suppresses the listed rules, and a file-level
-`# charmlint: noqa` suppresses the whole file. `# charmlint: noqa` is
-still the only way to suppress a whole file blanket, since
-`file-ignore[...]` requires codes.
-
-`# charmlint: noqa` is file-level wherever it appears, including trailing
-a line: unlike `ignore[...]`, its position does not narrow it, so writing
-it after a config option silences the whole file rather than that one
-line. To suppress one line, use `# noqa` or `# charmlint: ignore[...]`.
+The code list is optional on both verbs. `# charmlint: ignore` suppresses
+every finding on the line it governs, and `# charmlint: file-ignore`
+every finding in the file:
 
 ```yaml
-# charmlint: noqa: SECURITY-001
+# charmlint: file-ignore
+config:
+  options:
+    admin-password:  # charmlint: ignore
+      type: string
+```
+
+Scope is decided by the verb and by where the directive is written, and
+by nothing else: no directive silences a whole file from the end of a
+line of config. To silence a file, write `file-ignore` on a line of its
+own.
+
+### The bare `# noqa` form
+
+In YAML, charmlint also honours the bare form it has always accepted: an
+inline `# noqa` suppresses every finding on that line, and `# noqa:
+SECURITY-001, METADATA-002` suppresses the listed rules.
+
+```yaml
 config:
   options:
     admin-password:  # noqa
       type: string
 ```
 
-The bare forms are not honoured in Python files: there, `# noqa` is
-ruff's, and charmlint neither consumes ruff's directives nor asks a charm
-to write one that ruff would then report as unused. Python files take the
+It is not honoured in Python files: there, `# noqa` is ruff's, and
+charmlint neither consumes ruff's directives nor asks a charm to write
+one that ruff would then report as unused. Python files take the
 `# charmlint:` forms only.
 
 ## Versioning
