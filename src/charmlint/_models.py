@@ -244,6 +244,10 @@ class CharmContext:
     config_options: Yaml = dataclasses.field(
         default_factory=lambda: Yaml.absent("charmcraft.yaml")
     )
+    # The charm's parsed pyproject.toml, or None when it has none. Plain
+    # dicts rather than Yaml nodes: tomllib discards positions, so there
+    # is no line to carry (see charmlint._toml).
+    pyproject: dict[str, Any] | None = None
     python_files: list[pathlib.Path] = dataclasses.field(default_factory=list)
     python_sources: dict[pathlib.Path, str] = dataclasses.field(default_factory=dict)
     # Every collected source, parsed once by the linter core. Rules should
