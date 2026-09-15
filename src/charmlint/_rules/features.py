@@ -116,7 +116,7 @@ class NoSetWorkloadVersion(Rule):
             return []
         if any(_sets_workload_version(module) for module in sources):
             return []
-        # ``containers:`` is still the most specific thing to point at when
+        # ``containers:`` is the most specific thing to point at when
         # the charm has one. For everything else an absent node carries the
         # metadata file with no line, which is what a whole-charm finding
         # wants — and what a ``file-ignore`` needs in order to reach it.
