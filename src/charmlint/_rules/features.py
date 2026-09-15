@@ -63,7 +63,7 @@ class NoAssumesJujuVersion(Rule):
         name = context.metadata.get("name")
         # Only charms that keep their metadata in charmcraft.yaml. A charm
         # still declaring `name` in metadata.yaml predates the unified
-        # file, and very likely predates `assumes` (Juju 2.9.23) as well:
+        # file, and possibly predates `assumes` (Juju 2.9.23) as well:
         # telling it to adopt a key from a layout it hasn't moved to is
         # noise, not a finding.
         if not name.present or name.source != "charmcraft.yaml":
