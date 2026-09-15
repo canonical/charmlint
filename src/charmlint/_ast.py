@@ -26,7 +26,7 @@ from collections.abc import Iterator, Sequence
 from . import _models as models
 
 
-def _library_owner(name: str) -> str:
+def library_owner(name: str) -> str:
     """Return the ``lib/charms/`` directory name a charm publishes under.
 
     Charmhub names are hyphenated and Python packages are not, so
@@ -52,7 +52,7 @@ def _scope_of(relative: pathlib.PurePosixPath, charm_name: str | None) -> models
         # The charm publishing the library owns that directory; every other
         # owner is a vendored copy of someone else's work.
         owner = parts[2] if parts[:2] == ("lib", "charms") and len(parts) > 2 else None
-        if owner is not None and charm_name and owner == _library_owner(charm_name):
+        if owner is not None and charm_name and owner == library_owner(charm_name):
             return models.Scope.OWNED_LIB
         return models.Scope.VENDORED_LIB
     if parts[:1] == ("src",):
