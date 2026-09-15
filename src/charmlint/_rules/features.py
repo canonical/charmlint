@@ -71,12 +71,6 @@ class NoSetWorkloadVersion(Rule):
     is up and can be asked — the column stays empty, and the only way to
     find out is to get a shell on the unit.
 
-    This applies to every charm, not only Kubernetes ones. The substrate
-    changes how you would otherwise go and look (``kubectl exec`` versus
-    ``juju ssh`` and ``snap list``), not whether the version is worth
-    reporting, and machine charms report it at half the rate Kubernetes
-    charms do.
-
     Charms with no workload to version — integrators, configurators,
     proxies, interface placeholders — are the real exception, and this
     rule does not try to detect them. Nothing in the metadata declares
