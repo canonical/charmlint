@@ -12,6 +12,10 @@ class ActionMissingObserver(Rule):
     Charms whose observe calls live in an external base class (installed
     as a pip dependency, not vendored under ``src/`` or ``lib/``) will
     hit false positives — disable ACTIONS-001 in that case.
+
+    A charm with no Python sources at all is skipped: it has no ops
+    entrypoint, so its actions are handled somewhere this rule cannot
+    see.
     """
 
     category = "ACTIONS"
@@ -23,9 +27,17 @@ class ActionMissingObserver(Rule):
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if not context.actions:
             return []
+        sources = list(context.charm_sources())
+        # No Python at all means there is no ops charm to observe from: a
+        # charm whose dispatch is a hand-written script handles its actions
+        # in shell, and every declared action would be reported. "No sources
+        # found" and "sources found, nothing observed" are different
+        # situations, and only the second is a finding.
+        if not sources:
+            return []
         observed = {
             observer.action
-            for module in context.charm_sources()
+            for module in sources
             for observer in _ast.observers(module)
             if observer.action is not None
         }
