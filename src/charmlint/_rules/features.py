@@ -187,10 +187,6 @@ class HardcodedWorkloadVersion(Rule):
     which is worse than the empty column FEATURES-005 is about, because it
     looks like an answer.
 
-    This is not hypothetical. In the corpus, ``temporal-ui-k8s-operator``
-    reports ``WORKLOAD_VERSION = "2.27.1"`` while its own metadata pins an
-    image built from 2.39.
-
     The version should come from the workload: ``pebble exec`` or
     ``subprocess`` asking the binary, a version file the image ships, or
     an API the service exposes — whatever can be read at runtime rather
