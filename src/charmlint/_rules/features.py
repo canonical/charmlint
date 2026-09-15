@@ -1,4 +1,4 @@
-"""Feature rules — charm capabilities an operator expects but rarely gets."""
+"""Feature rules — charm capabilities an operator expects."""
 
 import ast
 
