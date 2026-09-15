@@ -36,9 +36,8 @@ def _has_juju_constraint(assumes: models.Yaml) -> bool:
     """Report whether *assumes* declares a Juju version anywhere inside it.
 
     A charm may put the constraint inside an ``any-of`` / ``all-of``
-    group rather than at the top level — most commonly to say "either a
-    new enough Juju, or a Kubernetes controller". Either way the charm
-    has thought about the version, which is all this rule asks for.
+    group rather than at the top level. Either way the charm has thought
+    about the version, which is all this rule asks for.
     """
     for entry in assumes.elements or ():
         if _is_juju_entry(entry):
