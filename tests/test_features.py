@@ -216,3 +216,119 @@ class TestNoSetWorkloadVersion:
                 application_version_set("1.2.3")
         """
         assert _lint(tmp_charm, {}, source) == []
+
+
+class TestHardcodedWorkloadVersion:
+    """FEATURES-006 — the reported version should be read, not written down."""
+
+    def _findings(self, charm_dir: pathlib.Path, source: str):
+        write_charmcraft_yaml(charm_dir, {"name": "test-charm", "containers": _CONTAINERS})
+        write_charm_source(charm_dir, textwrap.dedent(source))
+        return [d for d in lint(charm_dir) if d.rule_id == "FEATURES-006"]
+
+    def test_string_literal_flagged(self, tmp_charm: pathlib.Path):
+        findings = self._findings(
+            tmp_charm, _charm_calling('self.unit.set_workload_version("1.2.3")')
+        )
+        assert len(findings) == 1
+        assert findings[0].severity == Severity.WARNING
+        assert "1.2.3" in findings[0].message
+        assert findings[0].path == "src/charm.py"
+        assert findings[0].line is not None
+
+    def test_module_constant_flagged(self, tmp_charm: pathlib.Path):
+        source = """\
+            import ops
+
+            WORKLOAD_VERSION = "2.27.1"
+
+            class C(ops.CharmBase):
+                def _on_pebble_ready(self, event):
+                    self.unit.set_workload_version(WORKLOAD_VERSION)
+        """
+        findings = self._findings(tmp_charm, source)
+        assert len(findings) == 1
+        assert "WORKLOAD_VERSION" in findings[0].message
+
+    def test_charmhelpers_spelling_flagged(self, tmp_charm: pathlib.Path):
+        source = """\
+            from charmhelpers.core import hookenv
+
+            def report():
+                hookenv.application_version_set("1.2.3")
+        """
+        assert len(self._findings(tmp_charm, source)) == 1
+
+    def test_value_read_from_the_workload_not_flagged(self, tmp_charm: pathlib.Path):
+        source = _charm_calling("self.unit.set_workload_version(self._workload_version())")
+        assert self._findings(tmp_charm, source) == []
+
+    def test_attribute_not_flagged(self, tmp_charm: pathlib.Path):
+        source = _charm_calling("self.unit.set_workload_version(self.workload.version)")
+        assert self._findings(tmp_charm, source) == []
+
+    def test_empty_string_not_flagged(self, tmp_charm: pathlib.Path):
+        """Clearing the field on teardown is not a hardcoded version."""
+        source = _charm_calling('self.unit.set_workload_version("")')
+        assert self._findings(tmp_charm, source) == []
+
+    def test_n_a_placeholder_not_flagged(self, tmp_charm: pathlib.Path):
+        source = _charm_calling('self.unit.set_workload_version("n/a")')
+        assert self._findings(tmp_charm, source) == []
+
+    def test_or_fallback_not_flagged(self, tmp_charm: pathlib.Path):
+        """The COS `Worker` idiom: a real lookup with a placeholder fallback."""
+        source = _charm_calling('self.unit.set_workload_version(self.running_version() or "")')
+        assert self._findings(tmp_charm, source) == []
+
+    def test_name_reassigned_dynamically_not_flagged(self, tmp_charm: pathlib.Path):
+        source = """\
+            import ops
+
+            class C(ops.CharmBase):
+                def _on_pebble_ready(self, event):
+                    version = "unknown"
+                    if self._can_ask():
+                        version = self._workload_version()
+                    self.unit.set_workload_version(version)
+        """
+        assert self._findings(tmp_charm, source) == []
+
+    def test_constant_from_another_module_not_followed(self, tmp_charm: pathlib.Path):
+        """A deliberate gap: no corpus finding needs it, and it risks FPs."""
+        source = """\
+            import ops
+
+            from constants import WORKLOAD_VERSION
+
+            class C(ops.CharmBase):
+                def _on_pebble_ready(self, event):
+                    self.unit.set_workload_version(WORKLOAD_VERSION)
+        """
+        write_charm_source(tmp_charm, 'WORKLOAD_VERSION = "1.2.3"\n', filename="constants.py")
+        assert self._findings(tmp_charm, source) == []
+
+    def test_no_argument_not_flagged(self, tmp_charm: pathlib.Path):
+        source = _charm_calling("self.unit.set_workload_version()")
+        assert self._findings(tmp_charm, source) == []
+
+    def test_each_call_site_reported(self, tmp_charm: pathlib.Path):
+        source = """\
+            import ops
+
+            class C(ops.CharmBase):
+                def _on_install(self, event):
+                    self.unit.set_workload_version("1.0.0")
+
+                def _on_upgrade(self, event):
+                    self.unit.set_workload_version("1.0.0")
+        """
+        assert len(self._findings(tmp_charm, source)) == 2
+
+    def test_does_not_fire_when_005_does(self, tmp_charm: pathlib.Path):
+        """The two rules are about opposite problems and never overlap."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test-charm", "containers": _CONTAINERS})
+        write_charm_source(tmp_charm, textwrap.dedent(_PLAIN_CHARM))
+        ids = {d.rule_id for d in lint(tmp_charm)}
+        assert "FEATURES-005" in ids
+        assert "FEATURES-006" not in ids

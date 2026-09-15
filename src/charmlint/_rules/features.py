@@ -141,3 +141,107 @@ class NoSetWorkloadVersion(Rule):
                 ),
             )
         ]
+
+
+# Strings that report *no* version rather than a wrong one. A charm passes
+# one of these to clear the field on teardown, to reset it before a
+# reinstall, or as the fallback in its own version helper when the workload
+# cannot be asked — 21 of the 24 charms in the hyrum cache that pass a
+# placeholder also have a real dynamic call elsewhere, and the three that do
+# not are configuration charms with no workload, for which ``n/a`` is an
+# honest answer rather than a defect. None of that is what this rule is
+# about, so a placeholder is left alone.
+_VERSION_PLACEHOLDERS = frozenset({"", "n/a", "none", "unknown"})
+
+
+def _literal_names(module: models.Module) -> set[str]:
+    """Names bound to a string literal and to nothing else, anywhere in *module*.
+
+    A name assigned a literal in one branch and a real lookup in another is
+    not a hardcoded version, so a name is only treated as constant when
+    *every* assignment to it in the file is a string literal.
+    """
+    literal: set[str] = set()
+    dynamic: set[str] = set()
+    for assign in module.walk(ast.Assign):
+        constant = isinstance(assign.value, ast.Constant) and isinstance(assign.value.value, str)
+        for target in assign.targets:
+            if isinstance(target, ast.Name):
+                (literal if constant else dynamic).add(target.id)
+    return literal - dynamic
+
+
+def _hardcoded_version(arg: ast.expr, literal_names: set[str]) -> str | None:
+    """The hardcoded version *arg* passes, or ``None`` if it is computed."""
+    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+        value = arg.value
+    elif isinstance(arg, ast.Name) and arg.id in literal_names:
+        value = arg.id
+    else:
+        return None
+    return None if value.strip().lower() in _VERSION_PLACEHOLDERS else value
+
+
+class HardcodedWorkloadVersion(Rule):
+    """Flag a workload version reported as a constant rather than read.
+
+    The point of the workload version is to say which version is *running*.
+    A charm that passes a literal is instead saying which version it was
+    written against, and the two part company the first time the image,
+    snap or package is bumped without the charm being touched. Nothing
+    fails when they do: ``juju status`` keeps reporting the stale number,
+    which is worse than the empty column FEATURES-005 is about, because it
+    looks like an answer.
+
+    This is not hypothetical. In the corpus, ``temporal-ui-k8s-operator``
+    reports ``WORKLOAD_VERSION = "2.27.1"`` while its own metadata pins an
+    image built from 2.39.
+
+    The version should come from the workload: ``pebble exec`` or
+    ``subprocess`` asking the binary, a version file the image ships, or
+    an API the service exposes — whatever can be read at runtime rather
+    than written down.
+
+    A name counts as a constant only when every assignment to it in the
+    same file is a string literal, so a charm that seeds a variable with
+    a placeholder and then overwrites it with a real lookup is not
+    flagged. Neither is the ``self._version() or ""`` fallback idiom, nor
+    a placeholder passed on its own: see :data:`_VERSION_PLACEHOLDERS`.
+    A constant defined in another module is not followed, which is a
+    deliberate gap — it would add false-positive risk for no finding the
+    corpus can show.
+    """
+
+    category = "FEATURES"
+    number = 6
+    name = "hardcoded-workload-version"
+    description = "Workload version is a hardcoded constant, not read from the workload"
+    default_severity = models.Severity.WARNING
+    reference_url = (
+        "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for module in context.charm_sources():
+            literal_names = _literal_names(module)
+            for call in module.walk(ast.Call):
+                if _called_name(call.func) not in _VERSION_CALLS or not call.args:
+                    continue
+                version = _hardcoded_version(call.args[0], literal_names)
+                if version is None:
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Workload version is hardcoded as `{version}` — it will keep "
+                        "being reported after the workload is upgraded",
+                        path=module.path,
+                        line=call.lineno,
+                        fix_hint=(
+                            "Read the version from the running workload (ask the binary, "
+                            "read a version file the image ships, or query the service) "
+                            "rather than writing it into the charm"
+                        ),
+                    )
+                )
+        return diagnostics
