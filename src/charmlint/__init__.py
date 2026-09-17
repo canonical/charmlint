@@ -12,9 +12,9 @@ def __getattr__(name: str) -> str:
     """
     if name != "__version__":
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from importlib.metadata import PackageNotFoundError, version
+    import importlib.metadata
 
     try:
-        return version("charmlint")
-    except PackageNotFoundError:
+        return importlib.metadata.version("charmlint")
+    except importlib.metadata.PackageNotFoundError:
         return "0.0.0+unknown"
