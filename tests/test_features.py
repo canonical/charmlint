@@ -248,7 +248,37 @@ class TestHardcodedWorkloadVersion:
         """
         findings = self._findings(tmp_charm, source)
         assert len(findings) == 1
-        assert "WORKLOAD_VERSION" in findings[0].message
+        # The message quotes the version that reaches Juju, not the name it
+        # was written under: the path and line already point at the name.
+        assert "2.27.1" in findings[0].message
+
+    def test_constant_named_like_a_placeholder_flagged(self, tmp_charm: pathlib.Path):
+        """A real version is hardcoded however the name reads."""
+        source = """\
+            import ops
+
+            UNKNOWN = "1.2.3"
+
+            class C(ops.CharmBase):
+                def _on_pebble_ready(self, event):
+                    self.unit.set_workload_version(UNKNOWN)
+        """
+        findings = self._findings(tmp_charm, source)
+        assert len(findings) == 1
+        assert "1.2.3" in findings[0].message
+
+    def test_name_bound_to_a_placeholder_not_flagged(self, tmp_charm: pathlib.Path):
+        """A placeholder is a placeholder whether or not it is named one."""
+        source = """\
+            import ops
+
+            VERSION = "n/a"
+
+            class C(ops.CharmBase):
+                def _on_stop(self, event):
+                    self.unit.set_workload_version(VERSION)
+        """
+        assert self._findings(tmp_charm, source) == []
 
     def test_charmhelpers_spelling_flagged(self, tmp_charm: pathlib.Path):
         source = """\

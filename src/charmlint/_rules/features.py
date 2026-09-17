@@ -148,29 +148,43 @@ class NoSetWorkloadVersion(Rule):
 _VERSION_PLACEHOLDERS = frozenset({"", "n/a", "none", "unknown"})
 
 
-def _literal_names(module: models.Module) -> set[str]:
-    """Names bound to a string literal and to nothing else, anywhere in *module*.
+def _literal_names(module: models.Module) -> dict[str, str]:
+    """Names bound to a string literal and to nothing else, mapped to that literal.
 
     A name assigned a literal in one branch and a real lookup in another is
     not a hardcoded version, so a name is only treated as constant when
-    *every* assignment to it in the file is a string literal.
+    *every* assignment to it in the file is a string literal. The value is
+    carried along because it, not the name, is what decides whether the
+    version is a placeholder and what the diagnostic should quote.
+
+    A name assigned a literal more than once keeps the last one, which is
+    what the module ends up holding.
     """
-    literal: set[str] = set()
+    literal: dict[str, str] = {}
     dynamic: set[str] = set()
     for assign in module.walk(ast.Assign):
         constant = isinstance(assign.value, ast.Constant) and isinstance(assign.value.value, str)
         for target in assign.targets:
-            if isinstance(target, ast.Name):
-                (literal if constant else dynamic).add(target.id)
-    return literal - dynamic
+            if not isinstance(target, ast.Name):
+                continue
+            if constant:
+                literal[target.id] = assign.value.value
+            else:
+                dynamic.add(target.id)
+    return {name: value for name, value in literal.items() if name not in dynamic}
 
 
-def _hardcoded_version(arg: ast.expr, literal_names: set[str]) -> str | None:
-    """The hardcoded version *arg* passes, or ``None`` if it is computed."""
+def _hardcoded_version(arg: ast.expr, literal_names: dict[str, str]) -> str | None:
+    """The hardcoded version *arg* passes, or ``None`` if it is computed.
+
+    The version is the string that reaches Juju, whether it was written at
+    the call or bound to a name first, so a name resolves to its value
+    before the placeholder test rather than being tested as a word.
+    """
     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
         value = arg.value
     elif isinstance(arg, ast.Name) and arg.id in literal_names:
-        value = arg.id
+        value = literal_names[arg.id]
     else:
         return None
     return None if value.strip().lower() in _VERSION_PLACEHOLDERS else value
