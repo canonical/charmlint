@@ -2,7 +2,14 @@
 
 import json
 import pathlib
+import re
+import subprocess
+import sys
+import textwrap
 
+import pytest
+
+import charmlint
 from charmlint._cli import main
 from tests.conftest import make_full_charm, write_charmcraft_yaml
 
@@ -66,3 +73,33 @@ class TestCLI:
         assert exit_code_normal == 0
         exit_code_strict = main([str(tmp_charm), "--strict"])
         assert exit_code_strict in (0, 2)
+
+    def test_version(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--version"])
+        assert exc_info.value.code == 0
+        assert capsys.readouterr().out.startswith("charmlint ")
+
+
+class TestVersionIsLazy:
+    """``importlib.metadata`` must not be imported unless ``--version`` is used."""
+
+    def test_importlib_metadata_not_imported_by_a_lint(self, tmp_charm: pathlib.Path):
+        # In a subprocess, because this test session has imported plenty already.
+        code = textwrap.dedent("""
+            import sys
+            from charmlint._cli import main
+            main([sys.argv[1]])
+            assert "importlib.metadata" not in sys.modules
+        """)
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(tmp_charm)], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_version_attribute_still_works(self):
+        assert re.match(r"\d+\.\d+", charmlint.__version__)
+
+    def test_unknown_attribute_raises(self):
+        with pytest.raises(AttributeError):
+            charmlint.nonexistent  # noqa: B018
