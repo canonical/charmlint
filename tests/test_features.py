@@ -83,6 +83,12 @@ class TestNoAssumesJujuVersion:
         write_charmcraft_yaml(tmp_charm, {"name": "x", "assumes": ["juju"]})
         assert len(_hits(tmp_charm)) == 1
 
+    def test_bare_juju_mapping_without_version_flagged(self, tmp_charm: pathlib.Path):
+        # `- juju:` parses to `{"juju": None}` — the mapping-form
+        # equivalent of a bare `juju`, and just as much not a constraint.
+        write_charmcraft_yaml(tmp_charm, {"name": "x", "assumes": [{"juju": None}]})
+        assert len(_hits(tmp_charm)) == 1
+
     def test_juju_prefixed_feature_does_not_suppress(self, tmp_charm: pathlib.Path):
         # A hypothetical feature whose name merely starts with "juju".
         write_charmcraft_yaml(tmp_charm, {"name": "x", "assumes": ["juju-secrets"]})

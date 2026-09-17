@@ -2,33 +2,38 @@
 
 These rules are about what the charm tells Juju it needs, rather than
 about what its Python does. A charm that relies on a feature Juju only
-grew in a recent release has no way to refuse an older controller
-unless it says so in its metadata, so the omission is only visible in
-the YAML.
+added in a recent release has no way to refuse an older controller
+unless it says so in its metadata.
 """
 
 from .. import _models as models
 from ._base import Rule
 
 # `assumes` entries nest: a group is a single-key mapping whose value is
-# the list of nested entries. Both spellings are valid at any depth.
+# the list of nested entries. Both quantifiers are valid at any depth.
 _GROUP_KEYS = ("any-of", "all-of")
 
 
 def _is_juju_entry(entry: models.Yaml) -> bool:
     """Report whether *entry* is a `juju` feature expression.
 
-    Both spellings mean the same thing to Juju: the flat string form
-    (``juju >= 3.6``) and the mapping form (``{juju: ">= 3.6"}``). A
-    bare ``juju`` with no comparison is not a version constraint, so it
-    does not count.
+    Both structures mean the same thing to Juju: the flat string form
+    (``juju >= 3.6``) and the mapping form (``{juju: ">= 3.6"}``). In
+    either form, a bare ``juju`` with nothing after it is not a version
+    constraint, so it does not count.
     """
     value = entry.value
     if isinstance(value, str):
         head, _, rest = value.strip().partition(" ")
         return head.lower() == "juju" and bool(rest.strip())
     if isinstance(value, dict):
-        return any(isinstance(key, str) and key.strip().lower() == "juju" for key in value)
+        return any(
+            isinstance(key, str)
+            and key.strip().lower() == "juju"
+            and isinstance(val, str)
+            and bool(val.strip())
+            for key, val in value.items()
+        )
     return False
 
 
@@ -63,9 +68,7 @@ class NoAssumesJujuVersion(Rule):
         name = context.metadata.get("name")
         # Only charms that keep their metadata in charmcraft.yaml. A charm
         # still declaring `name` in metadata.yaml predates the unified
-        # file, and possibly predates `assumes` (Juju 2.9.23) as well:
-        # telling it to adopt a key from a layout it hasn't moved to is
-        # noise, not a finding.
+        # file, and possibly predates `assumes` (Juju 2.9.23) as well.
         if not name.present or name.source != "charmcraft.yaml":
             return []
         assumes = context.metadata.get("assumes")
