@@ -3,8 +3,9 @@
 import pathlib
 
 from charmlint._linter import lint
-from charmlint._models import Severity
-from tests.conftest import write_charmcraft_yaml
+from charmlint._models import CharmContext, Diagnostic, LintReport, Severity
+from charmlint._rules.charmcraft_compat import Entrypoint
+from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 
 class TestDeprecatedSeries:
@@ -139,6 +140,122 @@ class TestNamingConventions:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-002" not in {d.rule_id for d in list(report)}
         assert "FATAL" not in {d.rule_id for d in list(report)}
+
+
+def write_dispatch(charm_dir: pathlib.Path, exec_line: str = "exec ./src/charm.py") -> None:
+    """Write a dispatch script that execs the given command."""
+    (charm_dir / "dispatch").write_text(f"#!/bin/sh\n{exec_line}\n")
+
+
+def write_entrypoint(charm_dir: pathlib.Path, executable: bool = True) -> None:
+    """Write src/charm.py, optionally without the executable bit."""
+    entrypoint = charm_dir / "src" / "charm.py"
+    entrypoint.write_text("#!/usr/bin/env python3\n")
+    entrypoint.chmod(0o755 if executable else 0o644)
+
+
+class TestEntrypoint:
+    """Tests for CHARMCRAFT-003 — entrypoint exists and is executable."""
+
+    def test_missing_entrypoint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm)
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert diags[0].path == "dispatch"
+        assert "src/charm.py" in diags[0].message
+
+    def test_entrypoint_not_executable(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm)
+        write_entrypoint(tmp_charm, executable=False)
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "not executable" in diags[0].message
+        assert diags[0].path == "src/charm.py"
+        assert diags[0].fix_hint == "Run: chmod +x src/charm.py"
+
+    def test_entrypoint_is_a_directory(self, tmp_charm: pathlib.Path):
+        # Driven through the rule directly: a directory named charm.py makes
+        # the context loader emit FATAL before any rule runs.
+        write_dispatch(tmp_charm)
+        (tmp_charm / "src" / "charm.py").mkdir()
+        diags = Entrypoint().check(CharmContext(charm_dir=tmp_charm))
+        assert len(diags) == 1
+        assert "not a regular file" in diags[0].message
+
+    def test_executable_entrypoint_ok(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm)
+        write_entrypoint(tmp_charm)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_charmcraft_generated_dispatch(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(
+            tmp_charm,
+            'JUJU_DISPATCH_PATH="${JUJU_DISPATCH_PATH:-$0}" PYTHONPATH="lib:venv" '
+            "exec ./src/charm.py",
+        )
+        write_entrypoint(tmp_charm, executable=False)
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert diags[0].path == "src/charm.py"
+
+    def test_explicit_interpreter_checks_the_script(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "exec ./venv/bin/python3 ./src/charm.py")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "src/charm.py" in diags[0].message
+
+    def test_interpreted_entrypoint_needs_no_executable_bit(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "exec /usr/bin/env python3 ./src/charm.py")
+        write_entrypoint(tmp_charm, executable=False)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_interpreter_invocation_without_exec(self, tmp_charm: pathlib.Path):
+        # The pattern the slurm charms use: no exec, interpreter from a variable.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(
+            tmp_charm,
+            'JUJU_DISPATCH_PATH="${JUJU_DISPATCH_PATH:-$0}" PYTHONPATH=lib:venv '
+            "$PYTHON_BIN ./src/charm.py",
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "does not exist" in diags[0].message
+
+    def test_no_dispatch(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_dispatch_without_exec(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "dispatch").write_text("#!/bin/sh\necho nothing to do\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_unresolvable_entrypoints_are_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        for exec_line in (
+            'exec "$JUJU_CHARM_DIR/src/charm.py"',
+            "exec /usr/bin/true",
+            "exec ../elsewhere/charm.py",
+        ):
+            write_dispatch(tmp_charm, exec_line)
+            report = lint(tmp_charm)
+            assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}, exec_line
 
 
 class TestUnknownTopLevelField:
@@ -520,3 +637,613 @@ class TestUnknownResourceField:
         )
         report = lint(tmp_charm)
         assert "CHARMCRAFT-005" not in {d.rule_id for d in list(report)}
+
+
+class TestOpsMainCall:
+    """Tests for CHARMCRAFT-006 — missing ops.main() call."""
+
+    def test_no_ops_main_is_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-006"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert diags[0].path == "src/charm.py"
+
+    def test_ops_main_call(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n\n\nops.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_legacy_main_import(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from ops.charm import CharmBase\nfrom ops.main import main\n\n\n"
+            "class C(CharmBase):\n    pass\n\n\nmain(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_aliased_import(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops as o\n\n\nclass C(o.CharmBase):\n    pass\n\n\no.main.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_import_ops_main_submodule(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops.main\nfrom ops.charm import CharmBase\n\n\n"
+            "class C(CharmBase):\n    pass\n\n\nops.main.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_main_module_attribute_call(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "from ops import CharmBase, main\n\n\nclass C(CharmBase):\n    pass\n\n\nmain.main(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_main_in_another_src_module_still_flags(self, tmp_charm: pathlib.Path):
+        # `ops.main()` only runs if it is in the file dispatch execs, so a
+        # call in a sibling module doesn't make src/charm.py an entrypoint.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nfrom charm import C\n\nops.main(C)\n",
+            filename="entrypoint.py",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
+
+    def test_configured_entrypoint_is_used(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "parts": {"charm": {"charm-entrypoint": "src/entrypoint.py"}},
+            },
+        )
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\nfrom charm import C\n\nops.main(C)\n",
+            filename="entrypoint.py",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_configured_entrypoint_without_main_is_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "parts": {"charm": {"charm-entrypoint": "src/entrypoint.py"}},
+            },
+        )
+        write_charm_source(
+            tmp_charm,
+            "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n\n\nops.main(C)\n",
+        )
+        write_charm_source(tmp_charm, "import ops\n", filename="entrypoint.py")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-006"]
+        assert len(diags) == 1
+        assert diags[0].path == "src/entrypoint.py"
+
+    def test_non_python_entrypoint_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "parts": {"charm": {"charm-entrypoint": "scripts/entrypoint"}},
+            },
+        )
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_missing_entrypoint_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_malformed_parts_falls_back_to_default(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "parts": {"charm": ["bundle"]}})
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
+
+    def test_non_ops_charm_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import subprocess\n\n\ndef install():\n    pass\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+    def test_ops_main_in_lib_does_not_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\n\nclass C(ops.CharmBase):\n    pass\n")
+        lib_dir = tmp_charm / "lib" / "charms" / "example" / "v0"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "helper.py").write_text("import ops\n\nops.main(None)\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
+
+    def test_relative_main_import_does_not_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            "import ops\nfrom .helpers import main\n\n\nclass C(ops.CharmBase):\n    pass\n\n\nmain(C)\n",
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
+
+    def test_syntax_error_source_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n\ndef broken(:\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+
+
+class TestLegacyBases:
+    """Tests for CHARMCRAFT-007 — legacy 'bases' block."""
+
+    def test_bases_present_is_info(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "bases": [{"name": "ubuntu", "channel": "22.04"}]},
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+        assert diags[0].path == "charmcraft.yaml"
+
+    def test_bases_with_24_04_is_warning(self, tmp_charm: pathlib.Path):
+        """charmcraft refuses to pack 'bases' naming a post-2024 release."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "bases": [{"name": "ubuntu", "channel": "24.04"}]},
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "24.04 and later" in diags[0].message
+
+    def test_unquoted_channel_still_compared(self, tmp_charm: pathlib.Path):
+        """An unquoted channel parses as a float, not a string."""
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nbases:\n  - name: ubuntu\n    channel: 24.10\n"
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+
+    def test_run_on_24_04_is_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "bases": [
+                    {
+                        "build-on": [{"name": "ubuntu", "channel": "22.04"}],
+                        "run-on": [{"name": "ubuntu", "channel": "24.04"}],
+                    }
+                ],
+            },
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+
+    def test_build_on_24_04_is_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "bases": [
+                    {
+                        "build-on": [{"name": "ubuntu", "channel": "24.04"}],
+                        "run-on": [{"name": "ubuntu", "channel": "22.04"}],
+                    }
+                ],
+            },
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+
+    def test_channel_without_a_release_number_is_info(self, tmp_charm: pathlib.Path):
+        """A channel charmlint cannot read is not evidence of a pack failure."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "bases": [{"name": "centos", "channel": "7"}]},
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+
+    def test_build_on_run_on_form_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "bases": [
+                    {
+                        "build-on": [{"name": "ubuntu", "channel": "22.04"}],
+                        "run-on": [{"name": "ubuntu", "channel": "22.04"}],
+                    }
+                ],
+            },
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+
+    def test_base_and_platforms_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "base": "ubuntu@22.04",
+                "platforms": {"amd64": None},
+            },
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_no_bases(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_bases_without_a_channel_is_info(self, tmp_charm: pathlib.Path):
+        # Whether charmcraft accepts a base with no channel is its own
+        # business; all this rule has to say is that the block is legacy.
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "bases": [{"name": "ubuntu"}]})
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+
+    def test_points_at_the_bases_line(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nsummary: s\nbases:\n  - name: ubuntu\n    channel: '22.04'\n"
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-007"]
+        assert len(diags) == 1
+        assert diags[0].line == 3
+
+    def test_noqa_on_the_bases_line_suppresses(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nbases:  # noqa: CHARMCRAFT-007\n  - name: ubuntu\n    channel: '22.04'\n"
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_stale_bases_in_metadata_yaml_ignored(self, tmp_charm: pathlib.Path):
+        """A leftover 'bases' in metadata.yaml is dead text charmcraft ignores."""
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "base": "ubuntu@24.04", "platforms": {"amd64": None}},
+        )
+        (tmp_charm / "metadata.yaml").write_text("summary: s\nbases:\n  - name: ubuntu\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+    def test_bases_only_in_metadata_yaml_ignored(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "metadata.yaml").write_text("name: test\nbases:\n  - name: ubuntu\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-007" not in {d.rule_id for d in list(report)}
+
+
+def _k8s_charm(**extra: object) -> dict[str, object]:
+    """Return charmcraft.yaml data for a Kubernetes charm."""
+    data: dict[str, object] = {
+        "name": "test",
+        "containers": {"workload": {"resource": "workload-image", "uid": 584792, "gid": 584792}},
+    }
+    data.update(extra)
+    return data
+
+
+def _diags(report: LintReport, rule_id: str) -> list[Diagnostic]:
+    """Return the report's diagnostics for one rule."""
+    return [d for d in report if d.rule_id == rule_id]
+
+
+class TestCharmUser:
+    """Tests for CHARMCRAFT-008 — charm-user."""
+
+    def test_k8s_charm_without_charm_user(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, _k8s_charm())
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-008")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "does not set 'charm-user'" in diags[0].message
+        assert diags[0].path == "charmcraft.yaml"
+
+    def test_machine_charm_without_charm_user_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "base": "ubuntu@24.04"})
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-008")
+
+    def test_explicit_root_is_a_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, _k8s_charm(**{"charm-user": "root"}))
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-008")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "runs the charm's hooks as root" in diags[0].message
+
+    def test_sudoer_is_info(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, _k8s_charm(**{"charm-user": "sudoer"}))
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-008")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+        assert "sudo" in diags[0].message
+
+    def test_non_root_is_clean(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, _k8s_charm(**{"charm-user": "non-root"}))
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-008")
+
+    def test_invalid_value_is_an_error(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, _k8s_charm(**{"charm-user": "nonroot"}))
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-008")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "'nonroot'" in diags[0].message
+        assert diags[0].fix_hint == "Did you mean 'non-root'?"
+
+    def test_invalid_non_string_value_is_an_error(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, _k8s_charm(**{"charm-user": 0}))
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-008")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert diags[0].fix_hint == "Use 'root', 'sudoer' or 'non-root'"
+
+    def test_invalid_value_on_a_machine_charm_is_still_an_error(self, tmp_charm: pathlib.Path):
+        """An unusable value is a malformed key, not a question of privilege."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "charm-user": "wheel"})
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-008")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+
+    def test_valid_root_on_a_machine_charm_is_skipped(self, tmp_charm: pathlib.Path):
+        """The key has no effect on a machine charm, so root is not worth saying."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "charm-user": "root"})
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-008")
+
+    def test_assumes_k8s_api_counts_as_kubernetes(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "assumes": ["k8s-api"]})
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-008")) == 1
+
+    def test_nested_assumes_k8s_api_counts_as_kubernetes(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "assumes": [{"any-of": ["k8s-api", "juju >= 3.6"]}]},
+        )
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-008")) == 1
+
+    def test_unrelated_assumes_is_not_kubernetes(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "assumes": ["juju >= 3.6"]})
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-008")
+
+    def test_pod_spec_charm_is_skipped(self, tmp_charm: pathlib.Path):
+        """charm-user postdates the last Juju that could deploy a pod-spec charm."""
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: test\nseries: [kubernetes]\ndeployment:\n  type: stateful\n"
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-008")
+
+    def test_noqa_on_the_charm_user_line_suppresses(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\ncontainers:\n  w:\n    resource: r\n    uid: 584792\n"
+            "    gid: 584792\ncharm-user: root  # noqa: CHARMCRAFT-008\n"
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-008")
+
+
+class TestContainerRunsAsRoot:
+    """Tests for CHARMCRAFT-009 — container uid/gid."""
+
+    def test_container_without_uid_or_gid(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm, {"name": "test", "containers": {"workload": {"resource": "img"}}}
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "'workload'" in diags[0].message
+        assert "as root" in diags[0].message
+        assert "'uid' is unset" in diags[0].message
+        assert "'gid' is unset" in diags[0].message
+
+    def test_explicit_zero_ids(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"workload": {"resource": "img", "uid": 0, "gid": 0}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert "'uid' is 0 and 'gid' is 0" in diags[0].message
+
+    def test_root_group_only(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"workload": {"resource": "img", "uid": 584792, "gid": 0}},
+            },
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert "in the root group" in diags[0].message
+        assert "'uid'" not in diags[0].message
+
+    def test_non_root_ids_are_clean(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, _k8s_charm())
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
+
+    def test_low_system_ids_are_not_root(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 999, "gid": 999}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert [d.severity for d in diags] == [Severity.INFO]
+
+    def test_off_convention_id_is_info(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 10001, "gid": 10001}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+        assert "runs as 10001, not 584792" in diags[0].message
+        assert diags[0].fix_hint is not None
+        assert "non-root-skills" in diags[0].fix_hint
+
+    def test_deprecated_snap_daemon_id_is_a_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "test",
+                "containers": {"w": {"resource": "img", "uid": 584788, "gid": 584788}},
+            },
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "deprecated 'snap_daemon' user" in diags[0].message
+        assert diags[0].fix_hint is not None
+        assert "584792" in diags[0].fix_hint
+
+    def test_mismatched_ids_are_a_warning(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 584792, "gid": 999}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "uid 584792 and gid 999" in diags[0].message
+
+    def test_mismatched_ids_do_not_also_report_the_convention(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 100, "gid": 200}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert "should match" in diags[0].message
+
+    def test_invalid_id_suppresses_the_convention_check(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 1000, "gid": 100}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert [d.severity for d in diags] == [Severity.ERROR]
+
+    def test_reserved_id_range_is_an_error(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": 1000, "gid": 10000}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "reserves 1000-9999" in diags[0].message
+
+    def test_non_integer_id_is_an_error(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": "584792", "gid": 0}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        # The string uid is an error; gid 0 is separately a root warning.
+        assert [d.severity for d in diags] == [Severity.ERROR, Severity.WARNING]
+        assert "IDs must be integers" in diags[0].message
+
+    def test_boolean_id_is_an_error(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\ncontainers:\n  w:\n    resource: img\n    uid: yes\n    gid: 10000\n"
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "IDs must be integers" in diags[0].message
+
+    def test_negative_id_is_an_error(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"w": {"resource": "img", "uid": -1, "gid": 10000}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert "cannot be negative" in diags[0].message
+
+    def test_each_container_is_reported_separately(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "containers": {"a": {"resource": "x"}, "b": {"resource": "y"}}},
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert {d.message.split("'")[1] for d in diags} == {"a", "b"}
+
+    def test_malformed_container_is_skipped(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text("name: test\ncontainers:\n  w:\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
+
+    def test_containers_written_as_a_list_is_skipped(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "containers": ["workload"]})
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
+
+    def test_no_containers_is_clean(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
+
+    def test_diagnostic_anchors_on_the_declared_uid(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\ncontainers:\n  w:\n    resource: img\n    uid: 0\n    gid: 0\n"
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].line == 5
+
+    def test_diagnostic_anchors_on_the_container_name_when_ids_are_absent(
+        self, tmp_charm: pathlib.Path
+    ):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\ncontainers:\n  w:\n    resource: img\n"
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-009")
+        assert len(diags) == 1
+        assert diags[0].line == 3
+
+    def test_noqa_on_the_container_line_suppresses(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\ncontainers:\n  w:  # noqa: CHARMCRAFT-009\n    resource: img\n"
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
