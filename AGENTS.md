@@ -28,11 +28,7 @@ uv run --group dev ty check src tests
 
 ## Rule reference
 
-`docs/rules.md` is generated from the rule registry — its ID, name,
-default severity, description, reference URL and class docstring. Run
-`make docs` after adding or changing a rule; CI fails if the page is
-stale. Never hand-edit the page: a rule's docstring is the text that
-appears on it, so improve it there.
+`docs/rules.md` is generated from the rule registry — its ID, name, default severity, description, reference URL and class docstring. Run `make docs` after adding or changing a rule; CI fails if the page is stale. Never hand-edit the page: a rule's docstring is the text that appears on it, so improve it there.
 
 ## Corpus measurements
 
