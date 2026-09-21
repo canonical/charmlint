@@ -11,6 +11,19 @@ def _is_valid_licence(path: pathlib.Path) -> bool:
 
 
 class NoLicence(Rule):
+    """Check that the charm ships a licence file.
+
+    Charm source is published for people to read, fork and fix, and
+    without a licence file none of them know on what terms they may.
+
+    ``LICENSE`` and ``LICENCE`` are both accepted, but only at the
+    charm root and only spelled in upper case — a ``COPYING``, a
+    ``LICENSE.txt``, or a licence kept under ``docs/`` is not
+    recognised. An empty file is not a licence either. Shipping *both*
+    spellings is reported in its own right: two files invite the two
+    drifting apart, and leave a reader guessing which one governs.
+    """
+
     category = "STRUCTURE"
     number = 1
     name = "no-licence"
@@ -30,6 +43,18 @@ class NoLicence(Rule):
 
 
 class NoIcon(Rule):
+    """Check that the charm ships an ``icon.svg``.
+
+    The icon is how the charm is recognised on Charmhub; a charm
+    without one is shown under a placeholder, alongside every other
+    charm that skipped it.
+
+    The file has to be at the charm root, named exactly ``icon.svg``,
+    and non-empty — a zero-byte placeholder is reported as though it
+    were missing. Nothing inside the SVG is examined: dimensions and
+    viewBox are charmcraft's business, not this rule's.
+    """
+
     category = "STRUCTURE"
     number = 2
     name = "no-icon"

@@ -132,17 +132,59 @@ Charmcraft compatibility.
 
 **Warning** — Deprecated 'series' attribute in metadata
 
+Flag the deprecated `series` key in charm metadata.
+
+`series` named the Ubuntu releases a charm supported, before
+charmcraft moved that onto `bases` and then onto `base` plus
+`platforms`. A charm still carrying it is either building for a
+shape charmcraft no longer supports, or carrying a key that no
+longer does anything.
+
+Presence is the whole test: an empty `series:` is flagged like
+any other, because the key itself is the finding rather than what
+it says.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms>
 
 ### CHARMCRAFT-002 naming-conventions
 
 **Warning** — Config option names use underscores instead of hyphens
 
+Flag config option names written with underscores.
+
+Charm config options are hyphenated by convention —
+`juju config app log-level=debug` — and an underscored name
+stands out at every point an operator types it. The name is part of
+the charm's interface, so this is worth fixing early: renaming an
+option later breaks everyone already setting it.
+
+Config options only. Juju rejects an underscored action name
+outright, so no charm has one to report, and underscored action
+parameters are vanishingly rare in the wild.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config>
 
 ### CHARMCRAFT-003 dispatch-entrypoint-issues
 
 **Error** — Charm entrypoint missing or not executable
+
+Check that a hand-written `dispatch` runs a real entrypoint.
+
+charmcraft generates `dispatch` at pack time, so most charm repos
+have none and the rule says nothing about them. A `dispatch`
+committed to the repo is the charm author's own, and a mistake in
+it kills every hook: the entrypoint it names may not exist, may not
+be a regular file, or — when dispatch runs it directly rather than
+handing it to an interpreter — may not carry the executable bit.
+An entrypoint passed to `python3` needs no such bit, and is not
+reported for lacking one.
+
+Anything the script does not spell out statically is left alone: a
+command built from a shell variable, a path leading outside the
+charm, or a `dispatch` whose last statement does not run a
+`.py` file at all. A `dispatch` that cannot be read is an
+environment problem rather than the charm's, and is passed over
+too.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/dispatch-file/>
 
@@ -380,6 +422,17 @@ Documentation.
 
 **Warning** — No README file found
 
+Check that the charm has a README.
+
+The README is what someone landing in the repository reads first,
+and for many charms it is the only documentation there is.
+
+`README` with a `.md`, `.txt` or `.rst` extension satisfies
+the rule, in any case combination, and it has to sit at the charm
+root: a README one directory down documents that directory, not the
+charm. An extensionless `README` is reported, since nothing
+renders it.
+
 ## FEATURES
 
 Expected features.
@@ -387,6 +440,25 @@ Expected features.
 ### FEATURES-004 no-assumes-juju-version
 
 **Info** — No `assumes:` entry declaring a minimum Juju version
+
+Check that the charm declares the oldest Juju it supports.
+
+`assumes` is how a charm tells a controller what it needs. With a
+`juju >= x.y` entry, a controller too old to run the charm
+refuses the deploy and says so; without one, the charm deploys and
+then fails at whichever hook first reaches the feature it assumed,
+which is a much longer walk back to the cause.
+
+The constraint counts wherever it appears — nested inside an
+`any-of` or `all-of` group as readily as at the top level — and
+in either spelling Juju accepts, the flat `juju >= 3.6` and the
+mapping `{juju: ">= 3.6"}`. A bare `juju` with no version after
+it constrains nothing and does not count.
+
+Only charms whose metadata lives in `charmcraft.yaml` are
+checked: one still declaring `name` in `metadata.yaml` predates
+the unified file, and may predate `assumes` (Juju 2.9.23)
+altogether. Bundles are skipped, having no `assumes` to declare.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-assumes>
 
@@ -410,11 +482,35 @@ Metadata completeness.
 
 **Error** — Empty or missing 'name' field in charm metadata
 
+Check that the charm declares a `name`.
+
+`name` is the charm's identity: what it is published under on
+Charmhub, and what `juju deploy` is given. charmcraft refuses to
+pack a charm without one, so the charm is not merely untidy, it
+does not build.
+
+An empty value counts as missing — `name:` with nothing after it
+names nothing. Bundles are skipped, here and in the rest of this
+family: these are charm-metadata fields, and a bundle declares none
+of them.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-name>
 
 ### METADATA-002 missing-display-name
 
 **Warning** — Empty or missing 'display-name'/'title' field
+
+Check that the charm declares a human-readable title.
+
+The title is the name Charmhub shows for the charm, where `name`
+is the identifier it is deployed by. Juju never needs it, so a
+charm without one still works — it just appears under its
+package-style name wherever a person is reading.
+
+The key is `title` in charmcraft.yaml and `display-name` in
+metadata.yaml, and only the spelling belonging to the file the
+charm uses counts: writing `display-name` in charmcraft.yaml is a
+misplacement rather than a title.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-title>
 
@@ -422,11 +518,28 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ch
 
 **Error** — Empty or missing 'summary' field
 
+Check that the charm declares a `summary`.
+
+The summary is the one-line description that identifies the charm
+in `juju info`, in `charmhub` search results, and anywhere else
+charms are listed rather than read about. charmcraft requires it to
+pack.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-summary>
 
 ### METADATA-004 missing-description
 
 **Error** — Empty or missing 'description' field
+
+Check that the charm declares a `description`.
+
+The description is the prose Charmhub shows on the charm's page:
+what the charm deploys, and what someone is choosing when they
+choose it. charmcraft requires it to pack.
+
+Only presence is checked. Whether the description is worth reading
+is not something a linter can tell, so a one-word description
+satisfies this rule.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-description>
 
@@ -434,17 +547,47 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ch
 
 **Info** — Empty or missing 'docs' URL
 
+Check that the charm links to its documentation.
+
+Without the link, a reader who finds the charm on Charmhub has
+nowhere to go for how to operate it. Advisory, because a charm
+deploys perfectly well without it.
+
+The key is `links.documentation` in charmcraft.yaml and `docs`
+at the top level in metadata.yaml, and only the spelling belonging
+to the file the charm uses counts.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links>
 
 ### METADATA-006 missing-issues
 
 **Info** — Empty or missing 'issues' URL
 
+Check that the charm links to its issue tracker.
+
+The link is how someone who hits a bug in the charm reports it
+rather than working around it. Advisory, because a charm deploys
+perfectly well without it.
+
+The key is `links.issues` in charmcraft.yaml and `issues` at
+the top level in metadata.yaml, and only the spelling belonging to
+the file the charm uses counts.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-issues>
 
 ### METADATA-007 missing-source
 
 **Info** — Empty or missing 'source' URL
+
+Check that the charm links to its source.
+
+The link is how someone reading the charm on Charmhub finds the
+code behind it — to see what it actually does, or to fix it.
+Advisory, because a charm deploys perfectly well without it.
+
+The key is `links.source` in charmcraft.yaml and `source` at
+the top level in metadata.yaml, and only the spelling belonging to
+the file the charm uses counts.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-source>
 
@@ -533,9 +676,32 @@ Structure.
 
 **Info** — No LICENSE/LICENCE file found
 
+Check that the charm ships a licence file.
+
+Charm source is published for people to read, fork and fix, and
+without a licence file none of them know on what terms they may.
+
+`LICENSE` and `LICENCE` are both accepted, but only at the
+charm root and only spelled in upper case — a `COPYING`, a
+`LICENSE.txt`, or a licence kept under `docs/` is not
+recognised. An empty file is not a licence either. Shipping *both*
+spellings is reported in its own right: two files invite the two
+drifting apart, and leave a reader guessing which one governs.
+
 ### STRUCTURE-002 no-icon
 
 **Info** — No icon.svg found
+
+Check that the charm ships an `icon.svg`.
+
+The icon is how the charm is recognised on Charmhub; a charm
+without one is shown under a placeholder, alongside every other
+charm that skipped it.
+
+The file has to be at the charm root, named exactly `icon.svg`,
+and non-empty — a zero-byte placeholder is reported as though it
+were missing. Nothing inside the SVG is examined: dimensions and
+viewBox are charmcraft's business, not this rule's.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/icon-svg-file/>
 

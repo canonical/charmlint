@@ -54,6 +54,26 @@ def _has_juju_constraint(assumes: models.Yaml) -> bool:
 
 
 class NoAssumesJujuVersion(Rule):
+    """Check that the charm declares the oldest Juju it supports.
+
+    ``assumes`` is how a charm tells a controller what it needs. With a
+    ``juju >= x.y`` entry, a controller too old to run the charm
+    refuses the deploy and says so; without one, the charm deploys and
+    then fails at whichever hook first reaches the feature it assumed,
+    which is a much longer walk back to the cause.
+
+    The constraint counts wherever it appears — nested inside an
+    ``any-of`` or ``all-of`` group as readily as at the top level — and
+    in either spelling Juju accepts, the flat ``juju >= 3.6`` and the
+    mapping ``{juju: ">= 3.6"}``. A bare ``juju`` with no version after
+    it constrains nothing and does not count.
+
+    Only charms whose metadata lives in ``charmcraft.yaml`` are
+    checked: one still declaring ``name`` in ``metadata.yaml`` predates
+    the unified file, and may predate ``assumes`` (Juju 2.9.23)
+    altogether. Bundles are skipped, having no ``assumes`` to declare.
+    """
+
     category = "FEATURES"
     number = 4
     name = "no-assumes-juju-version"
