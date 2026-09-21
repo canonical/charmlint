@@ -120,21 +120,11 @@ def render(rules: dict[str, Rule], scopes: dict[str, str]) -> str:
             f"{', '.join(missing)}"
         )
 
-    parts = [_BANNER, "", _PREAMBLE, count_line(rules, by_category), "", summary(by_category)]
+    parts = [_BANNER, "", _PREAMBLE, summary(by_category)]
     for category, category_rules in by_category.items():
         parts.append(f"## {category}\n\n{scopes[category]}.\n")
         parts.extend(entry(rule) for rule in category_rules)
     return "\n".join(parts).rstrip("\n") + "\n"
-
-
-def count_line(rules: dict[str, Rule], by_category: dict[str, list[Rule]]) -> str:
-    """Return the sentence counting the rules the page documents."""
-    rule_word = "rule" if len(rules) == 1 else "rules"
-    category_word = "category" if len(by_category) == 1 else "categories"
-    return (
-        f"charmlint has **{len(rules)} {rule_word}** across "
-        f"**{len(by_category)} {category_word}**."
-    )
 
 
 def summary(by_category: dict[str, list[Rule]]) -> str:

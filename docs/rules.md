@@ -18,8 +18,6 @@ IDs and names are assigned.
 Severity is what the rule reports *by default*; `per-rule-severity` in the
 config file overrides it per rule.
 
-charmlint has **44 rules** across **14 categories**.
-
 ## Summary
 
 | Rule | Name | Severity | Checks for |
