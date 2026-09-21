@@ -7,12 +7,15 @@ from . import charmcraft_compat as _charmcraft_compat  # noqa: F401
 from . import config_quality as _config_quality  # noqa: F401
 from . import correctness as _correctness  # noqa: F401
 from . import documentation as _documentation  # noqa: F401
+from . import features as _features  # noqa: F401
 from . import libraries as _libraries  # noqa: F401
 from . import metadata as _metadata  # noqa: F401
 from . import pebble as _pebble  # noqa: F401
 from . import security as _security  # noqa: F401
+from . import status as _status  # noqa: F401
 from . import structure as _structure  # noqa: F401
+from . import supplychain as _supplychain  # noqa: F401
 from . import testing as _testing  # noqa: F401
-from ._base import Rule, get_all_rules
+from ._base import CATEGORIES, Rule, get_all_rules
 
-__all__ = ["Rule", "get_all_rules"]
+__all__ = ["CATEGORIES", "Rule", "get_all_rules"]

@@ -1,12 +1,13 @@
 """Command-line interface for charmlint."""
 
 import argparse
+import collections.abc
 import json
 import os
 import pathlib
 import sys
 
-from . import __version__, _config, _linter
+from . import _config, _discovery, _linter, _selectors
 from . import _models as models
 
 # ---------------------------------------------------------------------------
@@ -88,6 +89,38 @@ def _format_summary_colour(
     )
 
 
+class _VersionAction(argparse.Action):
+    """``--version``, resolving the version only when the flag is given.
+
+    ``argparse``'s own ``version`` action wants the string up front, which
+    would import ``importlib.metadata`` on every run. See ``__init__.py``.
+    """
+
+    def __init__(
+        self,
+        option_strings: list[str],
+        dest: str = argparse.SUPPRESS,
+        default: str = argparse.SUPPRESS,
+        help: str | None = None,
+    ):
+        super().__init__(
+            option_strings=option_strings, dest=dest, default=default, nargs=0, help=help
+        )
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | collections.abc.Sequence[object] | None,
+        option_string: str | None = None,
+    ) -> None:
+        del namespace, values, option_string
+        from . import __version__
+
+        print(f"charmlint {__version__}")
+        parser.exit()
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="charmlint",
@@ -109,13 +142,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--select",
         help=(
-            "Comma-separated list of rule categories or IDs to enable "
-            "(e.g. OBSERVABILITY,METADATA-001)"
+            "Comma-separated list of rules to enable, each named by category, "
+            "rule ID or rule name (e.g. SECURITY,METADATA-001,no-readme)"
         ),
     )
     parser.add_argument(
         "--ignore",
-        help="Comma-separated list of rule IDs or categories to skip",
+        help=(
+            "Comma-separated list of rules to skip, each named by category, rule ID or rule name"
+        ),
     )
     parser.add_argument(
         "--min-severity",
@@ -158,8 +193,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--version",
-        action="version",
-        version=f"charmlint {__version__}",
+        action=_VersionAction,
+        help="Show the version number and exit",
     )
     return parser
 
@@ -199,6 +234,21 @@ def main(argv: list[str] | None = None) -> int:
         config.ignore.extend(s.strip() for s in args.ignore.split(","))
     if args.min_severity:
         config.min_severity = models.Severity(args.min_severity)
+
+    unknown = sorted(
+        {token for token in (*config.select, *config.ignore) if not _selectors.resolve(token)}
+    )
+    if unknown:
+        print(
+            f"error: not a known rule ID, rule name or category: {', '.join(unknown)}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.verbose:
+        charm_dirs = _discovery.discover_charms(charm_dir)
+        if charm_dirs != [charm_dir]:
+            print(f"Found {len(charm_dirs)} charms under {charm_dir}", file=sys.stderr)
 
     report = _linter.lint(charm_dir, config)
 
