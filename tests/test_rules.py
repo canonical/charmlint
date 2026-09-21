@@ -5,8 +5,11 @@ other rule families are re-added alongside their PRs from
 ``RULES_TRACKER.md``.
 """
 
+import collections
 import pathlib
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pytest
@@ -20,6 +23,24 @@ _RULES_WITH_URL = sorted(
     (r for r in get_all_rules().values() if r.reference_url is not None),
     key=lambda r: r.id,
 )
+
+
+def _rules_by_page() -> dict[str, list[str]]:
+    """Map each distinct page to the rules citing it.
+
+    A `#fragment` never reaches the server, so several rules pointing at
+    different anchors of one page are a single request. Collapsing them
+    keeps the suite from hammering the same host once per rule.
+    """
+    pages: dict[str, list[str]] = collections.defaultdict(list)
+    for rule in _RULES_WITH_URL:
+        assert rule.reference_url is not None
+        page, _ = urllib.parse.urldefrag(rule.reference_url)
+        pages[page].append(rule.id)
+    return dict(pages)
+
+
+_REFERENCE_PAGES = sorted(_rules_by_page().items())
 
 
 class TestMetadataRules:
@@ -195,24 +216,40 @@ class TestDocumentationRules:
         assert "DOCUMENTATION-001" in {d.rule_id for d in report}
 
 
-class TestReferenceUrls:
-    """Every rule with a reference_url must point somewhere live."""
+# A documentation host may throttle or hiccup; that is not a broken
+# reference. Only a settled non-2xx answer counts as a failure.
+_TRANSIENT_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
-    @pytest.mark.parametrize("rule", _RULES_WITH_URL, ids=lambda r: r.id)
-    def test_reference_url_resolves(self, rule):
-        assert rule.reference_url is not None
-        request = urllib.request.Request(rule.reference_url, method="HEAD")
+
+def _fetch_status(url: str) -> int:
+    """Return the HTTP status for *url*, retrying transient answers."""
+    for attempt in range(3):
         try:
+            request = urllib.request.Request(url, method="HEAD")
             with urllib.request.urlopen(request, timeout=10) as response:
-                status = response.status
+                return response.status
         except urllib.error.HTTPError as exc:
             if exc.code == 405:
                 # HEAD not allowed — retry with GET.
-                with urllib.request.urlopen(rule.reference_url, timeout=10) as response:
-                    status = response.status
-            else:
+                with urllib.request.urlopen(url, timeout=10) as response:
+                    return response.status
+            if exc.code not in _TRANSIENT_CODES or attempt == 2:
                 raise
-        assert 200 <= status < 300, f"{rule.id}: {rule.reference_url} → HTTP {status}"
+        except urllib.error.URLError:
+            if attempt == 2:
+                raise
+        time.sleep(2**attempt)
+    raise AssertionError("unreachable")
+
+
+class TestReferenceUrls:
+    """Every rule with a reference_url must point somewhere live."""
+
+    @pytest.mark.parametrize(("page", "rule_ids"), _REFERENCE_PAGES, ids=lambda v: v)
+    def test_reference_url_resolves(self, page: str, rule_ids: list[str]):
+        status = _fetch_status(page)
+        cited_by = ", ".join(rule_ids)
+        assert 200 <= status < 300, f"{cited_by}: {page} → HTTP {status}"
 
 
 class TestStructureRules:
