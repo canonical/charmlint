@@ -40,6 +40,21 @@ _WORKLOAD_VERSION_SETTERS = frozenset(
     {"coordinated_workers.worker", "cosl.coordinated_workers.worker"}
 )
 
+# Charm-name suffixes that say the charm has no workload of its own. By
+# Canonical's naming guidelines an integrator hands another charm the
+# details of an external service, a configurator writes a fragment of
+# another charm's configuration, and an interface repository carries a
+# library with a sample charm attached: in each case there is nothing
+# running whose version could be read. Of the 30 such charms in the hyrum
+# cache, none declares a non-empty ``containers:``, drives a Pebble layer,
+# or installs a snap or deb, so the suffix is taken as the charm saying so
+# in place of the ``file-ignore`` it would otherwise have to write.
+#
+# The name comes from the metadata rather than from the directory or the
+# repository: a charm need not sit at the root of a repository, need not
+# be in one at all, and a monorepo holds several under one repository name.
+_NO_WORKLOAD_SUFFIXES = ("-integrator", "-configurator", "-interface")
+
 
 def _called_name(func: ast.expr) -> str | None:
     """The bare name a call expression invokes, ignoring any receiver."""
@@ -72,15 +87,21 @@ class NoSetWorkloadVersion(Rule):
     find out is to get a shell on the unit.
 
     Charms with no workload to version — integrators, configurators,
-    proxies, interface placeholders — are the real exception, and this
-    rule does not try to detect them. Nothing in the metadata declares
-    "I have a workload" outside of ``containers:``, and every code-side
-    proxy measured against the corpus (``operator_libs_linux``, snap, apt,
-    systemd, ``subprocess``) fires at the population's base rate, so it
-    separates nothing. Rather than guess, the rule asks such a charm to
-    say so once::
+    proxies, interface placeholders — are the real exception, and the
+    rule detects only the ones that say so in their name, through the
+    suffixes in :data:`_NO_WORKLOAD_SUFFIXES`. Nothing else in the
+    metadata declares "I have a workload" outside of ``containers:``, and
+    every code-side proxy measured against the corpus
+    (``operator_libs_linux``, snap, apt, systemd, ``subprocess``) fires at
+    the population's base rate, so it separates nothing. Rather than guess
+    at the rest, the rule asks such a charm to say so once::
 
         # charmlint: file-ignore[FEATURES-005]
+
+    That leaves the charms whose name gives nothing away — the OpenStack
+    storage-backend subordinates, the dashboard and plugin subordinates,
+    the library repositories whose sample charm gets enumerated — to the
+    comment.
 
     The call is looked for across the charm's own source (``src/`` and any
     library the charm publishes), matched on the called name alone so that
@@ -110,6 +131,9 @@ class NoSetWorkloadVersion(Rule):
     )
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        name = context.metadata.get("name").value
+        if isinstance(name, str) and name.endswith(_NO_WORKLOAD_SUFFIXES):
+            return []
         sources = list(context.charm_sources())
         # No source to read is not evidence of a missing call.
         if not sources:

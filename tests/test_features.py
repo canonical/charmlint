@@ -67,6 +67,20 @@ class TestNoSetWorkloadVersion:
         source = _charm_calling("self.unit.set_workload_version(self._snap_revision())")
         assert _lint(tmp_charm, {}, source) == []
 
+    def test_integrator_name_suppresses(self, tmp_charm: pathlib.Path):
+        """A name that says the charm has no workload stands in for the comment."""
+        assert _lint(tmp_charm, {"name": "saml-integrator"}) == []
+
+    def test_configurator_name_suppresses(self, tmp_charm: pathlib.Path):
+        assert _lint(tmp_charm, {"name": "ingress-configurator"}) == []
+
+    def test_interface_name_suppresses(self, tmp_charm: pathlib.Path):
+        assert _lint(tmp_charm, {"name": "tls-certificates-interface"}) == []
+
+    def test_suffix_matches_on_the_word_not_the_ending(self, tmp_charm: pathlib.Path):
+        """A name merely ending in the letters is not a suffix: only `-word` is."""
+        assert len(_lint(tmp_charm, {"name": "myintegrator"})) == 1
+
     def test_file_ignore_suppresses_a_workload_less_charm(self, tmp_charm: pathlib.Path):
         """The documented escape hatch for a charm with nothing to version."""
         (tmp_charm / "charmcraft.yaml").write_text(
