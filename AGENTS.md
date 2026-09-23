@@ -2,7 +2,7 @@
 
 ## What this repo is
 
-`charmlint` is a charm-aware, model-agnostic linter for [Juju](https://juju.is/) charms — rules check charm source code against Canonical's charm best practices (observability, security, testing, metadata, configuration).
+`charmlint` is a charm-aware, model-agnostic linter for [Juju](https://canonical.com/juju) charms — rules check charm source code against Canonical's charm best practices (observability, security, testing, metadata, configuration).
 
 ## Dev setup
 
