@@ -3,7 +3,7 @@
 [![CI](https://github.com/canonical/charmlint/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/canonical/charmlint/actions/workflows/ci.yaml)
 [![PyPI](https://img.shields.io/pypi/v/charmlint)](https://pypi.org/project/charmlint/)
 
-A charm-aware, model-agnostic linter for [Juju](https://juju.is/) charms.
+A charm-aware, model-agnostic linter for [Juju](https://canonical.com/juju) charms.
 
 charmlint checks charm source code against Canonical's charm best practices: observability, security, testing, metadata, configuration, and more. It's for charm authors and reviewers who want best-practice gaps caught before review rather than during it, locally or in CI.
 
