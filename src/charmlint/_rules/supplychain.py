@@ -360,7 +360,6 @@ class OciImageMissingUpstreamSource(Rule):
     name = "oci-image-missing-upstream-source"
     description = "oci-image resource declared without an 'upstream-source'"
     default_severity = models.Severity.INFO
-    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-resources"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         candidates = [
