@@ -7,7 +7,7 @@ import pytest
 
 from charmlint._linter import lint
 from charmlint._models import Severity
-from tests.conftest import write_charmcraft_yaml
+from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 
 def _write_options(charm_dir: pathlib.Path, options: dict[str, Any]) -> None:
@@ -207,9 +207,9 @@ class TestConfigNoqa:
         ids = self._lint_options_block(tmp_charm, "    foo:\n      type: string  # noqa\n")
         assert ids == {"CONFIG-002", "CONFIG-003"}
 
-    def test_file_level_noqa(self, tmp_charm: pathlib.Path):
+    def test_file_level_ignore(self, tmp_charm: pathlib.Path):
         (tmp_charm / "charmcraft.yaml").write_text(
-            "# charmlint: noqa: CONFIG-002\nname: test\nconfig:\n  options:\n"
+            "# charmlint: file-ignore[CONFIG-002]\nname: test\nconfig:\n  options:\n"
             "    foo:\n      type: string\n      description: An option\n"
         )
         assert not {d.rule_id for d in lint(tmp_charm) if d.rule_id.startswith("CONFIG-")}
@@ -224,3 +224,101 @@ class TestConfigNoqa:
         ids = {d.rule_id for d in lint(tmp_charm) if d.rule_id.startswith("CONFIG-")}
         assert ids == self._BARE_OPTION_RULES
         assert [d.message.split("'")[1] for d in _diags(tmp_charm, "CONFIG-003")] == ["bar"]
+
+
+class TestConfigOptionUndeclared:
+    """Tests for CONFIG-006 — config keys read in src/ but never declared."""
+
+    _DECLARED = {"port": {"type": "int", "default": 8080, "description": "HTTP port"}}
+
+    def _lint_charm(self, charm_dir: pathlib.Path, source: str, **kwargs: Any):
+        _write_options(charm_dir, kwargs.pop("options", self._DECLARED))
+        write_charm_source(charm_dir, source, **kwargs)
+        return _diags(charm_dir, "CONFIG-006")
+
+    _CHARM = """\
+import ops
+
+
+class MyCharm(ops.CharmBase):
+    def _on_start(self, event):
+        {body}
+"""
+
+    def _lint_body(self, charm_dir: pathlib.Path, body: str, **kwargs: Any):
+        return self._lint_charm(charm_dir, self._CHARM.format(body=body), **kwargs)
+
+    def test_undeclared_subscript_flagged(self, tmp_charm: pathlib.Path):
+        diags = self._lint_body(tmp_charm, 'print(self.config["prot"])')
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "prot" in diags[0].message
+        assert diags[0].path == "src/charm.py"
+        assert diags[0].line == 6
+
+    def test_undeclared_get_flagged(self, tmp_charm: pathlib.Path):
+        diags = self._lint_body(tmp_charm, 'print(self.config.get("prot", 1))')
+        assert len(diags) == 1
+        assert "prot" in diags[0].message
+
+    def test_declared_key_not_flagged(self, tmp_charm: pathlib.Path):
+        assert not self._lint_body(
+            tmp_charm, 'print(self.config["port"], self.config.get("port"))'
+        )
+
+    @pytest.mark.parametrize(
+        "spelling",
+        [
+            "self.model.config",
+            "self.charm.config",
+            "self.charm.model.config",
+            "charm.config",
+            "charm.model.config",
+        ],
+    )
+    def test_model_config_spellings_flagged(self, tmp_charm: pathlib.Path, spelling: str):
+        source = f'def f(charm, self):\n    print({spelling}["prot"])\n'
+        diags = self._lint_charm(tmp_charm, source)
+        assert len(diags) == 1
+
+    def test_self_config_outside_charm_class_ignored(self, tmp_charm: pathlib.Path):
+        # A helper class with its own ``self.config`` dict is common, and its
+        # keys have nothing to do with the charm's config schema.
+        source = 'class Workload:\n    def run(self):\n        print(self.config["prot"])\n'
+        assert not self._lint_charm(tmp_charm, source)
+
+    def test_charm_named_base_class_checked(self, tmp_charm: pathlib.Path):
+        # Charms routinely subclass an intermediate base of their own.
+        source = (
+            "from base import OpenStackCharm\n\n\n"
+            "class MyCharm(OpenStackCharm):\n"
+            '    def run(self):\n        print(self.config["prot"])\n'
+        )
+        assert len(self._lint_charm(tmp_charm, source)) == 1
+
+    def test_computed_key_ignored(self, tmp_charm: pathlib.Path):
+        assert not self._lint_body(tmp_charm, "print(self.config[name], self.config.get(name))")
+
+    def test_get_without_arguments_ignored(self, tmp_charm: pathlib.Path):
+        assert not self._lint_body(tmp_charm, "print(self.config.get())")
+
+    def test_other_get_calls_ignored(self, tmp_charm: pathlib.Path):
+        assert not self._lint_body(tmp_charm, 'print(self.stored.get("prot"), d["prot"])')
+
+    def test_no_options_declared_skipped(self, tmp_charm: pathlib.Path):
+        # A charm keeping its metadata somewhere the linter did not look
+        # would otherwise light up entirely.
+        assert not self._lint_body(tmp_charm, 'print(self.config["prot"])', options={})
+
+    def test_library_code_ignored(self, tmp_charm: pathlib.Path):
+        # A library reads the config of whichever charm uses it.
+        lib = tmp_charm / "lib" / "charms" / "test" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "thing.py").write_text('def f(charm):\n    print(charm.config["prot"])\n')
+        assert not self._lint_charm(tmp_charm, "")
+
+    def test_one_diagnostic_per_read(self, tmp_charm: pathlib.Path):
+        diags = self._lint_body(
+            tmp_charm, 'print(self.config["prot"])\n        print(self.config["prot"])'
+        )
+        assert [d.line for d in diags] == [6, 7]
