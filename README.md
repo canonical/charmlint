@@ -2,8 +2,7 @@
 
 A charm-aware, model-agnostic linter for [Juju](https://juju.is/) charms.
 
-charmlint checks charm source code against Canonical's charm best practices:
-observability, security, testing, metadata, configuration, and more.
+charmlint checks charm source code against Canonical's charm best practices: observability, security, testing, metadata, configuration, and more.
 
 ## Usage
 
@@ -28,13 +27,11 @@ uvx charmlint --select SECURITY,METADATA-001 .
 uvx charmlint --ignore no-readme --strict .
 ```
 
-`charmlint --help` lists the rest. With `--strict`, warnings exit with code 2;
-errors always exit with code 1.
+`charmlint --help` lists the rest. With `--strict`, warnings exit with code 2; errors always exit with code 1.
 
 ## Configuration
 
-Configure under `[tool.charmlint]` in `pyproject.toml`, or in `charmlint.toml`
-/ `.charmlint.toml`:
+Configure under `[tool.charmlint]` in `pyproject.toml`, or in `charmlint.toml` / `.charmlint.toml`:
 
 ```toml
 [tool.charmlint]
@@ -42,10 +39,7 @@ select = ["SECURITY", "METADATA"]
 ignore = ["METADATA-002"]
 ```
 
-Individual findings can be suppressed inline with
-`# charmlint: ignore[SECURITY-001]`. See
-[docs/configuration.md](docs/configuration.md) for all settings and
-suppression directives.
+Individual findings can be suppressed inline with `# charmlint: ignore[SECURITY-001]`. See [docs/configuration.md](docs/configuration.md) for all settings and suppression directives.
 
 ## Documentation
 
