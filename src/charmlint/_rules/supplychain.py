@@ -1,9 +1,9 @@
 """SUPPLYCHAIN rules — dependency and release hygiene.
 
-A charm's source is only half of what gets deployed: its Python
-dependencies are resolved at build time, and the OCI images it declares
-as resources are built and published separately. These rules check that
-the charm records where those come from and how tightly it pins them.
+A charm deploys more than its own source: everything it pulls in from
+elsewhere, at build time or at deploy time. These rules check that the
+charm records where each of those artefacts comes from and which
+versions it accepts.
 """
 
 import dataclasses
