@@ -48,7 +48,3 @@ Individual findings can be suppressed inline with `# charmlint: ignore[SECURITY-
 - [docs/versioning.md](docs/versioning.md) — versioning and compatibility policy
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup, tests, and pull requests
 - [SECURITY.md](SECURITY.md) — reporting vulnerabilities
-
-## License
-
-Apache 2.0 — see [LICENSE](LICENSE).
