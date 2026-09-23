@@ -34,7 +34,7 @@ A new or changed rule needs a TP/FP table over the hyrum cache (`~/.cache/hyrum/
 
 - Commits and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/); PR-title types enforced by `.github/workflows/validate-pr-title.yaml` (see [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) for the list).
 - Rule IDs follow `CATEGORY-###` (`SECURITY-001`, `METADATA-003`) — see [docs/id-scheme.md](docs/id-scheme.md) for the category catalogue.
-- Runtime dependencies are kept minimal (PyYAML only); the `_pypi_attest/` helper is stdlib-only by design.
+- Runtime dependencies are kept minimal (PyYAML only); the `_pypi_attest.py` helper is stdlib-only by design.
 
 ## Rule module layout
 
