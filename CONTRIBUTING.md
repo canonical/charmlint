@@ -2,11 +2,26 @@ We welcome contributions to this project!
 
 Before working on changes, please consider [opening an issue](https://github.com/canonical/charmlint/issues) explaining your use case. If you would like to chat with us about your use cases or proposed implementation, you can reach us on [Matrix](https://matrix.to/#/#charmhub-charmdev:ubuntu.com) or [Discourse](https://discourse.charmhub.io/).
 
-<!--
-For detailed dev-environment setup, build, and test instructions, link here to
-the substantive doc if one exists (HACKING.md, docs/contributing.md, etc.).
-Most Charm Tech repos keep this section inline rather than redirecting.
--->
+# Development
+
+Set up a dev environment and run the tests with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync --dev
+uv run --group dev pytest
+```
+
+Lint, format, and type-check:
+
+```bash
+uv run --group dev ruff check src tests
+uv run --group dev ruff format --check src tests
+uv run --group dev ty check src tests
+```
+
+`pre-commit` runs the same checks (config in `.pre-commit-config.yaml`).
+
+A new or changed rule needs measurements over the charm corpus before review - see [docs/corpus.md](docs/corpus.md).
 
 # Project status
 
