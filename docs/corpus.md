@@ -4,7 +4,7 @@ A new or changed rule is reviewed on its true-positive / false-positive rate ove
 
 ## The cache
 
-The default location for the cache is `~/.cache/hyrum/charms/<owner>/<repo>/…`, populated by hyrum. It is a working cache, not a curated corpus: it holds build trees, vendored copies, and the same charm mirrored under more than one owner.
+The default location for the cache is `~/.cache/hyrum/charms/<owner>/<repo>/…`, populated by [hyrum](https://github.com/canonical/hyrum). It is a working cache, not a curated corpus: it holds build trees, vendored copies, and the same charm mirrored under more than one owner.
 
 ## Enumerating charms
 

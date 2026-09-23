@@ -1,25 +1,69 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: trailing-whitespace
-        exclude: ^tests/fixtures/
-      - id: end-of-file-fixer
-        exclude: ^tests/fixtures/
-      - id: check-yaml
-      - id: check-toml
-      - id: check-json
-      - id: check-added-large-files
-      - id: check-case-conflict
-      - id: check-merge-conflict
-      - id: debug-statements
-      - id: detect-private-key
-
   # Local hooks run the tools through `uv run`, so the versions come from
   # pyproject.toml's `dev` dependency group. This keeps pre-commit and CI on
   # exactly the same tool versions.
   - repo: local
     hooks:
+      - id: trailing-whitespace
+        name: trim trailing whitespace
+        entry: uv run --group dev -- trailing-whitespace-fixer
+        language: system
+        types: [text]
+        exclude: ^tests/fixtures/
+
+      - id: end-of-file-fixer
+        name: fix end of files
+        entry: uv run --group dev -- end-of-file-fixer
+        language: system
+        types: [text]
+        exclude: ^tests/fixtures/
+
+      - id: check-yaml
+        name: check yaml
+        entry: uv run --group dev -- check-yaml
+        language: system
+        types: [yaml]
+
+      - id: check-toml
+        name: check toml
+        entry: uv run --group dev -- check-toml
+        language: system
+        types: [toml]
+
+      - id: check-json
+        name: check json
+        entry: uv run --group dev -- check-json
+        language: system
+        types: [json]
+
+      - id: check-added-large-files
+        name: check for added large files
+        entry: uv run --group dev -- check-added-large-files
+        language: system
+
+      - id: check-case-conflict
+        name: check for case conflicts
+        entry: uv run --group dev -- check-case-conflict
+        language: system
+
+      - id: check-merge-conflict
+        name: check for merge conflicts
+        entry: uv run --group dev -- check-merge-conflict
+        language: system
+        types: [text]
+
+      - id: debug-statements
+        name: debug statements (python)
+        entry: uv run --group dev -- debug-statement-hook
+        language: system
+        types: [python]
+
+      - id: detect-private-key
+        name: detect private key
+        entry: uv run --group dev -- detect-private-key
+        language: system
+        types: [text]
+
       - id: ruff-check
         name: ruff check
         entry: uv run --group dev -- ruff check --fix --exit-non-zero-on-fix src tests
