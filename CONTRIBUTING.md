@@ -25,6 +25,8 @@ uv run --group dev ty check src tests
 
 A new or changed rule needs measurements over the charm corpus before review - see [docs/corpus.md](docs/corpus.md).
 
+[docs/rules.md](docs/rules.md) is generated from the rule registry, so after adding or changing a rule, regenerate it with `make docs` (CI fails if it's stale). Don't edit the page by hand: a rule's docstring is the text that appears there, so improve it in the code.
+
 # Project status
 
 charmlint is early work, and the implementation is subject to change (and probably will change). Please don't treat anything under `src/` as settled, or build on it expecting the internals to stay where they are.
