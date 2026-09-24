@@ -775,6 +775,11 @@ _BUILD_ONLY_FIELDS: frozenset[str] = frozenset(
         "parts",
         "base",
         "build-base",
+        # metadata.yaml has never accepted either of these; charmcraft
+        # ignores a `bases:` block it finds there, so it is text that does
+        # nothing rather than a build configuration.
+        "bases",
+        "platforms",
         "extensions",
         "adopt-info",
         "package-repositories",

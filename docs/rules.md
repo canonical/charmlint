@@ -44,8 +44,11 @@ config file overrides it per rule.
 | [CORRECTNESS-003](#correctness-003-exec-result-not-consumed) | `exec-result-not-consumed` | Error | container.exec() result not consumed (no .wait() / .wait_output()) |
 | [CORRECTNESS-004](#correctness-004-non-deferrable-event-deferred) | `non-deferrable-event-deferred` | Error | event.defer() called in a handler for a non-deferrable event |
 | [CORRECTNESS-008](#correctness-008-observe-target-mismatch) | `observe-target-mismatch` | Error | framework.observe() names an event or handler that cannot exist |
+| [CORRECTNESS-009](#correctness-009-container-name-mismatch) | `container-name-mismatch` | Error | get_container() names a container not declared in containers: |
 | [DOCUMENTATION-001](#documentation-001-no-readme) | `no-readme` | Warning | No README file found |
 | [FEATURES-004](#features-004-no-assumes-juju-version) | `no-assumes-juju-version` | Info | No `assumes:` entry declaring a minimum Juju version |
+| [FEATURES-005](#features-005-no-set-workload-version) | `no-set-workload-version` | Info | Charm never calls set_workload_version() |
+| [FEATURES-006](#features-006-hardcoded-workload-version) | `hardcoded-workload-version` | Warning | Workload version is a hardcoded constant, not read from the workload |
 | [LIBRARY-001](#library-001-fetch-libs-has-pypi) | `fetch-libs-has-pypi` | Warning | Deprecated Charmhub library has PyPI replacement |
 | [METADATA-001](#metadata-001-missing-name) | `missing-name` | Error | Empty or missing 'name' field in charm metadata |
 | [METADATA-002](#metadata-002-missing-display-name) | `missing-display-name` | Warning | Empty or missing 'display-name'/'title' field |
@@ -412,6 +415,33 @@ pass over the findings fixes the call rather than two.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Framework.observe>
 
+### CORRECTNESS-009 container-name-mismatch
+
+**Error** — get_container() names a container not declared in containers:
+
+Detect `get_container()` calls naming an undeclared container.
+
+A container name that isn't declared under `containers:` raises
+`ops.ModelError` the first time the hook runs, and the classic way
+to get there is to assume the container is named after the app.
+
+Only the charm's own `src/` is checked. A library the charm
+publishes is written to run inside *other* charms, so a container
+name there refers to a container this charm's metadata has no reason
+to declare.
+
+Nothing is reported unless the charm declares at least one container
+of its own, and nothing at all is reported for a charm using a
+charmcraft `extensions:` profile. Both are cases where the
+containers charmcraft ends up building are not the containers
+charmlint can read: a `go-framework` charm's `app` container is
+injected by the extension, and a charm whose metadata is generated
+(from a `metadata.yaml.j2`, say) declares its containers somewhere
+charmlint never sees. Reporting those means reporting a charm we
+failed to understand.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers>
+
 ## DOCUMENTATION
 
 Documentation.
@@ -459,6 +489,87 @@ the unified file, and may predate `assumes` (Juju 2.9.23)
 altogether. Bundles are skipped, having no `assumes` to declare.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-assumes>
+
+### FEATURES-005 no-set-workload-version
+
+**Info** — Charm never calls set_workload_version()
+
+Flag a charm that never reports its workload's version.
+
+A charm's workload is rarely the charm's own code: it is an OCI image,
+a snap from a channel, a deb, or a set of manifests applied to a
+cluster. Which version of it is actually running is therefore not
+something the reader of `juju status` can infer. There is a column
+for exactly that, and unless the charm calls
+`self.unit.set_workload_version(...)` — normally once the workload
+is up and can be asked — the column stays empty, and the only way to
+find out is to get a shell on the unit.
+
+Charms with no workload to version — integrators, configurators,
+proxies, interface placeholders — are the real exception, and the
+rule detects only the ones that say so in their name, through the
+suffixes in :data:`_NO_WORKLOAD_SUFFIXES`. Nothing else in the
+metadata declares "I have a workload" outside of `containers:`, and
+every code-side proxy measured against the corpus
+(`operator_libs_linux`, snap, apt, systemd, `subprocess`) fires at
+the population's base rate, so it separates nothing. Rather than guess
+at the rest, the rule asks such a charm to say so once::
+
+    # charmlint: file-ignore[FEATURES-005]
+
+That leaves the charms whose name gives nothing away — the OpenStack
+storage-backend subordinates, the dashboard and plugin subordinates,
+the library repositories whose sample charm gets enumerated — to the
+comment.
+
+The call is looked for across the charm's own source (`src/` and any
+library the charm publishes), matched on the called name alone so that
+every receiver spelling counts: `self.unit`, `self.model.unit`, and
+a local the charm bound earlier all resolve. A reactive charm that
+reports its version through charmhelpers' `application_version_set`
+satisfies the rule too: it is the same Juju field by the other
+framework's name. Charms that delegate the
+workload to a framework which sets the version for them are recognised
+by the import, since the framework is a pip dependency with no source
+in the tree.
+
+Three routes are still not resolved, each of which would make this a
+false positive: a `getattr(self.unit, ...)` lookup, a call made by a
+*vendored* library on the charm's behalf, and any framework not in
+:data:`_WORKLOAD_VERSION_SETTERS`. A charm with no reachable source of
+its own is left alone entirely.
+
+Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version>
+
+### FEATURES-006 hardcoded-workload-version
+
+**Warning** — Workload version is a hardcoded constant, not read from the workload
+
+Flag a workload version reported as a constant rather than read.
+
+The point of the workload version is to say which version is *running*.
+A charm that passes a literal is instead saying which version it was
+written against, and the two part company the first time the image,
+snap or package is bumped without the charm being touched. Nothing
+fails when they do: `juju status` keeps reporting the stale number,
+which is worse than the empty column FEATURES-005 is about, because it
+looks like an answer.
+
+The version should come from the workload: `pebble exec` or
+`subprocess` asking the binary, a version file the image ships, or
+an API the service exposes — whatever can be read at runtime rather
+than written down.
+
+A name counts as a constant only when every assignment to it in the
+same file is a string literal, so a charm that seeds a variable with
+a placeholder and then overwrites it with a real lookup is not
+flagged. Neither is the `self._version() or ""` fallback idiom, nor
+a placeholder passed on its own: see :data:`_VERSION_PLACEHOLDERS`.
+A constant defined in another module is not followed, which is a
+deliberate gap — it would add false-positive risk for no finding the
+corpus can show.
+
+Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version>
 
 ## LIBRARY
 
