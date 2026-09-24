@@ -173,6 +173,42 @@ class TestOciImageMissingUpstreamSource:
         (image_dir / "Dockerfile").write_text("FROM ubuntu:24.04\n")
         assert not _oci_hits(tmp_charm)
 
+    def test_rock_beside_the_charm_in_a_monorepo_not_flagged(self, tmp_path: pathlib.Path):
+        """The `app/charm/` beside `app/rockcraft.yaml` layout."""
+        (tmp_path / ".git").mkdir()
+        app = tmp_path / "app"
+        charm_dir = app / "charm"
+        charm_dir.mkdir(parents=True)
+        write_charmcraft_yaml(
+            charm_dir,
+            {"name": "test", "resources": {"sync-bot": {"type": "oci-image"}}},
+        )
+        (app / "rockcraft.yaml").write_text("name: sync-bot\nbase: ubuntu@24.04\n")
+        assert not _oci_hits(charm_dir)
+
+    def test_dockerfile_at_the_repository_root_not_flagged(self, tmp_path: pathlib.Path):
+        repo = tmp_path / "candid"
+        (repo / ".git").mkdir(parents=True)
+        charm_dir = repo / "charms" / "candid-k8s"
+        charm_dir.mkdir(parents=True)
+        write_charmcraft_yaml(
+            charm_dir,
+            {"name": "test", "resources": {"candid-image": {"type": "oci-image"}}},
+        )
+        (repo / "Dockerfile").write_text("FROM ubuntu:24.04\n")
+        assert not _oci_hits(charm_dir)
+
+    def test_rock_above_a_charm_outside_git_not_considered(self, tmp_path: pathlib.Path):
+        """Without a repository root, the search stays inside the charm."""
+        charm_dir = tmp_path / "charm"
+        charm_dir.mkdir()
+        write_charmcraft_yaml(
+            charm_dir,
+            {"name": "test", "resources": {"sync-bot": {"type": "oci-image"}}},
+        )
+        (tmp_path / "rockcraft.yaml").write_text("name: sync-bot\nbase: ubuntu@24.04\n")
+        assert len(_oci_hits(charm_dir)) == 1
+
     def test_unrelated_rock_does_not_exempt_the_resource(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,

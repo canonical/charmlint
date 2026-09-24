@@ -461,25 +461,42 @@ def _locally_built_images(charm_dir: pathlib.Path) -> set[str]:
     """Return the names of images this repository builds for itself.
 
     A rock or Dockerfile in the charm directory, or up to two levels
-    below it, names an image the charm's own CI builds and uploads. The
-    candidate names are the rock's declared ``name`` and the directory
-    holding the build recipe, since the ``foo_rock/``, ``rock/`` and
-    ``foo_rocks/<component>/`` layouts are all common.
+    below it, names an image the charm's own CI builds and uploads. So
+    does one up to two levels below the repository root, since in a
+    monorepo the rock is often a sibling of the charm (``app/charm/``
+    beside ``app/rockcraft.yaml``) or sits at the top of the repository.
+    The candidate names are the rock's declared ``name`` and the
+    directory holding the build recipe, since the ``foo_rock/``,
+    ``rock/`` and ``foo_rocks/<component>/`` layouts are all common.
     """
+    charm_dir = charm_dir.resolve()
     names: set[str] = set()
-    for depth in ("", "*/", "*/*/"):
-        for rockcraft in charm_dir.glob(f"{depth}rockcraft.yaml"):
-            try:
-                declared = _yaml.load(rockcraft).get("name")
-            except _yaml.FileLoadError:
-                declared = models.Yaml.absent(rockcraft.name)
-            if isinstance(declared.value, str):
-                names.add(_normalise_image_name(declared.value))
-            names.add(
-                _normalise_image_name(
-                    rockcraft.parent.name.removesuffix("_rock").removesuffix("-rock")
+    for root in {charm_dir, _repo_root(charm_dir)}:
+        for depth in ("", "*/", "*/*/"):
+            for rockcraft in root.glob(f"{depth}rockcraft.yaml"):
+                try:
+                    declared = _yaml.load(rockcraft).get("name")
+                except _yaml.FileLoadError:
+                    declared = models.Yaml.absent(rockcraft.name)
+                if isinstance(declared.value, str):
+                    names.add(_normalise_image_name(declared.value))
+                names.add(
+                    _normalise_image_name(
+                        rockcraft.parent.name.removesuffix("_rock").removesuffix("-rock")
+                    )
                 )
-            )
-        for dockerfile in charm_dir.glob(f"{depth}Dockerfile"):
-            names.add(_normalise_image_name(dockerfile.parent.name))
+            for dockerfile in root.glob(f"{depth}Dockerfile"):
+                names.add(_normalise_image_name(dockerfile.parent.name))
     return names
+
+
+def _repo_root(charm_dir: pathlib.Path) -> pathlib.Path:
+    """Return the root of the git repository holding the charm.
+
+    Falls back to the charm directory itself when it is not in a git
+    repository, so the search never wanders further than it would have.
+    """
+    for directory in (charm_dir, *charm_dir.parents):
+        if (directory / ".git").exists():
+            return directory
+    return charm_dir
