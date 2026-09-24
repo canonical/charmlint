@@ -7,6 +7,7 @@ Split from ``__init__.py`` so individual rule modules can import from
 import abc
 import inspect
 import re
+import textwrap
 
 from .. import _models as models
 
@@ -58,12 +59,22 @@ class Rule(abc.ABC):
     are automatically registered on class creation; abstract
     intermediates (those that leave any of the abstract members
     unimplemented) are skipped.
+
+    ``example`` and ``fix`` are optional, and go together: each maps a
+    path inside a charm to that file's contents, ``example`` being a charm
+    the rule reports and ``fix`` the same charm after the finding has been
+    addressed. ``fix`` lists only the files that change. Contents may be
+    indented to sit with the class body; the indentation is removed on
+    registration. The reference page shows both, and the test suite lints
+    both, so an example cannot drift away from what the rule does.
     """
 
     name: str
     description: str
     default_severity: models.Severity
     reference_url: str | None = None
+    example: dict[str, str] | None = None
+    fix: dict[str, str] | None = None
 
     @property
     @abc.abstractmethod
@@ -95,6 +106,11 @@ class Rule(abc.ABC):
         number = cls.number
         if not isinstance(number, int) or number <= 0:
             raise ValueError(f"{cls.__name__}.number must be a positive int, got {number!r}")
+        if (cls.example is None) != (cls.fix is None):
+            raise ValueError(f"{cls.__name__} must set both example and fix, or neither")
+        if cls.example is not None and cls.fix is not None:
+            cls.example = _dedent_files(cls.example)
+            cls.fix = _dedent_files(cls.fix)
         instance = cls()
         _validate_name(cls.__name__, instance.name)
         if instance.id in _RULES:
@@ -136,6 +152,15 @@ def _validate_name(class_name: str, name: object) -> None:
         raise ValueError(f"{class_name}.name must be kebab-case, got {name!r}")
     if name.upper() in CATEGORIES:
         raise ValueError(f"{class_name}.name must not be a category name, got {name!r}")
+
+
+def _dedent_files(files: dict[str, str]) -> dict[str, str]:
+    """Return *files* with each file's contents dedented.
+
+    A leading newline is dropped too, so the contents can start on the line
+    after an opening triple quote.
+    """
+    return {path: textwrap.dedent(text).removeprefix("\n") for path, text in files.items()}
 
 
 def get_all_rules() -> dict[str, Rule]:

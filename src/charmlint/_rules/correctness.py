@@ -17,6 +17,35 @@ class DeferWithoutReturn(Rule):
     name = "defer-without-return"
     description = "event.defer() not immediately followed by return"
     default_severity = models.Severity.WARNING
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _on_pebble_ready(self, event: ops.PebbleReadyEvent):
+                    if not self._database_ready():
+                        event.defer()
+                    self._replan()
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _on_pebble_ready(self, event: ops.PebbleReadyEvent):
+                    if not self._database_ready():
+                        event.defer()
+                        return
+                    self._replan()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         def is_non_return(following: ast.stmt | None) -> bool:
@@ -60,6 +89,36 @@ class DeferBeforeRaise(Rule):
     name = "defer-before-raise"
     description = "event.defer() immediately followed by raise"
     default_severity = models.Severity.WARNING
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _on_config_changed(self, event: ops.ConfigChangedEvent):
+                    if not self._container.can_connect():
+                        event.defer()
+                        raise RuntimeError("workload container not ready")
+                    self._replan()
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _on_config_changed(self, event: ops.ConfigChangedEvent):
+                    if not self._container.can_connect():
+                        event.defer()
+                        return
+                    self._replan()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         def is_raise(following: ast.stmt | None) -> bool:
@@ -99,6 +158,32 @@ class ExecResultNotConsumed(Rule):
     name = "exec-result-not-consumed"
     description = "container.exec() result not consumed (no .wait() / .wait_output())"
     default_severity = models.Severity.ERROR
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _migrate(self):
+                    container = self.unit.get_container("frontend")
+                    container.exec(["frontend", "migrate"])
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _migrate(self):
+                    container = self.unit.get_container("frontend")
+                    container.exec(["frontend", "migrate"]).wait_output()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -260,6 +345,42 @@ class NonDeferrableEventDeferred(Rule):
         "https://canonical.com/juju/docs/ops/latest/explanation/defer-guidance/"
         "#not-possible-actions-shutting-down-framework-generated-events-secrets"
     )
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.stop, self._on_stop)
+
+                def _on_stop(self, event: ops.StopEvent):
+                    if not self._drained():
+                        event.defer()
+                        return
+                    self._shutdown()
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.stop, self._on_stop)
+
+                def _on_stop(self, event: ops.StopEvent):
+                    self._drain()
+                    self._shutdown()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -596,6 +717,41 @@ class ObserveTargetMismatch(Rule):
     reference_url = (
         "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Framework.observe"
     )
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            requires:
+              database:
+                interface: postgresql_client
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.db_relation_changed, self._on_database_changed)
+
+                def _on_database_changed(self, event: ops.RelationChangedEvent):
+                    self._replan()
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.database_relation_changed, self._on_database_changed)
+
+                def _on_database_changed(self, event: ops.RelationChangedEvent):
+                    self._replan()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         custom_events, complete = _custom_event_names(context)
@@ -733,6 +889,38 @@ class ContainerNameMismatch(Rule):
     description = "get_container() names a container not declared in containers:"
     default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            containers:
+              nginx:
+                resource: nginx-image
+            resources:
+              nginx-image:
+                type: oci-image
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _replan(self):
+                    container = self.unit.get_container("web-frontend")
+                    container.replan()
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _replan(self):
+                    container = self.unit.get_container("nginx")
+                    container.replan()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if context.metadata.get("extensions"):

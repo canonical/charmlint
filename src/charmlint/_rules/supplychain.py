@@ -353,6 +353,20 @@ class OpsDependencyUnpinned(Rule):
     name = "ops-dependency-unpinned"
     description = "ops dependency has no version specifier"
     default_severity = models.Severity.WARNING
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "requirements.txt": """
+            ops
+        """,
+    }
+    fix = {
+        "requirements.txt": """
+            ops>=2.23,<4
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         dep = _find_ops_dep(context)
@@ -378,6 +392,20 @@ class OpsDependencyExactlyPinned(Rule):
     name = "ops-dependency-exactly-pinned"
     description = "ops dependency pinned with `==`"
     default_severity = models.Severity.INFO
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "requirements.txt": """
+            ops==2.23.1
+        """,
+    }
+    fix = {
+        "requirements.txt": """
+            ops>=2.23,<4
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         dep = _find_ops_dep(context)

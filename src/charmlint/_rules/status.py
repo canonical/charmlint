@@ -110,6 +110,45 @@ class BlockedStatusInNonRepeatingHandler(Rule):
     description = "BlockedStatus set in an install/start/stop/remove handler"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/juju-cli/latest/reference/hook/#install"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+        """,
+        "src/charm.py": """
+            import subprocess
+
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.install, self._on_install)
+
+                def _on_install(self, event: ops.InstallEvent):
+                    try:
+                        subprocess.run(["apt-get", "install", "-y", "nginx"], check=True)
+                    except subprocess.CalledProcessError:
+                        self.unit.status = ops.BlockedStatus("failed to install nginx")
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import subprocess
+
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.install, self._on_install)
+
+                def _on_install(self, event: ops.InstallEvent):
+                    # If this fails, the hook fails and Juju retries it.
+                    subprocess.run(["apt-get", "install", "-y", "nginx"], check=True)
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []

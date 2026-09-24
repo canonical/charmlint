@@ -88,6 +88,47 @@ class PebbleEnvNonString(Rule):
     description = "Pebble layer environment value is not a string"
     default_severity = models.Severity.INFO
     reference_url = "https://ubuntu.com/docs/pebble/reference/layer-specification/"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _pebble_layer(self) -> ops.pebble.LayerDict:
+                    return {
+                        "services": {
+                            "web": {
+                                "override": "replace",
+                                "command": "/usr/bin/web-server",
+                                "startup": "enabled",
+                                "environment": {"PORT": 8080, "DEBUG": False},
+                            },
+                        },
+                    }
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _pebble_layer(self) -> ops.pebble.LayerDict:
+                    return {
+                        "services": {
+                            "web": {
+                                "override": "replace",
+                                "command": "/usr/bin/web-server",
+                                "startup": "enabled",
+                                "environment": {"PORT": "8080", "DEBUG": "false"},
+                            },
+                        },
+                    }
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []

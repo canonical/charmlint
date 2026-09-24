@@ -27,6 +27,28 @@ class SecretInPlainConfig(Rule):
     description = "Secret-like config option found — use Juju secrets instead"
     default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/ops/latest/howto/manage-secrets/"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                database-password:
+                  type: string
+                  description: Password for the database user.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                database-credentials:
+                  type: secret
+                  description: >-
+                    Juju secret holding the database username and password,
+                    granted to this application.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return [

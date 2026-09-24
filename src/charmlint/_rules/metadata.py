@@ -71,6 +71,21 @@ class MissingName(Rule):
     description = "Empty or missing 'name' field in charm metadata"
     default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-name"
+    example = {
+        "charmcraft.yaml": """
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):
@@ -100,6 +115,21 @@ class MissingDisplayName(Rule):
     description = "Empty or missing 'display-name'/'title' field"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-title"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            summary: Serves the web frontend.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):
@@ -125,6 +155,21 @@ class MissingSummary(Rule):
     description = "Empty or missing 'summary' field"
     default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-summary"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):
@@ -152,6 +197,25 @@ class MissingDescription(Rule):
     description = "Empty or missing 'description' field"
     default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-description"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            description: |
+              Deploys the web frontend, serving the site's static assets
+              and proxying API requests to the backend.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):
@@ -179,6 +243,27 @@ class MissingDocs(Rule):
     description = "Empty or missing 'docs' URL"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            links:
+              issues: https://github.com/example/web-frontend-operator/issues
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            links:
+              documentation: https://example.com/web-frontend/docs
+              issues: https://github.com/example/web-frontend-operator/issues
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):
@@ -207,6 +292,27 @@ class MissingIssues(Rule):
     description = "Empty or missing 'issues' URL"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-issues"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            links:
+              source: https://github.com/example/web-frontend-operator
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            links:
+              issues: https://github.com/example/web-frontend-operator/issues
+              source: https://github.com/example/web-frontend-operator
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):
@@ -235,6 +341,27 @@ class MissingSource(Rule):
     description = "Empty or missing 'source' URL"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-source"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            links:
+              issues: https://github.com/example/web-frontend-operator/issues
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            links:
+              issues: https://github.com/example/web-frontend-operator/issues
+              source: https://github.com/example/web-frontend-operator
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):
@@ -283,6 +410,29 @@ class RequiresMissingOptional(Rule):
     description = "requires endpoint missing explicit `optional` field"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#endpoint-role-endpoint-name-optional"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            requires:
+              database:
+                interface: postgresql_client
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            requires:
+              database:
+                interface: postgresql_client
+                optional: false
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return _missing_optional_diagnostics(self, context.metadata.get("requires"), "requires")
@@ -297,6 +447,29 @@ class ProvidesMissingOptional(Rule):
     description = "provides endpoint missing explicit `optional` field"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#endpoint-role-endpoint-name-optional"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            provides:
+              metrics-endpoint:
+                interface: prometheus_scrape
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            provides:
+              metrics-endpoint:
+                interface: prometheus_scrape
+                optional: true
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return _missing_optional_diagnostics(self, context.metadata.get("provides"), "provides")
@@ -318,6 +491,26 @@ class CircularWebsiteLink(Rule):
     description = "'website' link points to the charm's own Charmhub page"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            links:
+              website: https://charmhub.io/web-frontend
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            links:
+              website: https://example.com/web-frontend
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):

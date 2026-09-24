@@ -31,6 +31,20 @@ class DeprecatedSeries(Rule):
     description = "Deprecated 'series' attribute in metadata"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
+    example = {
+        "metadata.yaml": """
+            name: web-frontend
+            summary: Serves the web frontend.
+            series:
+              - jammy
+        """,
+    }
+    fix = {
+        "metadata.yaml": """
+            name: web-frontend
+            summary: Serves the web frontend.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         series = context.metadata.get("series")
@@ -66,6 +80,28 @@ class NamingConventions(Rule):
     description = "Config option names use underscores instead of hyphens"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                log_level:
+                  type: string
+                  default: info
+                  description: Workload log level.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                log-level:
+                  type: string
+                  default: info
+                  description: Workload log level.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         # Juju/charmcraft reject underscored action names outright, and
@@ -114,6 +150,30 @@ class Entrypoint(Rule):
     reference_url = (
         "https://canonical.com/juju/docs/charmcraft/stable/reference/files/dispatch-file/"
     )
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+        """,
+        "dispatch": """
+            #!/bin/sh
+            JUJU_DISPATCH_PATH="${JUJU_DISPATCH_PATH:-$0}" PYTHONPATH=lib:venv exec python3 ./src/main.py
+        """,
+        "src/charm.py": """
+            import ops
+
+            class WebFrontendCharm(ops.CharmBase):
+                pass
+
+            if __name__ == "__main__":
+                ops.main(WebFrontendCharm)
+        """,
+    }
+    fix = {
+        "dispatch": """
+            #!/bin/sh
+            JUJU_DISPATCH_PATH="${JUJU_DISPATCH_PATH:-$0}" PYTHONPATH=lib:venv exec python3 ./src/charm.py
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         # charmcraft generates dispatch at pack time, so most charm repos do
@@ -245,6 +305,20 @@ class UnknownTopLevelField(Rule):
     reference_url = (
         "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/"
     )
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            sumary: Serves the web frontend.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            summary: Serves the web frontend.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -290,6 +364,24 @@ class UnknownResourceField(Rule):
     description = "Unrecognised field inside a resource definition (possible typo)"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-resources"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            resources:
+              frontend-image:
+                type: oci-image
+                descripton: OCI image for the frontend container.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            resources:
+              frontend-image:
+                type: oci-image
+                description: OCI image for the frontend container.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -327,6 +419,38 @@ class OpsMainCall(Rule):
     description = "Charm entrypoint does not call ops.main()"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/ops/latest/reference/ops-main-entrypoint/"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+        """,
+        "src/charm.py": """
+            import ops
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event: ops.StartEvent):
+                    self.unit.status = ops.ActiveStatus()
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event: ops.StartEvent):
+                    self.unit.status = ops.ActiveStatus()
+
+            if __name__ == "__main__":
+                ops.main(WebFrontendCharm)
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         entrypoint = _entrypoint(context)
@@ -369,6 +493,23 @@ class CharmUser(Rule):
     description = "Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user'"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-charm-user"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            containers:
+              frontend:
+                resource: frontend-image
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            charm-user: non-root
+            containers:
+              frontend:
+                resource: frontend-image
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         node = context.metadata.get("charm-user")
@@ -458,6 +599,24 @@ class ContainerRunsAsRoot(Rule):
     )
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            containers:
+              frontend:
+                resource: frontend-image
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            containers:
+              frontend:
+                resource: frontend-image
+                uid: 584792
+                gid: 584792
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -599,6 +758,28 @@ class LegacyBases(Rule):
     description = "Legacy 'bases' block instead of 'base' and 'platforms'"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            bases:
+              - build-on:
+                  - name: ubuntu
+                    channel: "22.04"
+                run-on:
+                  - name: ubuntu
+                    channel: "22.04"
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            base: ubuntu@22.04
+            platforms:
+              amd64:
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         bases = context.metadata.get("bases")

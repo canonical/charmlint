@@ -29,6 +29,21 @@ class NoLicence(Rule):
     name = "no-licence"
     description = "No LICENSE/LICENCE file found"
     default_severity = models.Severity.INFO
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
+    fix = {
+        "LICENSE": """
+            Apache License
+            Version 2.0, January 2004
+            ...
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         # LICENSE (US) and LICENCE (UK) are both accepted.
@@ -63,6 +78,21 @@ class NoIcon(Rule):
     reference_url = (
         "https://canonical.com/juju/docs/charmcraft/stable/reference/files/icon-svg-file/"
     )
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
+    fix = {
+        "icon.svg": """
+            <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+              <circle cx="50" cy="50" r="50" fill="#e95420"/>
+            </svg>
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         icon = context.charm_dir / "icon.svg"

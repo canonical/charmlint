@@ -19,6 +19,44 @@ class ActionMissingObserver(Rule):
     name = "action-missing-observer"
     description = "Action declared in charmcraft.yaml has no observer in src/"
     default_severity = models.Severity.WARNING
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            actions:
+              rotate-logs:
+                description: Rotate the workload's log files.
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.config_changed, self._on_config_changed)
+
+                def _on_config_changed(self, event: ops.ConfigChangedEvent):
+                    ...
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.config_changed, self._on_config_changed)
+                    framework.observe(self.on.rotate_logs_action, self._on_rotate_logs)
+
+                def _on_config_changed(self, event: ops.ConfigChangedEvent):
+                    ...
+
+                def _on_rotate_logs(self, event: ops.ActionEvent):
+                    ...
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if not context.actions:
@@ -66,6 +104,31 @@ class ActionMissingAdditionalProperties(Rule):
     description = "Action does not explicitly set 'additionalProperties'"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            actions:
+              rotate-logs:
+                description: Rotate the workload's log files.
+                params:
+                  keep:
+                    type: integer
+                    description: How many rotated files to keep.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            actions:
+              rotate-logs:
+                description: Rotate the workload's log files.
+                params:
+                  keep:
+                    type: integer
+                    description: How many rotated files to keep.
+                additionalProperties: false
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -113,6 +176,23 @@ class ActionMissingDescription(Rule):
     description = "Action declared without a description"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            actions:
+              rotate-logs:
+                additionalProperties: false
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            actions:
+              rotate-logs:
+                description: Rotate the workload's log files.
+                additionalProperties: false
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -147,6 +227,31 @@ class ActionParamMissingDescription(Rule):
     description = "Action parameter declared without a description"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            actions:
+              rotate-logs:
+                description: Rotate the workload's log files.
+                params:
+                  keep:
+                    type: integer
+                additionalProperties: false
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            actions:
+              rotate-logs:
+                description: Rotate the workload's log files.
+                params:
+                  keep:
+                    type: integer
+                    description: How many rotated files to keep.
+                additionalProperties: false
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []

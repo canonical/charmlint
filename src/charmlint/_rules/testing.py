@@ -15,6 +15,27 @@ class NoUnitTests(Rule):
     name = "no-unit-tests"
     description = "No unit tests found in tests/unit/ or unit_tests/"
     default_severity = models.Severity.WARNING
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+    }
+    fix = {
+        "tests/unit/test_charm.py": """
+            import ops.testing
+
+            from charm import WebFrontendCharm
+
+
+            def test_pebble_ready_starts_service():
+                ctx = ops.testing.Context(WebFrontendCharm)
+                container = ops.testing.Container("frontend", can_connect=True)
+                state_in = ops.testing.State(containers={container})
+                state_out = ctx.run(ctx.on.pebble_ready(container), state_in)
+                assert state_out.unit_status == ops.ActiveStatus()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         # has_tests_unit is populated by _linter._check_tests.
@@ -46,6 +67,40 @@ class UsesHarness(Rule):
     reference_url = (
         "https://canonical.com/juju/docs/ops/latest/howto/migrate/migrate-unit-tests-from-harness/"
     )
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "tests/unit/test_charm.py": """
+            from ops.testing import Harness
+
+            from charm import WebFrontendCharm
+
+
+            def test_pebble_ready_starts_service():
+                harness = Harness(WebFrontendCharm)
+                harness.begin_with_initial_hooks()
+                harness.container_pebble_ready("frontend")
+                assert harness.model.unit.status.name == "active"
+        """,
+    }
+    fix = {
+        "tests/unit/test_charm.py": """
+            import ops
+            from ops import testing
+
+            from charm import WebFrontendCharm
+
+
+            def test_pebble_ready_starts_service():
+                ctx = testing.Context(WebFrontendCharm)
+                container = testing.Container("frontend", can_connect=True)
+                state_in = testing.State(containers={container})
+                state_out = ctx.run(ctx.on.pebble_ready(container), state_in)
+                assert state_out.unit_status == ops.ActiveStatus()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []

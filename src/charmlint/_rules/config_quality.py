@@ -23,6 +23,27 @@ class ConfigMissingType(Rule):
     description = "Config option is missing a type"
     default_severity = models.Severity.WARNING
     reference_url = _CONFIG_REFERENCE_URL
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return [
@@ -46,6 +67,27 @@ class ConfigMissingDefault(Rule):
     description = "Config option is missing a default value"
     default_severity = models.Severity.INFO
     reference_url = _CONFIG_REFERENCE_URL
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  description: Port the web server listens on.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return [
@@ -71,6 +113,27 @@ class ConfigMissingDescription(Rule):
     description = "Config option is missing a description"
     default_severity = models.Severity.WARNING
     reference_url = _CONFIG_REFERENCE_URL
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         return [
@@ -173,6 +236,35 @@ class ConfigOptionUndeclared(Rule):
     description = "Config key read in src/ is not a declared config option"
     default_severity = models.Severity.ERROR
     reference_url = _CONFIG_REFERENCE_URL
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _listen_port(self) -> int:
+                    return int(self.config["prot"])
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _listen_port(self) -> int:
+                    return int(self.config["port"])
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         # With no options declared at all, the charm's config is as likely to
