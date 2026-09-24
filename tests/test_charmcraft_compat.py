@@ -514,6 +514,41 @@ class TestUnknownTopLevelField:
         assert diags[0].fix_hint is None
         assert diags[0].path == "charmcraft.yaml"
 
+    def test_bases_in_metadata_yaml_flagged(self, tmp_charm: pathlib.Path):
+        """'bases' is a charmcraft.yaml key; charmcraft ignores it in metadata.yaml."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "metadata.yaml").write_text(
+            "summary: s\nbases:\n  - name: ubuntu\n    channel: '22.04'\n"
+        )
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
+        assert len(diags) == 1
+        assert diags[0].message == (
+            "Field 'bases' is valid in charmcraft.yaml but not metadata.yaml"
+        )
+        assert diags[0].path == "metadata.yaml"
+        assert diags[0].line == 2
+
+    def test_platforms_in_metadata_yaml_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "metadata.yaml").write_text("summary: s\nplatforms:\n  amd64:\n")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
+        assert len(diags) == 1
+        assert diags[0].message == (
+            "Field 'platforms' is valid in charmcraft.yaml but not metadata.yaml"
+        )
+
+    def test_series_and_min_juju_version_stay_valid_in_metadata_yaml(
+        self, tmp_charm: pathlib.Path
+    ):
+        """The keys next to bases/platforms in the tables do belong in metadata.yaml."""
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: test\nseries:\n  - focal\nmin-juju-version: '2.9'\n"
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-004" not in {d.rule_id for d in list(report)}
+
 
 class TestUnknownResourceField:
     """Tests for CHARMCRAFT-005 — unrecognised keys in resource definitions."""
