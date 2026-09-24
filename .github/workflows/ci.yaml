@@ -26,7 +26,7 @@ jobs:
       - name: ty
         run: uv run --group dev ty check src tests
       - name: Rule reference up to date
-        run: uv run python tools/generate_rules_doc.py --check
+        run: make docs-check
 
   python-unit:
     runs-on: ubuntu-latest
