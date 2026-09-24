@@ -32,6 +32,8 @@ uvx charmlint --ignore no-readme --strict .
 
 `charmlint --help` lists the rest. With `--strict`, warnings exit with code 2; errors always exit with code 1.
 
+[docs/rules.md](docs/rules.md) documents every rule charmlint ships: its ID, name, default severity, and what it checks for. It is generated from the rules themselves by `make docs`.
+
 ## Configuration
 
 Configure under `[tool.charmlint]` in `pyproject.toml`, or in `charmlint.toml` / `.charmlint.toml`:

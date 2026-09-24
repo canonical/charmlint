@@ -26,6 +26,10 @@ uv run --group dev ty check src tests
 
 `pre-commit` runs the same tools through `uv run` (config in `.pre-commit-config.yaml`); tool versions live in `pyproject.toml`'s `dev` dependency group.
 
+## Rule reference
+
+`docs/rules.md` is generated from the rule registry — its ID, name, default severity, description, reference URL and class docstring. Run `make docs` after adding or changing a rule; CI fails if the page is stale. Never hand-edit the page: a rule's docstring is the text that appears on it, so improve it there.
+
 ## Corpus measurements
 
 A new or changed rule needs a TP/FP table over the hyrum cache (`~/.cache/hyrum/charms`) before review. Enumerate charms and report results as described in [docs/corpus.md](docs/corpus.md) — the cache contains build trees and mirrored repos, so an ad-hoc `rglob` gives a different denominator every time (~1970 directories vs 655 charms).
@@ -34,7 +38,7 @@ A new or changed rule needs a TP/FP table over the hyrum cache (`~/.cache/hyrum/
 
 - Commits and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/); PR-title types enforced by `.github/workflows/validate-pr-title.yaml` (see [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) for the list).
 - Rule IDs follow `CATEGORY-###` (`SECURITY-001`, `METADATA-003`) — see [docs/id-scheme.md](docs/id-scheme.md) for the category catalogue.
-- Runtime dependencies are kept minimal (PyYAML only); the `_pypi_attest/` helper is stdlib-only by design.
+- Runtime dependencies are kept minimal (PyYAML only); the `_pypi_attest.py` helper is stdlib-only by design.
 
 ## Rule module layout
 
