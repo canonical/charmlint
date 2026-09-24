@@ -26,6 +26,20 @@ jobs:
       - name: ty
         run: uv run --group dev ty check src tests
 
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+      # Audit exactly what uv.lock pins (runtime and dev), by hash, without
+      # letting pip re-resolve anything.
+      - name: Export locked requirements
+        run: uv export --frozen --all-groups --no-emit-project --format requirements-txt --output-file requirements.txt
+      - name: pip-audit
+        run: uv run --frozen --group dev pip-audit --disable-pip --require-hashes --requirement requirements.txt
+
   python-unit:
     runs-on: ubuntu-latest
     strategy:

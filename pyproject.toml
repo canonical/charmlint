@@ -32,6 +32,8 @@ dev = [
     "pytest-cov>=7.0.0",
     "hypothesis>=6.152.4",
     "coverage[toml]>=7.13.5",
+    "pip-audit==2.10.1",
+    "pre-commit-hooks==6.0.0",
     "ruff==0.15.14",
     "ty==0.0.38",
     "zizmor==1.11.0",
@@ -44,6 +46,11 @@ charmlint = "charmlint._cli:cli_entry"
 Homepage = "https://github.com/canonical/charmlint"
 Repository = "https://github.com/canonical/charmlint"
 Issues = "https://github.com/canonical/charmlint/issues"
+
+[tool.uv]
+# Don't resolve a release until it is a week old. This covers every uv
+# resolution path (uv add, uv lock, CI), not just Dependabot's PRs.
+exclude-newer = "7 days"
 
 [build-system]
 requires = ["hatchling"]
