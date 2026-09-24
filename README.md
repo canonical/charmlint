@@ -43,6 +43,8 @@ Rule IDs follow `CATEGORY-###` (for example `SECURITY-001`,
 `METADATA-003`). See [docs/id-scheme.md](docs/id-scheme.md) for the full
 category catalogue and naming rules.
 
+[docs/rules.md](docs/rules.md) documents every rule charmlint ships: its ID, name, default severity, and what it checks for. It is generated from the rules themselves by `make docs`.
+
 ## Configuration
 
 Configure under `[tool.charmlint]` in `pyproject.toml`, or in a standalone

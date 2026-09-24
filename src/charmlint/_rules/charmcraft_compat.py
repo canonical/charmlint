@@ -12,6 +12,19 @@ from ._base import Rule
 
 
 class DeprecatedSeries(Rule):
+    """Flag the deprecated ``series`` key in charm metadata.
+
+    ``series`` named the Ubuntu releases a charm supported, before
+    charmcraft moved that onto ``bases`` and then onto ``base`` plus
+    ``platforms``. A charm still carrying it is either building for a
+    shape charmcraft no longer supports, or carrying a key that no
+    longer does anything.
+
+    Presence is the whole test: an empty ``series:`` is flagged like
+    any other, because the key itself is the finding rather than what
+    it says.
+    """
+
     category = "CHARMCRAFT"
     number = 1
     name = "deprecated-series"
@@ -34,6 +47,19 @@ class DeprecatedSeries(Rule):
 
 
 class NamingConventions(Rule):
+    """Flag config option names written with underscores.
+
+    Charm config options are hyphenated by convention —
+    ``juju config app log-level=debug`` — and an underscored name
+    stands out at every point an operator types it. The name is part of
+    the charm's interface, so this is worth fixing early: renaming an
+    option later breaks everyone already setting it.
+
+    Config options only. Juju rejects an underscored action name
+    outright, so no charm has one to report, and underscored action
+    parameters are vanishingly rare in the wild.
+    """
+
     category = "CHARMCRAFT"
     number = 2
     name = "naming-conventions"
@@ -61,6 +87,25 @@ class NamingConventions(Rule):
 
 
 class Entrypoint(Rule):
+    """Check that a hand-written ``dispatch`` runs a real entrypoint.
+
+    charmcraft generates ``dispatch`` at pack time, so most charm repos
+    have none and the rule says nothing about them. A ``dispatch``
+    committed to the repo is the charm author's own, and a mistake in
+    it kills every hook: the entrypoint it names may not exist, may not
+    be a regular file, or — when dispatch runs it directly rather than
+    handing it to an interpreter — may not carry the executable bit.
+    An entrypoint passed to ``python3`` needs no such bit, and is not
+    reported for lacking one.
+
+    Anything the script does not spell out statically is left alone: a
+    command built from a shell variable, a path leading outside the
+    charm, or a ``dispatch`` whose last statement does not run a
+    ``.py`` file at all. A ``dispatch`` that cannot be read is an
+    environment problem rather than the charm's, and is passed over
+    too.
+    """
+
     category = "CHARMCRAFT"
     number = 3
     name = "dispatch-entrypoint-issues"
