@@ -374,8 +374,12 @@ def _base_names(node: ast.ClassDef, imports: _ast.Imports) -> list[str | None]:
     return [imports.resolve(base) for base in node.bases]
 
 
-def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
+def _custom_event_names(context: models.CharmContext) -> tuple[set[str], set[str], bool]:
     """Return the event names the charm's own code defines, and whether that is all.
+
+    Also returned, second, are the names of the ``CharmEvents`` subclasses
+    found, which is what a class's ``on = MyCharmEvents()`` is resolved
+    against.
 
     Two ways a charm adds an event to ``self.on``: an ``EventSource`` on
     a ``CharmEvents`` subclass, or a ``define_event`` call. Both are
@@ -392,6 +396,7 @@ def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
     Handler names are unaffected, so that half of the rule still runs.
     """
     found: set[str] = set()
+    sources: set[str] = set()
     complete = True
     for module in context.modules():
         imports = _ast.Imports.of(module)
@@ -400,6 +405,7 @@ def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
                 base for base in _base_names(node, imports) if base
             ):
                 continue
+            sources.add(node.name)
             found.update(_event_sources(node, imports))
         for call in module.walk(ast.Call):
             if not (isinstance(call.func, ast.Attribute) and call.func.attr == "define_event"):
@@ -409,7 +415,7 @@ def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
                 complete = False
             else:
                 found.add(name)
-    return found, complete
+    return found, sources, complete
 
 
 def _event_sources(node: ast.ClassDef, imports: _ast.Imports) -> Iterator[str]:
@@ -467,7 +473,7 @@ class _CharmClass:
     events_known: bool
 
 
-def _charm_classes(module: models.Module, custom_events: set[str]) -> Iterator[_CharmClass]:
+def _charm_classes(module: models.Module, event_sources: set[str]) -> Iterator[_CharmClass]:
     """Yield each class in *module* whose ``self.on`` is the charm's own.
 
     Only a class whose bases are *all* ``ops.CharmBase`` qualifies. A charm
@@ -485,7 +491,7 @@ def _charm_classes(module: models.Module, custom_events: set[str]) -> Iterator[_
             node=node,
             attributes=frozenset(_attribute_names(node)),
             attributes_known=not _has_dynamic_attributes(node),
-            events_known=_events_are_known(node, custom_events),
+            events_known=_events_are_known(node, event_sources),
         )
 
 
@@ -539,7 +545,7 @@ def _has_dynamic_attributes(node: ast.ClassDef) -> bool:
     return False
 
 
-def _events_are_known(node: ast.ClassDef, custom_events: set[str]) -> bool:
+def _events_are_known(node: ast.ClassDef, event_sources: set[str]) -> bool:
     """Whether *node*'s ``on`` is an event source this rule can enumerate.
 
     A charm that declares its own ``on = MyCharmEvents()`` is understood
@@ -558,7 +564,7 @@ def _events_are_known(node: ast.ClassDef, custom_events: set[str]) -> bool:
         if not isinstance(value, ast.Call):
             return False
         name = _ast.dotted_name(value.func)
-        if name is None or name.rsplit(".", 1)[-1] not in custom_events:
+        if name is None or name.rsplit(".", 1)[-1] not in event_sources:
             return False
     return True
 
@@ -598,12 +604,12 @@ class ObserveTargetMismatch(Rule):
     )
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        custom_events, complete = _custom_event_names(context)
+        custom_events, event_sources, complete = _custom_event_names(context)
         known_events = self._known_events(context, custom_events) if complete else None
         diagnostics: list[models.Diagnostic] = []
         for module in context.charm_sources():
             observers = _ast.observers(module)
-            for charm in _charm_classes(module, custom_events):
+            for charm in _charm_classes(module, event_sources):
                 diagnostics.extend(self._check_class(charm, observers, module, known_events))
         return diagnostics
 

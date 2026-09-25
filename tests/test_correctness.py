@@ -897,6 +897,34 @@ class TestObserveTargetMismatch:
         )
         assert not findings
 
+    def test_custom_charm_events_still_check_every_event(self, tmp_charm: pathlib.Path):
+        # Declaring ``on = MyCharmEvents()`` adds events; it doesn't make
+        # the rest of the charm's events unknowable.
+        findings = _lint_source(
+            tmp_charm,
+            """
+            import ops
+
+            class MyCharmEvents(ops.CharmEvents):
+                thing_happened = ops.EventSource(ops.EventBase)
+
+            class MyCharm(ops.CharmBase):
+                on = MyCharmEvents()
+
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.thing_happened, self._handle)
+                    framework.observe(self.on.thing_hapened, self._handle)
+                    framework.observe(self.on.db_relation_changed, self._handle)
+
+                def _handle(self, event):
+                    pass
+            """,
+        )
+        assert len(findings) == 2
+        assert any("'self.on.thing_hapened'" in d.message for d in findings)
+        assert any("'self.on.db_relation_changed'" in d.message for d in findings)
+
     def test_unresolvable_custom_events_silence_the_event_check(self, tmp_charm: pathlib.Path):
         findings = _lint_source(
             tmp_charm,
