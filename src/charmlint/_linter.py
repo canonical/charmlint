@@ -229,13 +229,7 @@ def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[mod
         ]
 
     if not context.metadata:
-        return [
-            models.Diagnostic(
-                rule_id="FATAL",
-                severity=models.Severity.ERROR,
-                message="No charmcraft.yaml or metadata.yaml found — is this a charm directory?",
-            )
-        ]
+        return [_no_metadata(charm_dir)]
 
     all_diagnostics: list[models.Diagnostic] = []
 
@@ -275,6 +269,30 @@ def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[mod
         all_diagnostics.extend(diagnostics)
 
     return _apply_noqa(charm_dir, all_diagnostics)
+
+
+def _no_metadata(charm_dir: pathlib.Path) -> models.Diagnostic:
+    """The fatal diagnostic for a charm directory with no metadata to lint.
+
+    Discovery only hands over a directory holding one of the metadata files,
+    so usually they are there but empty (or only comments) — which is worth
+    saying, rather than claiming the files are missing.
+    """
+    present = [
+        name for name in ("charmcraft.yaml", "metadata.yaml") if (charm_dir / name).is_file()
+    ]
+    if not present:
+        message = "No charmcraft.yaml or metadata.yaml found — is this a charm directory?"
+    elif len(present) == 1:
+        message = f"{present[0]} is empty — there is no charm metadata to lint"
+    else:
+        message = f"{' and '.join(present)} are empty — there is no charm metadata to lint"
+    return models.Diagnostic(
+        rule_id="FATAL",
+        severity=models.Severity.ERROR,
+        message=message,
+        path=present[0] if present else None,
+    )
 
 
 def _prefixed(diagnostic: models.Diagnostic, prefix: pathlib.PurePosixPath) -> models.Diagnostic:
