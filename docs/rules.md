@@ -65,6 +65,7 @@ config file overrides it per rule.
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
 | [STRUCTURE-002](#structure-002-no-icon) | `no-icon` | Info | No icon.svg found |
+| [SUPPLYCHAIN-001](#supplychain-001-oci-image-missing-upstream-source) | `oci-image-missing-upstream-source` | Info | oci-image resource declared without an 'upstream-source' |
 | [SUPPLYCHAIN-005](#supplychain-005-ops-dependency-unpinned) | `ops-dependency-unpinned` | Warning | ops dependency has no version specifier |
 | [SUPPLYCHAIN-006](#supplychain-006-ops-dependency-exactly-pinned) | `ops-dependency-exactly-pinned` | Info | ops dependency pinned with `==` |
 | [TESTING-001](#testing-001-no-unit-tests) | `no-unit-tests` | Warning | No unit tests found in tests/unit/ or unit_tests/ |
@@ -817,6 +818,12 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ic
 ## SUPPLYCHAIN
 
 Supply chain / maintainability.
+
+### SUPPLYCHAIN-001 oci-image-missing-upstream-source
+
+**Info** — oci-image resource declared without an 'upstream-source'
+
+Flag an `oci-image` resource with no `upstream-source`.
 
 ### SUPPLYCHAIN-005 ops-dependency-unpinned
 
