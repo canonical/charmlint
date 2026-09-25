@@ -334,9 +334,12 @@ def lint(
     return models.LintReport.from_diagnostics(charm_dir=path, diagnostics=diagnostics)
 
 
-# The files scanned for suppression comments. The bare ``noqa`` forms
-# are honoured only in YAML: in a Python file such a comment is ruff's.
-_NOQA_SUFFIXES = frozenset({".yaml", ".yml", ".py"})
+# The files scanned for suppression comments: every kind of file a rule
+# reports on that has ``#`` comments (TOML, and pip requirements files,
+# which are ``.txt`` or ``.in``). The bare ``noqa`` forms are honoured only
+# in YAML: in a Python file such a comment is ruff's, and it has never been
+# a form for the others.
+_NOQA_SUFFIXES = frozenset({".yaml", ".yml", ".py", ".toml", ".txt", ".in"})
 _LEGACY_NOQA_SUFFIXES = frozenset({".yaml", ".yml"})
 
 

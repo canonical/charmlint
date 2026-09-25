@@ -346,3 +346,38 @@ class TestPythonSuppression:
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
         write_charm_source(tmp_charm, "# charmlint: noqa\n" + _DEFER.format(comment=""))
         assert _correctness_hits(tmp_charm) == 1
+
+
+class TestPackagingSuppression:
+    """TOML and requirements files honour the prefixed forms, and only those."""
+
+    def _pinning_hits(self, charm_dir: pathlib.Path) -> list[str]:
+        return [d.rule_id for d in lint(charm_dir) if d.rule_id.startswith("SUPPLYCHAIN-00")]
+
+    @pytest.mark.parametrize("name", ["requirements.txt", "requirements.in"])
+    def test_trailing_ignore_in_requirements_suppresses(self, tmp_charm: pathlib.Path, name: str):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "parts": {"charm": {"plugin": "python", "python-requirements": [name]}}},
+        )
+        (tmp_charm / name).write_text("ops==3.7.1\n")
+        assert self._pinning_hits(tmp_charm) == ["SUPPLYCHAIN-006"]
+        (tmp_charm / name).write_text("ops==3.7.1  # charmlint: ignore[SUPPLYCHAIN-006]\n")
+        assert self._pinning_hits(tmp_charm) == []
+
+    def test_file_ignore_in_pyproject_suppresses(self, tmp_charm: pathlib.Path):
+        # tomllib keeps no positions, so pyproject findings anchor to the file
+        # and only a file-level directive can reach them.
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        pyproject = '[project]\nname = "x"\ndependencies = ["ops"]\n'
+        (tmp_charm / "pyproject.toml").write_text(pyproject)
+        assert self._pinning_hits(tmp_charm) == ["SUPPLYCHAIN-005"]
+        (tmp_charm / "pyproject.toml").write_text(
+            "# charmlint: file-ignore[SUPPLYCHAIN-005]\n" + pyproject
+        )
+        assert self._pinning_hits(tmp_charm) == []
+
+    def test_bare_noqa_in_requirements_does_not_suppress(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "requirements.txt").write_text("ops==3.7.1  # noqa\n")
+        assert self._pinning_hits(tmp_charm) == ["SUPPLYCHAIN-006"]
