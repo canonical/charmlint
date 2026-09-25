@@ -83,22 +83,11 @@ If you need to bring in the latest changes from `main` after the review has star
 
 # Releasing
 
-<!--
-Most Charm Tech repos that produce a release artefact include a section
-describing how to cut one. The shape depends on what the repo produces:
+charmlint is published to [PyPI](https://pypi.org/project/charmlint/) by `.github/workflows/publish.yaml`, with Trusted Publishing, whenever a `v*` tag is pushed.
 
-- PyPI package (uv build → Trusted Publishing): tag → GitHub Release →
-  release workflow publishes via pypa/gh-action-pypi-publish (OIDC).
-- snap (snapcraft / launchpad build recipe): document the release channel
-  promotion flow (edge → beta → candidate → stable).
-- Go binary (goreleaser): document `git tag vX.Y.Z && git push --tags`
-  and which workflow goreleaser runs from.
-- Charm on Charmhub (charmcraft): document the track/channel and the
-  upload-resource / promote-charm flow.
-- Library shipped via canonical/charmlibs: document the version-bump and
-  publish-library flow.
+1. Work out the new version from [docs/versioning.md](docs/versioning.md): a minor bump if anything since the last release adds a rule or changes what a rule reports, and a patch bump otherwise.
+2. Open a PR that bumps the version (`uv version --bump minor` or `--bump patch` updates both `pyproject.toml` and `uv.lock`), titled like `chore: bump version to 0.3.0`, and merge it.
+3. Create a GitHub release on the merge commit, with a new `vX.Y.Z` tag that matches the version and a short summary of what changed. Creating the release pushes the tag, which starts the publish workflow.
+4. Check that the publish run succeeds. It stops before building if the tag doesn't match the version in `pyproject.toml`. If that happens, don't move the tag (the tag ruleset won't let you anyway) - bump the patch version and release again.
 
-Replace this comment with the actual procedure. Repos that don't produce a
-discrete release artefact (demos, tutorials, specs, registries) can drop the
-whole section.
--->
+To try the workflow out without releasing anything, run it manually from the Actions tab. A manual run publishes a `.devN` build to TestPyPI instead.
