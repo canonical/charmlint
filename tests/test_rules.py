@@ -242,6 +242,7 @@ def _fetch_status(url: str) -> int:
     raise AssertionError("unreachable")
 
 
+@pytest.mark.network
 class TestReferenceUrls:
     """Every rule with a reference_url must point somewhere live."""
 
