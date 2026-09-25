@@ -265,6 +265,7 @@ def _missing_optional_diagnostics(
                 "charm authors should explicitly state whether the relation is "
                 "required for the charm to function",
                 path=definition.source,
+                line=definition.line,
                 fix_hint=(
                     f"Add `optional: true` or `optional: false` to the `{name}` "
                     f"entry under `{section}`"
