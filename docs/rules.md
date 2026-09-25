@@ -65,6 +65,7 @@ config file overrides it per rule.
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
 | [STRUCTURE-002](#structure-002-no-icon) | `no-icon` | Info | No icon.svg found |
+| [SUPPLYCHAIN-001](#supplychain-001-oci-image-missing-upstream-source) | `oci-image-missing-upstream-source` | Info | oci-image resource declared without an 'upstream-source' |
 | [SUPPLYCHAIN-005](#supplychain-005-ops-dependency-unpinned) | `ops-dependency-unpinned` | Warning | ops dependency has no version specifier |
 | [SUPPLYCHAIN-006](#supplychain-006-ops-dependency-exactly-pinned) | `ops-dependency-exactly-pinned` | Info | ops dependency pinned with `==` |
 | [TESTING-001](#testing-001-no-unit-tests) | `no-unit-tests` | Warning | No unit tests found in tests/unit/ or unit_tests/ |
@@ -621,6 +622,10 @@ metadata.yaml, and only the spelling belonging to the file the
 charm uses counts: writing `display-name` in charmcraft.yaml is a
 misplacement rather than a title.
 
+A charm with both files uses metadata.yaml's spelling, and is told
+about metadata.yaml: charmcraft packs that file as it is, so a
+`title` in charmcraft.yaml never reaches the charm.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-title>
 
 ### METADATA-003 missing-summary
@@ -664,7 +669,8 @@ deploys perfectly well without it.
 
 The key is `links.documentation` in charmcraft.yaml and `docs`
 at the top level in metadata.yaml, and only the spelling belonging
-to the file the charm uses counts.
+to the file the charm uses counts (metadata.yaml, for a charm that has
+both).
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links>
 
@@ -680,7 +686,8 @@ perfectly well without it.
 
 The key is `links.issues` in charmcraft.yaml and `issues` at
 the top level in metadata.yaml, and only the spelling belonging to
-the file the charm uses counts.
+the file the charm uses counts (metadata.yaml, for a charm that has
+both).
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-issues>
 
@@ -696,7 +703,8 @@ Advisory, because a charm deploys perfectly well without it.
 
 The key is `links.source` in charmcraft.yaml and `source` at
 the top level in metadata.yaml, and only the spelling belonging to
-the file the charm uses counts.
+the file the charm uses counts (metadata.yaml, for a charm that has
+both).
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-source>
 
@@ -817,6 +825,12 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ic
 ## SUPPLYCHAIN
 
 Supply chain / maintainability.
+
+### SUPPLYCHAIN-001 oci-image-missing-upstream-source
+
+**Info** — oci-image resource declared without an 'upstream-source'
+
+Flag an `oci-image` resource with no `upstream-source`.
 
 ### SUPPLYCHAIN-005 ops-dependency-unpinned
 
