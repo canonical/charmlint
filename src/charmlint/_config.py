@@ -87,6 +87,49 @@ def _str_list(value: Any) -> list[str]:
     return [str(s) for s in value]
 
 
+# The keys a charmlint table may hold. Anything else is a typo (``selct``,
+# ``per_rule_severity``) that would otherwise be silently ignored.
+_KEYS = frozenset(
+    {"severity", "select", "extend-select", "ignore", "extend-ignore", "per-rule-severity"}
+)
+_LIST_KEYS = ("select", "extend-select", "ignore", "extend-ignore")
+_SEVERITIES = ", ".join(severity.value for severity in models.Severity)
+
+
+def _check_shape(data: dict[str, Any], path: pathlib.Path) -> None:
+    """Reject a charmlint table that ``LintConfig.from_dict`` would misread.
+
+    ``from_dict`` is lenient by design, skipping what it can't use, so this
+    runs first: an unknown key, a ``select = "SECURITY"`` that is not a list,
+    or a severity that names no severity would otherwise each be dropped
+    without a word, and a dropped ``select`` means every rule runs.
+    """
+    unknown = sorted(str(key) for key in data if key not in _KEYS)
+    if unknown:
+        raise ConfigError(
+            path, f"unknown key{'s' if len(unknown) > 1 else ''}: {', '.join(unknown)}"
+        )
+    for key in _LIST_KEYS:
+        value = data.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(token, str) for token in value):
+            raise ConfigError(path, f"{key} must be a list of strings")
+    if "severity" in data and not _is_severity(data["severity"]):
+        raise ConfigError(path, f"severity must be one of {_SEVERITIES}, not {data['severity']!r}")
+    overrides = data.get("per-rule-severity", {})
+    if not isinstance(overrides, dict):
+        raise ConfigError(path, "per-rule-severity must be a table")
+    for key, value in overrides.items():
+        if not _is_severity(value):
+            raise ConfigError(
+                path, f"per-rule-severity for {key} must be one of {_SEVERITIES}, not {value!r}"
+            )
+
+
+def _is_severity(value: object) -> bool:
+    """Whether *value* names a severity, in any case, as ``from_dict`` reads it."""
+    return isinstance(value, str) and value.lower() in {s.value for s in models.Severity}
+
+
 def _validate(config: "LintConfig", path: pathlib.Path) -> None:
     """Reject configs that name nothing, or that contradict themselves."""
     unknown = sorted(
@@ -219,6 +262,7 @@ def load_config(charm_dir: pathlib.Path, config_path: pathlib.Path | None = None
         section = _extract(data, config_path, from_pyproject=config_path.name == _PYPROJECT)
         if section is None:
             return LintConfig()
+        _check_shape(section, config_path)
         config = LintConfig.from_dict(section)
         config.source_path = config_path
         _validate(config, config_path)
@@ -228,6 +272,7 @@ def load_config(charm_dir: pathlib.Path, config_path: pathlib.Path | None = None
     if found is None:
         return LintConfig()
     path, data = found
+    _check_shape(data, path)
     config = LintConfig.from_dict(data)
     config.source_path = path
     _validate(config, path)

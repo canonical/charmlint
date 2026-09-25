@@ -1,6 +1,7 @@
 """Tests for charmlint._config."""
 
 import pathlib
+import re
 import textwrap
 
 import pytest
@@ -141,6 +142,46 @@ class TestLoadConfig:
         config_file.write_text('select = ["SECURITY"]\nignore = ["SECURITY"]\n')
         with pytest.raises(ConfigError, match="select and ignore both cover"):
             load_config(tmp_path)
+
+    @pytest.mark.parametrize(
+        ("toml", "reason"),
+        [
+            ('selct = ["SECURITY"]\n', "unknown key: selct"),
+            (
+                'per_rule_severity = {}\nsevrity = "info"\n',
+                "unknown keys: per_rule_severity, sevrity",
+            ),
+            ('select = "SECURITY"\n', "select must be a list of strings"),
+            ("extend-ignore = [1]\n", "extend-ignore must be a list of strings"),
+            ('severity = "warn"\n', "severity must be one of error, warning, info, not 'warn'"),
+            ("severity = 2\n", "severity must be one of"),
+            ('per-rule-severity = "error"\n', "per-rule-severity must be a table"),
+            (
+                '[per-rule-severity]\n"SECURITY-001" = "critical"\n',
+                "per-rule-severity for SECURITY-001 must be one of",
+            ),
+        ],
+    )
+    def test_misshapen_config_raises(self, tmp_path: pathlib.Path, toml: str, reason: str):
+        # Each of these used to be dropped silently; a dropped ``select``
+        # meant every rule ran.
+        (tmp_path / "charmlint.toml").write_text(toml)
+        with pytest.raises(ConfigError, match=re.escape(reason)):
+            load_config(tmp_path)
+
+    def test_misshapen_pyproject_table_raises(self, tmp_path: pathlib.Path):
+        config_file = tmp_path / "pyproject.toml"
+        config_file.write_text('[tool.charmlint]\nselect = "SECURITY"\n')
+        with pytest.raises(ConfigError, match="select must be a list"):
+            load_config(tmp_path, config_path=config_file)
+
+    def test_severity_names_are_case_insensitive(self, tmp_path: pathlib.Path):
+        (tmp_path / "charmlint.toml").write_text(
+            'severity = "WARNING"\n[per-rule-severity]\n"SECURITY-001" = "Error"\n'
+        )
+        config = load_config(tmp_path)
+        assert config.min_severity == Severity.WARNING
+        assert config.severity_overrides == {"SECURITY-001": "error"}
 
     def test_malformed_explicit_config_raises(self, tmp_path: pathlib.Path):
         config_file = tmp_path / "custom.toml"
