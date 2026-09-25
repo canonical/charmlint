@@ -129,6 +129,10 @@ def _build(node: yaml.Node, loader: Any, source: str, line: int | None) -> model
         return models.Yaml(
             value=loader.construct_object(node, deep=True), source=source, line=line
         )
+    # Resolve ``<<`` merge keys the way PyYAML's own constructor does: the
+    # merged pairs are spliced in ahead of the mapping's own, so its own keys
+    # win, and each keeps the line it was written on under the anchor.
+    loader.flatten_mapping(node)
     children: dict[Any, models.Yaml] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=True)
