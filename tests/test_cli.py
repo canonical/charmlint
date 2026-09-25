@@ -59,6 +59,25 @@ class TestCLI:
         meta_diags = [d for d in data["diagnostics"] if d["rule_id"] == "METADATA-001"]
         assert not meta_diags
 
+    @pytest.mark.parametrize("flag", ["--select", "--ignore"])
+    def test_empty_selector_tokens_are_skipped(self, tmp_charm: pathlib.Path, capsys, flag: str):
+        # A trailing or doubled comma is easy to type (or to produce when
+        # building the list in a script) and names nothing.
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        exit_code = main([str(tmp_charm), "--format", "json", flag, ",METADATA-001,, "])
+        captured = capsys.readouterr()
+        assert exit_code != 2, captured.err
+        rule_ids = {d["rule_id"] for d in json.loads(captured.out)["diagnostics"]}
+        assert ("METADATA-001" in rule_ids) is (flag == "--select")
+
+    def test_unknown_selector_is_named_alongside_empty_tokens(
+        self, tmp_charm: pathlib.Path, capsys
+    ):
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        exit_code = main([str(tmp_charm), "--select", "METADATA,NOPE,"])
+        assert exit_code == 2
+        assert capsys.readouterr().err.strip().endswith("category: NOPE")
+
     def test_severity_filter(self, tmp_charm: pathlib.Path, capsys):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json", "--min-severity", "error"])
