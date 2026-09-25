@@ -388,7 +388,7 @@ class TestLibraryRules:
         assert len(lib001) == 1
         assert expected_pkg in lib001[0].message
         assert lib001[0].severity == Severity.WARNING
-        assert lib001[0].path == str(lib_path)
+        assert lib001[0].path == lib_path.relative_to(tmp_charm).as_posix()
         assert lib001[0].fix_hint is not None
         assert f"uv add {expected_pkg}" in lib001[0].fix_hint
 

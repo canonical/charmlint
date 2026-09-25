@@ -160,7 +160,7 @@ def _find_defers_followed_by(
     Returns ``(path, lineno)`` for each matching ``event.defer()``.
     """
     return [
-        (str(module.file), statement.lineno)
+        (module.path, statement.lineno)
         for module in context.charm_sources()
         for statement, following in _ast.walk_statements(module.tree.body)
         if _is_event_defer(statement) and match_next(following)
