@@ -7,7 +7,6 @@ versions it accepts.
 """
 
 import dataclasses
-import functools
 import pathlib
 import re
 from typing import Any
@@ -316,11 +315,10 @@ def _requirements_files(context: models.CharmContext) -> tuple[tuple[pathlib.Pat
     return default
 
 
-@functools.cache
 def _find_ops_requirements(
     files: tuple[tuple[pathlib.Path, str], ...],
 ) -> _OpsDependency | None:
-    """Scan the charm's requirements files once, for both pinning rules."""
+    """Scan the charm's requirements files for its ``ops`` dependency."""
     for path, name in files:
         if not path.is_file():
             continue

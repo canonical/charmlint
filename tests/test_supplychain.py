@@ -300,6 +300,16 @@ class TestOpsPinningRules:
         report = lint(tmp_charm)
         assert not [d for d in report if d.rule_id in {"SUPPLYCHAIN-005", "SUPPLYCHAIN-006"}]
 
+    def test_editing_requirements_between_runs_is_seen(self, tmp_charm: pathlib.Path):
+        # Nothing about the charm may outlive a lint() call: an editor
+        # integration or a watch mode lints the same path repeatedly.
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        requirements = tmp_charm / "requirements.txt"
+        requirements.write_text("ops==3.7.1\n")
+        assert [d for d in lint(tmp_charm) if d.rule_id == "SUPPLYCHAIN-006"]
+        requirements.write_text("ops>=2.23,<4\n")
+        assert not [d for d in lint(tmp_charm) if d.rule_id == "SUPPLYCHAIN-006"]
+
     def test_supplychain006_exact_pin_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
         (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
