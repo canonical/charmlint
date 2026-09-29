@@ -248,17 +248,7 @@ def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[mod
         # Apply severity overrides.
         override = _effective_severity(rule, config)
         if override is not None:
-            diagnostics = [
-                models.Diagnostic(
-                    rule_id=d.rule_id,
-                    severity=override,
-                    message=d.message,
-                    path=d.path,
-                    line=d.line,
-                    fix_hint=d.fix_hint,
-                )
-                for d in diagnostics
-            ]
+            diagnostics = [dataclasses.replace(d, severity=override) for d in diagnostics]
 
         # Filter by minimum severity.
         if config.min_severity:
