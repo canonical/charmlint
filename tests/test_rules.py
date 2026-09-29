@@ -183,11 +183,15 @@ class TestMetadataRules:
         assert not meta_ids
 
     def test_legacy_bundle_yaml_skips_metadata_rules(self, tmp_charm: pathlib.Path):
+        # A charmcraft.yaml that doesn't say ``type: bundle``: the bundle.yaml
+        # beside it is what marks the directory as a bundle.
+        write_charmcraft_yaml(tmp_charm, {"description": "A bundle."})
+        without = {d.rule_id for d in lint(tmp_charm)}
+        assert "METADATA-001" in without
         (tmp_charm / "bundle.yaml").write_text("applications: {}\n")
-        write_charmcraft_yaml(tmp_charm, {})
-        report = lint(tmp_charm)
-        meta_ids = {d.rule_id for d in list(report) if d.rule_id.startswith("METADATA")}
-        assert not meta_ids
+        report = list(lint(tmp_charm))
+        assert "FATAL" not in {d.rule_id for d in report}
+        assert not {d.rule_id for d in report if d.rule_id.startswith("METADATA")}
 
 
 class TestDocumentationRules:

@@ -609,11 +609,11 @@ class TestNonDeferrableEventDeferred:
         report = lint(tmp_charm)
         assert not [d for d in report if d.rule_id == RULE_ID]
 
-    def test_syntax_error_ignored(self, tmp_charm: pathlib.Path):
+    def test_syntax_error_is_fatal(self, tmp_charm: pathlib.Path):
+        """A source that does not parse is reported by the core, not skipped here."""
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(tmp_charm, "def broken(:\n")
-        report = lint(tmp_charm)
-        assert not [d for d in report if d.rule_id == RULE_ID]
+        assert [d.rule_id for d in lint(tmp_charm)] == ["FATAL"]
 
     def test_diagnostic_has_reference_url(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
