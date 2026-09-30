@@ -22,10 +22,6 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore"
-    ignore:
-      # Left out for now: zizmor's version and how CI runs it are being
-      # changed across the Charm Tech repos together.
-      - dependency-name: "zizmor"
     groups:
       dev-tooling:
         patterns:
