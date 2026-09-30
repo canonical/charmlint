@@ -143,9 +143,10 @@ _VERSION_CALLS = frozenset({"set_workload_version", "application_version_set"})
 # the COS worker charms do one each. ``coordinated_workers.coordinator`` is
 # *not* listed: ``Coordinator`` does not set a version, and the coordinator
 # charms are real findings.
-_WORKLOAD_VERSION_SETTERS = frozenset(
-    {"coordinated_workers.worker", "cosl.coordinated_workers.worker"}
-)
+_WORKLOAD_VERSION_SETTERS = frozenset({
+    "coordinated_workers.worker",
+    "cosl.coordinated_workers.worker",
+})
 
 # Charm-name suffixes that say the charm has no workload of its own. By
 # Canonical's naming guidelines an integrator hands another charm the

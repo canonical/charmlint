@@ -85,6 +85,9 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["charmlint"]
 
+[tool.ruff.format]
+preview = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

@@ -89,13 +89,11 @@ def _str_list(value: Any) -> list[str]:
 
 def _validate(config: "LintConfig", path: pathlib.Path) -> None:
     """Reject configs that name nothing, or that contradict themselves."""
-    unknown = sorted(
-        {
-            token
-            for token in (*config.select, *config.ignore, *config.severity_overrides)
-            if not _selectors.resolve(token)
-        }
-    )
+    unknown = sorted({
+        token
+        for token in (*config.select, *config.ignore, *config.severity_overrides)
+        if not _selectors.resolve(token)
+    })
     if unknown:
         raise ConfigError(
             path,
