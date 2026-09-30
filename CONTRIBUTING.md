@@ -9,29 +9,29 @@ All contributors must sign the [Canonical contributor licence agreement](https:/
 Set up a dev environment and run the tests with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv sync --dev
-uv run --group dev pytest
+uv sync
+uv run pytest
 ```
 
 Lint, format, and type-check:
 
 ```bash
-uv run --group dev ruff check src tests
-uv run --group dev ruff format --check src tests
-uv run --group dev ty check src tests
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run ty check src tests
 ```
 
 `pre-commit` runs the same checks (config in `.pre-commit-config.yaml`).
 
 A new or changed rule needs measurements over the charm corpus before review - see [docs/corpus.md](docs/corpus.md).
 
-[docs/rules.md](docs/rules.md) is generated from the rule registry, so after adding or changing a rule, regenerate it with `make docs` (CI fails if it's stale). Don't edit the page by hand: a rule's docstring is the text that appears there, so improve it in the code.
+[docs/rules.md](docs/rules.md) is generated from the rule registry (CI fails if it's stale). After adding or changing a rule, regenerate it with `make docs`. Don't edit the page by hand; improve the rule docstrings instead.
 
 # Project status
 
 charmlint is early work, and the implementation is subject to change (and probably will change). Please don't treat anything under `src/` as settled, or build on it expecting the internals to stay where they are.
 
-What we're trying to get right at the moment is the set of rules. That's where the care goes: what each rule is for, what it does and doesn't match, and the tests that pin that behaviour down. The tests themselves might change shape later - we'd like them to be less Python-specific, since charmlint is meant to be model-agnostic - so it's not worth over-investing in the current fixtures.
+What we're trying to get right at the moment is the set of rules. That's where the care goes: what each rule is for, what it does and doesn't match, and the tests that pin that behaviour down. The tests themselves might change shape later - we'd like them to be less Python-specific, since charmlint is meant to work with any AI model or coding agent, not just one - so it's not worth over-investing in the current fixtures.
 
 The code is almost entirely agent-generated, and that's likely to continue for a while yet.
 

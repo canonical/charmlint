@@ -2,26 +2,26 @@
 
 ## What this repo is
 
-`charmlint` is a charm-aware, model-agnostic linter for [Juju](https://canonical.com/juju) charms — rules check charm source code against Canonical's charm best practices (observability, security, testing, metadata, configuration).
+`charmlint` is a linter for [Juju](https://canonical.com/juju) charms — rules check charm source code against Canonical's charm best practices (observability, security, testing, metadata, configuration). It is model-agnostic: nothing in it should depend on, or assume, a particular AI assistant or model (Claude Code, Copilot, OpenAI, …).
 
 ## Dev setup
 
 ```bash
-uv sync --dev
+uv sync
 ```
 
 ## Tests
 
 ```bash
-uv run --group dev pytest
+uv run pytest
 ```
 
 ## Lint
 
 ```bash
-uv run --group dev ruff check src tests
-uv run --group dev ruff format --check src tests
-uv run --group dev ty check src tests
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run ty check src tests
 ```
 
 `pre-commit` runs the same tools through `uv run` (config in `.pre-commit-config.yaml`); tool versions live in `pyproject.toml`'s `dev` dependency group.
