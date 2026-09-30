@@ -92,7 +92,7 @@ class TestVersionIsLazy:
             main([sys.argv[1]])
             assert "importlib.metadata" not in sys.modules
         """)
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [sys.executable, "-c", code, str(tmp_charm)], capture_output=True, text=True
         )
         assert result.returncode == 0, result.stderr
@@ -102,4 +102,4 @@ class TestVersionIsLazy:
 
     def test_unknown_attribute_raises(self):
         with pytest.raises(AttributeError):
-            charmlint.nonexistent  # noqa: B018
+            charmlint.nonexistent  # ruff: ignore[useless-expression]

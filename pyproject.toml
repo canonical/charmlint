@@ -77,6 +77,7 @@ select = [
     "ARG", # flake8-unused-arguments
     "SIM", # flake8-simplify
     "S",   # flake8-bandit
+    "noqa-comments",  # RUF105: use `# ruff: ignore[...]`
 ]
 ignore = [
     "line-too-long",  # E501 (handled by formatter)

@@ -115,7 +115,7 @@ class TestNoqaScoping:
     """Directives only bite where they should."""
 
     def test_noqa_on_other_line_does_not_suppress(self, tmp_charm: pathlib.Path):
-        # noqa on api-token's line must not silence admin-password.
+        # A noqa on api-token's line must not silence admin-password.
         text = _TWO_SECRETS.format(comment="")
         text = text.replace("    api-token:", "    api-token:  # noqa: SECURITY-001")
         _write(tmp_charm, text)
