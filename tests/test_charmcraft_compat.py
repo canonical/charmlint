@@ -828,11 +828,11 @@ class TestOpsMainCall:
         report = lint(tmp_charm)
         assert "CHARMCRAFT-006" in {d.rule_id for d in list(report)}
 
-    def test_syntax_error_source_is_skipped(self, tmp_charm: pathlib.Path):
+    def test_syntax_error_is_fatal(self, tmp_charm: pathlib.Path):
+        """A source that does not parse is reported by the core, not skipped here."""
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(tmp_charm, "import ops\n\ndef broken(:\n")
-        report = lint(tmp_charm)
-        assert "CHARMCRAFT-006" not in {d.rule_id for d in list(report)}
+        assert [d.rule_id for d in lint(tmp_charm)] == ["FATAL"]
 
 
 class TestLegacyBases:

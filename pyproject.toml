@@ -1,7 +1,7 @@
 [project]
 name = "charmlint"
 version = "0.2.1"
-description = "A charm-aware, model-agnostic linter for Juju charms"
+description = "A linter for Juju charms"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
@@ -62,6 +62,11 @@ packages = ["src/charmlint"]
 [tool.ruff]
 line-length = 99
 target-version = "py312"
+
+[tool.ruff.format]
+# A Charm Tech baseline governance file, kept byte-identical to the baseline
+# so it can be updated from there. It is still linted and type-checked.
+exclude = [".github/check-conventional-pr-title.py"]
 
 [tool.ruff.lint]
 select = [
