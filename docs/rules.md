@@ -39,6 +39,7 @@ config file overrides it per rule.
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
 | [CONFIG-006](#config-006-config-option-undeclared) | `config-option-undeclared` | Error | Config key read in src/ is not a declared config option |
+| [CONFIG-008](#config-008-config-options-not-nested) | `config-options-not-nested` | Error | Config options are not under an `options` key |
 | [CORRECTNESS-001](#correctness-001-defer-without-return) | `defer-without-return` | Warning | event.defer() not immediately followed by return |
 | [CORRECTNESS-002](#correctness-002-defer-before-raise) | `defer-before-raise` | Warning | event.defer() immediately followed by raise |
 | [CORRECTNESS-003](#correctness-003-exec-result-not-consumed) | `exec-result-not-consumed` | Error | container.exec() result not consumed (no .wait() / .wait_output()) |
@@ -336,6 +337,23 @@ reads the config of whichever charm uses it, so its keys are not this
 charm's to declare, and a computed key cannot be resolved statically.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
+
+### CONFIG-008 config-options-not-nested
+
+**Error** — Config options are not under an `options` key
+
+Config options must sit under an `options` key.
+
+Juju reads a charm's config options from `options`, one level below
+`config:` in `charmcraft.yaml` (or at the top level of
+`config.yaml`). With that level missing, charmcraft still packs the
+charm, and it is `juju deploy` that refuses it, with `invalid config: empty configuration`.
+
+The other config rules still check options written one level too high,
+so their findings are about the options themselves rather than about
+where they are.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config>
 
 ## CORRECTNESS
 
