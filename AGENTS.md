@@ -19,9 +19,9 @@ uv run pytest
 ## Lint
 
 ```bash
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv run ty check src tests
+uv run ruff check
+uv run ruff format --check
+uv run ty check
 ```
 
 `pre-commit` runs the same tools through `uv run` (config in `.pre-commit-config.yaml`); tool versions live in `pyproject.toml`'s `dev` dependency group.

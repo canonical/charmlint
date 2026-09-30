@@ -3,6 +3,7 @@
 import ast
 import pathlib
 import textwrap
+import warnings
 
 import pytest
 
@@ -76,6 +77,12 @@ class TestScope:
 
     def test_path_is_charm_relative_posix(self):
         assert parse("x = 1", "src/nested/helper.py").path == "src/nested/helper.py"
+
+    def test_parsing_does_not_warn_about_the_charms_code(self):
+        # An invalid escape sequence is a SyntaxWarning at compile time.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            parse('PAT = "\\d+"')
 
 
 class TestModule:

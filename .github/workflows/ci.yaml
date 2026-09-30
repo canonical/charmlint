@@ -20,11 +20,11 @@ jobs:
       - name: uv lock --check
         run: uv lock --check
       - name: ruff check
-        run: uv run --group dev ruff check src tests
+        run: uv run --group dev ruff check
       - name: ruff format
-        run: uv run --group dev ruff format --check src tests
+        run: uv run --group dev ruff format --check
       - name: ty
-        run: uv run --group dev ty check src tests
+        run: uv run --group dev ty check
       - name: Rule reference up to date
         run: make docs-check
 
