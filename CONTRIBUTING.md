@@ -42,6 +42,7 @@ Review still matters, but the weight isn't spread evenly.
 Most of the attention belongs on the rule itself:
 
 * Is this a good thing to have a rule about at all? A rule that's noisy, or that encodes a personal preference rather than a practice we'd defend, costs more than it's worth.
+* Does it need to know about charms? charmlint complements general-purpose tools like ruff and pyright rather than replacing them - if a generic Python linter or type checker could catch it, it belongs there instead.
 * What does it match, and (more importantly) what does it not match? A false positive is worse than a gap.
 * Do the tests actually capture that? A test that only exercises the case the rule was written for isn't telling us much.
 

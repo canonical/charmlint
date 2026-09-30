@@ -2,7 +2,7 @@
 
 ## What this repo is
 
-`charmlint` is a linter for [Juju](https://canonical.com/juju) charms — rules check charm source code against Canonical's charm best practices (observability, security, testing, metadata, configuration). It is model-agnostic: nothing in it should depend on, or assume, a particular AI assistant or model (Claude Code, Copilot, OpenAI, …).
+`charmlint` is a linter for [Juju](https://canonical.com/juju) charms — rules check charm source code against Canonical's charm best practices (observability, security, testing, metadata, configuration). It is model-agnostic: nothing in it should depend on, or assume, a particular AI assistant or model (Claude Code, Copilot, OpenAI, …). It complements general-purpose tools like ruff and pyright rather than replacing them: a rule belongs here only if it needs knowledge of charms, Juju, or Canonical practice. If a generic Python linter or type checker could catch it, it doesn't belong in charmlint.
 
 ## Dev setup
 
