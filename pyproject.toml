@@ -64,7 +64,6 @@ line-length = 99
 target-version = "py312"
 
 [tool.ruff.lint]
-# Needed to refer to single rules by name rather than by code.
 preview = true
 select = [
     "E",   # pycodestyle errors
