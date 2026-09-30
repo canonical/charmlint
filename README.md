@@ -91,8 +91,8 @@ that one rule and no other security rule.
 
 ## Suppressing findings inline
 
-Individual findings can be silenced from within a charm's YAML and Python
-files, with ruff-style suppression comments. Codes inside a directive are
+Individual findings can be silenced from within a charm's YAML, Python,
+TOML and requirements files, with ruff-style suppression comments. Codes inside a directive are
 the same three spellings as `select` and `ignore` accept — rule ID, rule
 name, or category.
 
