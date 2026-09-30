@@ -138,7 +138,7 @@ def _check_provenance_uncached(
 ) -> ProvenanceResult:
     normalised = normalise_name(name)
     url = f"{_SIMPLE_API_BASE}{normalised}/"
-    request = urllib.request.Request(url, headers={"Accept": _ACCEPT})
+    request = urllib.request.Request(url, headers={"Accept": _ACCEPT})  # noqa: S310
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310

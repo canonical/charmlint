@@ -229,13 +229,13 @@ def _fetch_status(url: str) -> int:
     """Return the HTTP status for *url*, retrying transient answers."""
     for attempt in range(3):
         try:
-            request = urllib.request.Request(url, method="HEAD")
-            with urllib.request.urlopen(request, timeout=10) as response:
+            request = urllib.request.Request(url, method="HEAD")  # noqa: S310
+            with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
                 return response.status
         except urllib.error.HTTPError as exc:
             if exc.code == 405:
                 # HEAD not allowed — retry with GET.
-                with urllib.request.urlopen(url, timeout=10) as response:
+                with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310
                     return response.status
             if exc.code not in _TRANSIENT_CODES or attempt == 2:
                 raise

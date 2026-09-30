@@ -70,10 +70,12 @@ jobs:
       - name: Build sdist and wheel
         run: uv build
 
+      # cyclonedx-py runs from its own locked project (.github/sbom) so that
+      # neither it nor the dev group is synced into the venv it describes.
       - name: Generate CycloneDX SBOM
         run: |
           uv sync --frozen --no-dev
-          uv run --with cyclonedx-bom cyclonedx-py environment .venv \
+          uv run --frozen --project .github/sbom cyclonedx-py environment .venv \
             --output-format JSON \
             --output-file sbom.cdx.json
 

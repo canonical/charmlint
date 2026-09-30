@@ -92,7 +92,7 @@ class TestVersionIsLazy:
             main([sys.argv[1]])
             assert "importlib.metadata" not in sys.modules
         """)
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603
             [sys.executable, "-c", code, str(tmp_charm)], capture_output=True, text=True
         )
         assert result.returncode == 0, result.stderr
