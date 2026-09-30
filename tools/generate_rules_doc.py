@@ -16,7 +16,7 @@ and prints the command to run. That is what CI calls.
 
 The docstrings are written in the same reStructuredText-flavoured style as
 the rest of the source, so ``double backticks`` are rewritten to Markdown's
-single ones on the way out, a cross-reference role (``:data:`NAME```) becomes
+single ones, a cross-reference role (``:data:`NAME```) becomes
 a plain code span, and the ``::`` that introduces a literal block becomes a
 single colon (the indented block is already code in Markdown). Everything
 else — paragraphs, ``*emphasis*`` — is already Markdown as it stands.
@@ -165,7 +165,8 @@ def markdown(text: str) -> str:
     the spelling the docstring meant rather than a newline. A role such as
     ``:data:`NAME``` is a cross-reference Markdown can't follow, so it is
     shown as the code span it names. A paragraph ending in ``::`` ends in a
-    colon instead (``text ::``, with a space, in nothing).
+    colon instead. In RST, ``text ::`` introduces a literal block without
+    rendering a colon, so a ``::`` preceded by a space is dropped.
     """
     text = re.sub(r":[a-z]+:`~?([^`]+)`", r"`\1`", text)
     text = re.sub(r"(\S)::$", r"\1:", text, flags=re.M)
