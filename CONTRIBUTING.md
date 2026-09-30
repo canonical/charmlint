@@ -16,9 +16,9 @@ uv run pytest
 Lint, format, and type-check:
 
 ```bash
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv run ty check src tests
+uv run ruff check
+uv run ruff format --check
+uv run ty check
 ```
 
 `pre-commit` runs the same checks (config in `.pre-commit-config.yaml`).
