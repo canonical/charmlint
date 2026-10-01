@@ -6,6 +6,8 @@ updates:
       interval: "monthly"  # Hard-coded to the 1st of the month.
     cooldown:
       default-days: 7  # Don't adopt a release until it's 7 days old.
+    commit-message:
+      prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
     labels:
       - "dependencies"
   - package-ecosystem: "uv"
@@ -15,5 +17,7 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 0  # Security updates only.
+    commit-message:
+      prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
     labels:
       - "dependencies"
