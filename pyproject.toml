@@ -64,6 +64,7 @@ line-length = 99
 target-version = "py312"
 
 [tool.ruff.format]
+preview = true
 # A Charm Tech baseline governance file, kept byte-identical to the baseline
 # so it can be updated from there. It is still linted and type-checked.
 exclude = [".github/check-conventional-pr-title.py"]
@@ -89,9 +90,6 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["charmlint"]
-
-[tool.ruff.format]
-preview = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
