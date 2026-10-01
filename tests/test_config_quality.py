@@ -322,3 +322,107 @@ class MyCharm(ops.CharmBase):
             tmp_charm, 'print(self.config["prot"])\n        print(self.config["prot"])'
         )
         assert [d.line for d in diags] == [6, 7]
+
+
+class TestConfigDefaultTypeMismatch:
+    """Tests for CONFIG-007 — a default that contradicts the declared type."""
+
+    @pytest.mark.parametrize(
+        ("option_type", "default", "expected"),
+        [
+            ("int", "8080", "a string"),
+            ("int", 80.5, "a float"),
+            ("int", True, "a boolean"),
+            ("float", "0.5", "a string"),
+            ("float", False, "a boolean"),
+            ("boolean", "yes", "a string"),
+            ("boolean", 1, "an integer"),
+            ("string", 8080, "an integer"),
+            ("string", True, "a boolean"),
+            ("secret", 1, "an integer"),
+        ],
+    )
+    def test_mismatch_flagged(
+        self, tmp_charm: pathlib.Path, option_type: str, default: Any, expected: str
+    ):
+        _write_options(
+            tmp_charm, {"foo": {"type": option_type, "default": default, "description": "x"}}
+        )
+        diags = _diags(tmp_charm, "CONFIG-007")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert f"'{option_type}'" in diags[0].message
+        assert expected in diags[0].message
+
+    @pytest.mark.parametrize(
+        ("option_type", "default"),
+        [
+            ("int", 8080),
+            ("float", 0.5),
+            # YAML has no way to write an integral float, so an int is
+            # the only way to spell a float option's default of 1.
+            ("float", 1),
+            ("boolean", True),
+            ("boolean", False),
+            ("string", "debug"),
+            ("string", ""),
+            ("secret", "secret:cvh7kruupa1s46bqvuig"),
+        ],
+    )
+    def test_matching_default_clean(self, tmp_charm: pathlib.Path, option_type: str, default: Any):
+        _write_options(
+            tmp_charm, {"foo": {"type": option_type, "default": default, "description": "x"}}
+        )
+        assert not _diags(tmp_charm, "CONFIG-007")
+
+    def test_yaml_boolean_default_for_string_option_flagged(self, tmp_charm: pathlib.Path):
+        # Under YAML 1.1 an unquoted `no` is the boolean False, which is
+        # the whole reason this rule earns its keep.
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nconfig:\n  options:\n    tls:\n      type: string\n      default: no\n"
+        )
+        diags = _diags(tmp_charm, "CONFIG-007")
+        assert len(diags) == 1
+        assert "a boolean" in diags[0].message
+
+    def test_no_default_clean(self, tmp_charm: pathlib.Path):
+        _write_options(tmp_charm, {"foo": {"type": "int", "description": "x"}})
+        assert not _diags(tmp_charm, "CONFIG-007")
+
+    def test_explicit_null_default_clean(self, tmp_charm: pathlib.Path):
+        # `default: null` declares no value, so there is nothing to
+        # check it against.
+        _write_options(tmp_charm, {"foo": {"type": "int", "default": None, "description": "x"}})
+        assert not _diags(tmp_charm, "CONFIG-007")
+
+    def test_missing_type_clean(self, tmp_charm: pathlib.Path):
+        # CONFIG-001's finding; repeating it here would say nothing new.
+        _write_options(tmp_charm, {"foo": {"default": "8080", "description": "x"}})
+        assert not _diags(tmp_charm, "CONFIG-007")
+
+    def test_unknown_type_clean(self, tmp_charm: pathlib.Path):
+        _write_options(tmp_charm, {"foo": {"type": "integer", "default": "8", "description": "x"}})
+        assert not _diags(tmp_charm, "CONFIG-007")
+
+    def test_non_mapping_option_clean(self, tmp_charm: pathlib.Path):
+        _write_options(tmp_charm, {"foo": "string"})
+        assert not _diags(tmp_charm, "CONFIG-007")
+
+    def test_diagnostic_anchors_to_the_default(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nconfig:\n  options:\n    port:\n      type: int\n      default: '8080'\n"
+        )
+        diags = _diags(tmp_charm, "CONFIG-007")
+        assert [(d.path, d.line) for d in diags] == [("charmcraft.yaml", 6)]
+
+    def test_one_diagnostic_per_option(self, tmp_charm: pathlib.Path):
+        _write_options(
+            tmp_charm,
+            {
+                "a": {"type": "int", "default": "1", "description": "x"},
+                "b": {"type": "int", "default": 2, "description": "y"},
+                "c": {"type": "boolean", "default": "true", "description": "z"},
+            },
+        )
+        diags = _diags(tmp_charm, "CONFIG-007")
+        assert {d.message.split("'")[1] for d in diags} == {"a", "c"}
