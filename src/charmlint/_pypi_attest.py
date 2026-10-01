@@ -136,10 +136,10 @@ def _check_provenance_uncached(
 ) -> ProvenanceResult:
     normalised = normalise_name(name)
     url = f"{_SIMPLE_API_BASE}{normalised}/"
-    request = urllib.request.Request(url, headers={"Accept": _ACCEPT})
+    request = urllib.request.Request(url, headers={"Accept": _ACCEPT})  # ruff: ignore[suspicious-url-open-usage]
 
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # ruff: ignore[suspicious-url-open-usage]
             body = response.read()
     except urllib.error.HTTPError as exc:
         detail = f"PyPI returned HTTP {exc.code} for {normalised}"

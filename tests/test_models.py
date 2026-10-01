@@ -64,14 +64,14 @@ class TestLintReport:
     """Tests for the LintReport dataclass."""
 
     def test_empty_report(self):
-        report = LintReport(charm_dir=pathlib.Path("/tmp/charm"))
+        report = LintReport(charm_dir=pathlib.Path("charm"))
         assert report.error_count == 0
         assert report.warning_count == 0
         assert report.info_count == 0
 
     def test_counts(self):
         report = LintReport.from_diagnostics(
-            charm_dir=pathlib.Path("/tmp/charm"),
+            charm_dir=pathlib.Path("charm"),
             diagnostics=[
                 Diagnostic("E1", Severity.ERROR, "err1"),
                 Diagnostic("E2", Severity.ERROR, "err2"),
@@ -85,7 +85,7 @@ class TestLintReport:
 
     def test_to_dict(self):
         report = LintReport.from_diagnostics(
-            charm_dir=pathlib.Path("/tmp/charm"),
+            charm_dir=pathlib.Path("charm"),
             diagnostics=[Diagnostic("E1", Severity.ERROR, "err")],
         )
         result = report.to_dict()

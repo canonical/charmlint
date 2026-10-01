@@ -10,14 +10,59 @@ updates:
       prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
     labels:
       - "dependencies"
+  # Security updates don't wait for this schedule: they come from the repo's
+  # Dependabot security updates setting and are raised as soon as an
+  # advisory is published.
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "monthly"
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 0  # Security updates only.
+      semver-major-days: 14
     commit-message:
       prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
     labels:
       - "dependencies"
+    groups:
+      dev-tooling:
+        patterns:
+          - "ruff"
+          - "ty"
+          - "coverage"
+          - "pip-audit"
+          - "pre-commit-hooks"
+      test-deps:
+        patterns:
+          - "pytest"
+          - "pytest-*"
+          - "hypothesis"
+      # A runtime major falls through to its own PR rather than riding along
+      # with a minor or patch bump.
+      runtime:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  # The isolated project that the publish workflow runs cyclonedx-py from.
+  # Dependabot only looks at the lockfile in the directory it is given, so
+  # this needs its own entry.
+  - package-ecosystem: "uv"
+    directory: "/.github/sbom"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
+    labels:
+      - "dependencies"
+    groups:
+      sbom:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
