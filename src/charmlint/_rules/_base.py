@@ -17,32 +17,30 @@ _RULES: dict[str, "Rule"] = {}
 # one from this list, so a typo in either is caught rather than silently
 # matching nothing. A category with no rules yet names nothing, so a config
 # naming it is rejected like a typo until its first rule lands.
-CATEGORIES = frozenset(
-    {
-        "ACTIONS",
-        "ATTESTATION",
-        "CHARMCRAFT",
-        "CONFIG",
-        "CORRECTNESS",
-        "DEPRECATION",
-        "DOCUMENTATION",
-        "EVENTS",
-        "FEATURES",
-        "JUJU",
-        "LIBRARY",
-        "METADATA",
-        "OBSERVABILITY",
-        "OPS",
-        "PEBBLE",
-        "PERFORMANCE",
-        "RELATIONS",
-        "SECURITY",
-        "STATUS",
-        "STRUCTURE",
-        "SUPPLYCHAIN",
-        "TESTING",
-    }
-)
+CATEGORIES = frozenset({
+    "ACTIONS",
+    "ATTESTATION",
+    "CHARMCRAFT",
+    "CONFIG",
+    "CORRECTNESS",
+    "DEPRECATION",
+    "DOCUMENTATION",
+    "EVENTS",
+    "FEATURES",
+    "JUJU",
+    "LIBRARY",
+    "METADATA",
+    "OBSERVABILITY",
+    "OPS",
+    "PEBBLE",
+    "PERFORMANCE",
+    "RELATIONS",
+    "SECURITY",
+    "STATUS",
+    "STRUCTURE",
+    "SUPPLYCHAIN",
+    "TESTING",
+})
 
 # A rule name is ruff-style kebab-case: the wordier spelling of its ID.
 _NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")

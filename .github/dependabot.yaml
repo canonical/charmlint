@@ -6,6 +6,8 @@ updates:
       interval: "monthly"  # Hard-coded to the 1st of the month.
     cooldown:
       default-days: 7  # Don't adopt a release until it's 7 days old.
+    commit-message:
+      prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
     labels:
       - "dependencies"
   # Security updates don't wait for this schedule: they come from the repo's
@@ -18,10 +20,10 @@ updates:
     cooldown:
       default-days: 7
       semver-major-days: 14
+    commit-message:
+      prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
     labels:
       - "dependencies"
-    commit-message:
-      prefix: "chore"
     groups:
       dev-tooling:
         patterns:
@@ -53,10 +55,10 @@ updates:
     cooldown:
       default-days: 7
       semver-major-days: 14
+    commit-message:
+      prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
     labels:
       - "dependencies"
-    commit-message:
-      prefix: "chore"
     groups:
       sbom:
         patterns:

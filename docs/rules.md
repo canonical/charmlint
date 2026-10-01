@@ -509,12 +509,12 @@ find out is to get a shell on the unit.
 Charms with no workload to version — integrators, configurators,
 proxies, interface placeholders — are the real exception, and the
 rule detects only the ones that say so in their name, through the
-suffixes in :data:`_NO_WORKLOAD_SUFFIXES`. Nothing else in the
+suffixes in `_NO_WORKLOAD_SUFFIXES`. Nothing else in the
 metadata declares "I have a workload" outside of `containers:`, and
 every code-side proxy measured against the corpus
 (`operator_libs_linux`, snap, apt, systemd, `subprocess`) fires at
 the population's base rate, so it separates nothing. Rather than guess
-at the rest, the rule asks such a charm to say so once::
+at the rest, the rule asks such a charm to say so once:
 
     # charmlint: file-ignore[FEATURES-005]
 
@@ -537,7 +537,7 @@ in the tree.
 Three routes are still not resolved, each of which would make this a
 false positive: a `getattr(self.unit, ...)` lookup, a call made by a
 *vendored* library on the charm's behalf, and any framework not in
-:data:`_WORKLOAD_VERSION_SETTERS`. A charm with no reachable source of
+`_WORKLOAD_VERSION_SETTERS`. A charm with no reachable source of
 its own is left alone entirely.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version>
@@ -565,7 +565,7 @@ A name counts as a constant only when every assignment to it in the
 same file is a string literal, so a charm that seeds a variable with
 a placeholder and then overwrites it with a real lookup is not
 flagged. Neither is the `self._version() or ""` fallback idiom, nor
-a placeholder passed on its own: see :data:`_VERSION_PLACEHOLDERS`.
+a placeholder passed on its own: see `_VERSION_PLACEHOLDERS`.
 A constant defined in another module is not followed, which is a
 deliberate gap — it would add false-positive risk for no finding the
 corpus can show.
