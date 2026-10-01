@@ -38,15 +38,13 @@ _NORMALISE_RE = re.compile(r"[-_.]+")
 
 # Patterns use PEP-503-normalised names (lower-case, ``-`` separated).
 # A trailing ``-*`` is a prefix wildcard; otherwise exact match.
-MUST_HAVE_PATTERNS = frozenset(
-    (
-        "ops",
-        "ops-scenario",
-        "ops-tracing",
-        "jubilant",
-        "charmlibs-*",
-    )
-)
+MUST_HAVE_PATTERNS = frozenset((
+    "ops",
+    "ops-scenario",
+    "ops-tracing",
+    "jubilant",
+    "charmlibs-*",
+))
 
 
 def normalise_name(name: str) -> str:

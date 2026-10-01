@@ -717,101 +717,95 @@ _OPS_MAIN_TARGETS = frozenset({"ops.main", "ops.main.main"})
 # The modern keys mirror charmcraft's published schema/charmcraft.json, plus
 # legacy keys the schema has dropped. Hand-maintained for now; see #174 for
 # validating against that schema directly instead.
-_KNOWN_CHARMCRAFT_FIELDS: frozenset[str] = frozenset(
-    {
-        # Identity / metadata.
-        "name",
-        "type",
-        "title",
-        "summary",
-        "description",
-        # Build / platform.
-        "base",
-        "build-base",
-        "bases",
-        "platforms",
-        "parts",
-        "extensions",
-        "adopt-info",
-        "package-repositories",
-        # Relations.
-        "requires",
-        "provides",
-        "peers",
-        "extra-bindings",
-        # Config / actions.
-        "config",
-        "actions",
-        # Workload.
-        "containers",
-        "resources",
-        "storage",
-        "devices",
-        # Charm libraries and dependencies.
-        "charm-libs",
-        # Workload run-as user (Kubernetes charms).
-        "charm-user",
-        # Links block (Charmhub) — nested form, e.g. links.documentation.
-        "links",
-        # Legacy top-level contact (now links.contact).
-        "contact",
-        # Subordinate / assumes.
-        "subordinate",
-        "assumes",
-        "terms",
-        # Legacy (deprecated but still accepted).
-        "series",
-        "min-juju-version",
-        "charmhub",
-        # Analysis / linting config inside the file.
-        "analysis",
-    }
-)
+_KNOWN_CHARMCRAFT_FIELDS: frozenset[str] = frozenset({
+    # Identity / metadata.
+    "name",
+    "type",
+    "title",
+    "summary",
+    "description",
+    # Build / platform.
+    "base",
+    "build-base",
+    "bases",
+    "platforms",
+    "parts",
+    "extensions",
+    "adopt-info",
+    "package-repositories",
+    # Relations.
+    "requires",
+    "provides",
+    "peers",
+    "extra-bindings",
+    # Config / actions.
+    "config",
+    "actions",
+    # Workload.
+    "containers",
+    "resources",
+    "storage",
+    "devices",
+    # Charm libraries and dependencies.
+    "charm-libs",
+    # Workload run-as user (Kubernetes charms).
+    "charm-user",
+    # Links block (Charmhub) — nested form, e.g. links.documentation.
+    "links",
+    # Legacy top-level contact (now links.contact).
+    "contact",
+    # Subordinate / assumes.
+    "subordinate",
+    "assumes",
+    "terms",
+    # Legacy (deprecated but still accepted).
+    "series",
+    "min-juju-version",
+    "charmhub",
+    # Analysis / linting config inside the file.
+    "analysis",
+})
 
 # Keys that configure how the charm is *built*. These are meaningful only in
 # charmcraft.yaml, so they stay unknown in metadata.yaml.
-_BUILD_ONLY_FIELDS: frozenset[str] = frozenset(
-    {
-        "parts",
-        "base",
-        "build-base",
-        # metadata.yaml has never accepted either of these; charmcraft
-        # ignores a `bases:` block it finds there, so it is text that does
-        # nothing rather than a build configuration.
-        "bases",
-        "platforms",
-        "extensions",
-        "adopt-info",
-        "package-repositories",
-        "analysis",
-        "charmhub",
-    }
-)
+_BUILD_ONLY_FIELDS: frozenset[str] = frozenset({
+    "parts",
+    "base",
+    "build-base",
+    # metadata.yaml has never accepted either of these; charmcraft
+    # ignores a `bases:` block it finds there, so it is text that does
+    # nothing rather than a build configuration.
+    "bases",
+    "platforms",
+    "extensions",
+    "adopt-info",
+    "package-repositories",
+    "analysis",
+    "charmhub",
+})
 
 # Keys valid in metadata.yaml but not charmcraft.yaml. metadata.yaml uses flat
 # top-level link fields instead of a nested links block, and
 # display-name/maintainers instead of title/links.contact.
-_METADATA_ONLY_FIELDS: frozenset[str] = frozenset(
-    {
-        "display-name",
-        # Top-level link fields (no nested links block).
-        "docs",
-        "issues",
-        "source",
-        "website",
-        # Both the list form and the singular string form are valid.
-        "maintainers",
-        "maintainer",
-        # Charmhub categorisation ('categories' predates 'tags').
-        "tags",
-        "categories",
-        # Kubernetes deployment block (type / service).
-        "deployment",
-        # Legacy (deprecated but still accepted).
-        "format",
-        "version",
-    }
-)
+_METADATA_ONLY_FIELDS: frozenset[str] = frozenset({
+    "display-name",
+    # Top-level link fields (no nested links block).
+    "docs",
+    "issues",
+    "source",
+    "website",
+    # Both the list form and the singular string form are valid.
+    "maintainers",
+    "maintainer",
+    # Charmhub categorisation ('categories' predates 'tags').
+    "tags",
+    "categories",
+    # Kubernetes deployment block (type / service).
+    "deployment",
+    # Legacy (deprecated but still accepted).
+    "format",
+    "version",
+})
 
 # Top-level keys valid in metadata.yaml (the separate legacy metadata file).
 # Everything that describes the charm itself is valid in either file — a charm
@@ -822,14 +816,12 @@ _KNOWN_METADATA_FIELDS: frozenset[str] = _METADATA_ONLY_FIELDS | (
 )
 
 # Keys recognised inside a ``resources.<name>`` block.
-_KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset(
-    {
-        "type",
-        "description",
-        "filename",
-        "upstream-source",
-    }
-)
+_KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset({
+    "type",
+    "description",
+    "filename",
+    "upstream-source",
+})
 
 
 # ``bases`` is only accepted for bases supported before 2024-01-01, so every

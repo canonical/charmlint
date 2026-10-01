@@ -90,15 +90,13 @@ class ConfigMissingDescription(Rule):
 # helper class is likely to own. ``self.config`` is deliberately absent: a
 # helper class with its own ``self.config`` dict is common, so that spelling
 # is only read inside a charm class (see ``_charm_config_reads``).
-_MODEL_CONFIG_SPELLINGS = frozenset(
-    {
-        "self.model.config",
-        "self.charm.config",
-        "self.charm.model.config",
-        "charm.config",
-        "charm.model.config",
-    }
-)
+_MODEL_CONFIG_SPELLINGS = frozenset({
+    "self.model.config",
+    "self.charm.config",
+    "self.charm.model.config",
+    "charm.config",
+    "charm.model.config",
+})
 _SELF_CONFIG = "self.config"
 # A class is taken to be a charm if a base resolves to ops' CharmBase, or is
 # simply *named* like a charm — charms routinely subclass an intermediate base
