@@ -295,8 +295,9 @@ class TestUnknownTopLevelField:
         report = lint(tmp_charm)
         diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
         assert len(diags) == 1
-        assert diags[0].severity == Severity.WARNING
+        assert diags[0].severity == Severity.ERROR
         assert "sumary" in diags[0].message
+        assert "charmcraft pack will fail" in diags[0].message
 
     def test_typo_fix_hint(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test", "sumary": "oops"})
@@ -369,7 +370,16 @@ class TestUnknownTopLevelField:
         report = lint(tmp_charm)
         diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
         assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
         assert diags[0].path == "metadata.yaml"
+
+    def test_metadata_block_suggests_flattening(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "metadata": {"summary": "test"}})
+        report = lint(tmp_charm)
+        diag = next(d for d in report if d.rule_id == "CHARMCRAFT-004")
+        assert diag.fix_hint == (
+            "Move the fields inside 'metadata' to the top level of charmcraft.yaml"
+        )
 
     def test_metadata_yaml_specific_fields_not_flagged(self, tmp_charm: pathlib.Path):
         """Fields valid in metadata.yaml but not charmcraft.yaml must not be flagged."""
@@ -493,7 +503,8 @@ class TestUnknownTopLevelField:
         diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
         assert len(diags) == 1
         assert diags[0].message == (
-            "Field 'display-name' is valid in metadata.yaml but not charmcraft.yaml"
+            "Field 'display-name' is valid in metadata.yaml but not charmcraft.yaml; "
+            "charmcraft pack will fail"
         )
         # A misplaced field is not a typo, so there is nothing to suggest.
         assert diags[0].fix_hint is None
@@ -509,7 +520,8 @@ class TestUnknownTopLevelField:
         diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-004"]
         assert len(diags) == 1
         assert diags[0].message == (
-            "Field 'maintainers' is valid in metadata.yaml but not charmcraft.yaml"
+            "Field 'maintainers' is valid in metadata.yaml but not charmcraft.yaml; "
+            "charmcraft pack will fail"
         )
         assert diags[0].fix_hint is None
         assert diags[0].path == "charmcraft.yaml"
