@@ -7,17 +7,18 @@ pins down invariants that should hold across every rule.
 
 Invariants under test:
 
-* *Never raises.*  ``lint()`` must return a ``LintReport`` for any
+* *Understood.*  ``lint()`` returns a report with no ``FATAL`` for any
   structurally-valid metadata dict, including empty endpoint maps,
-  empty option lists, and surprising (but valid) defaults.
+  empty option lists, and surprising (but valid) defaults: every rule
+  ran, and none raised.
 * *Deterministic.*  Running ``lint()`` twice back-to-back against
-  the same directory must produce identical diagnostic tuples —
-  the engine should not depend on rule-iteration order,
-  environment, or time.
-* *Well-formed diagnostics.*  Every ``Diagnostic`` has a non-empty
-  ``rule_id``, a valid ``Severity`` enum value, and a non-empty
-  ``message``. Rules that report a file location must give either
-  both ``path`` and ``line`` or neither.
+  the same directory must produce the same diagnostics in the same
+  order — the engine should not depend on rule-iteration order,
+  environment, or time. (Both runs share one process, so this can't
+  catch a dependence on the hash seed.)
+* *Well-formed diagnostics.*  Every ``Diagnostic`` names a registered
+  rule, has a valid ``Severity`` enum value and a non-empty
+  ``message``, and only ever has a ``line`` alongside a ``path``.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from hypothesis import strategies as st
 
 from charmlint._linter import lint
 from charmlint._models import Severity
+from charmlint._rules import get_all_rules
 
 # Hypothesis warns when a @given test uses a function-scoped pytest
 # fixture because the fixture is created once and then reused across
@@ -38,9 +40,8 @@ from charmlint._models import Severity
 # In this file that reuse is deliberate: each property body overwrites
 # ``tmp_charm/charmcraft.yaml`` and touches no other state, so a shared
 # directory is equivalent to a fresh one per example. Suppress the
-# health check globally for the module. ``max_examples`` inherits from
-# the profile registered in ``tests/unit/conftest.py`` (100 for dev,
-# 500 for CI).
+# health check globally for the module. ``max_examples`` is Hypothesis's
+# default.
 _charm_settings = settings(
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
 )
@@ -141,11 +142,6 @@ def _write_and_lint(tmp_charm: pathlib.Path, metadata: dict):
     return lint(tmp_charm)
 
 
-def _diagnostic_key(d) -> tuple:
-    """Stable equality key for a Diagnostic — drops nothing."""
-    return (d.rule_id, d.severity, d.message, d.path, d.line, d.fix_hint)
-
-
 # ---------------------------------------------------------------------------
 # Properties
 # ---------------------------------------------------------------------------
@@ -156,12 +152,16 @@ class TestCharmlintProperties:
 
     @_charm_settings
     @given(metadata=_charmcraft_metadata())
-    def test_lint_never_raises(self, tmp_charm: pathlib.Path, metadata: dict) -> None:
-        """Arbitrary valid metadata must not crash the rule engine."""
+    def test_lint_understands_valid_metadata(
+        self, tmp_charm: pathlib.Path, metadata: dict
+    ) -> None:
+        """Arbitrary valid metadata is linted, not rejected.
+
+        A rule raising would fail the test outright; a ``FATAL`` would
+        mean the engine gave up on metadata it should have understood.
+        """
         report = _write_and_lint(tmp_charm, metadata)
-        # Report is always returned — even for catastrophic input, the
-        # engine emits a ``FATAL`` diagnostic rather than raising.
-        assert report is not None
+        assert "FATAL" not in {d.rule_id for d in report}
 
     @_charm_settings
     @given(metadata=_charmcraft_metadata())
@@ -174,25 +174,25 @@ class TestCharmlintProperties:
         """
         first = _write_and_lint(tmp_charm, metadata)
         second = lint(tmp_charm)
-        first_keys = sorted(_diagnostic_key(d) for d in list(first))
-        second_keys = sorted(_diagnostic_key(d) for d in list(second))
-        assert first_keys == second_keys
+        # In order, and every field: the report's order is what the user sees.
+        assert list(first) == list(second)
 
     @_charm_settings
     @given(metadata=_charmcraft_metadata())
     def test_diagnostics_are_well_formed(self, tmp_charm: pathlib.Path, metadata: dict) -> None:
         """Every ``Diagnostic`` has populated mandatory fields.
 
-        ``rule_id`` must be non-empty, severity must be a real enum
-        value, and ``message`` must be non-empty. ``path`` and
-        ``line`` are optional as a pair — if one is set, both should
-        be; neither is equally valid. A rule that returns a
+        ``rule_id`` must name a registered rule, severity must be a real
+        enum value, and ``message`` must be non-empty. A ``line`` means
+        nothing without the ``path`` it is in, though a ``path`` alone is
+        fine (a finding about a whole file). A rule that returns a
         blank-message diagnostic would make the ruff-style report
         line unreadable, so pin this down across the whole rule set.
         """
         report = _write_and_lint(tmp_charm, metadata)
+        rule_ids = set(get_all_rules())
         for diag in list(report):
-            assert diag.rule_id, "Diagnostic missing rule_id"
+            assert diag.rule_id in rule_ids, f"Diagnostic from unknown rule {diag.rule_id!r}"
             assert isinstance(diag.severity, Severity), (
                 f"Diagnostic severity is not a Severity: {diag.severity!r}"
             )
