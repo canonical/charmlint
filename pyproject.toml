@@ -105,6 +105,7 @@ testpaths = ["tests"]
 source = ["charmlint"]
 
 [tool.coverage.report]
-# _pypi_attest.py (0%) is untested until the ATT rules land — see
-# RULES_TRACKER.md. Raise this floor when it gains tests or is removed.
-fail_under = 75
+# Total coverage is about 94% even with _pypi_attest.py at 0%: it is kept,
+# untested, for the attestation rules to come back to (#299). Raise this
+# floor again once it has tests.
+fail_under = 90
