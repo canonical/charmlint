@@ -68,7 +68,7 @@ requires-dist = [{ name = "pyyaml", specifier = ">=6.0" }]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "coverage", extras = ["toml"], specifier = ">=7.13.5" },
+    { name = "coverage", extras = ["toml"], specifier = ">=7.16.1" },
     { name = "hypothesis", specifier = ">=6.168.1" },
     { name = "pip-audit", specifier = "==2.10.1" },
     { name = "pre-commit-hooks", specifier = "==6.0.0" },
