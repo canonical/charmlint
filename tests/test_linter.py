@@ -3,6 +3,8 @@
 import dataclasses
 import pathlib
 
+import pytest
+
 from charmlint._config import LintConfig
 from charmlint._linter import build_context, lint
 from charmlint._models import Severity
@@ -170,6 +172,27 @@ class TestLintFiltering:
         assert report.error_count == 1
         assert next(iter(report)).rule_id == "FATAL"
         assert "No charmcraft.yaml" in next(iter(report)).message
+
+    @pytest.mark.parametrize("text", ["", "{}\n", "# just a comment\n"])
+    def test_empty_metadata_is_reported_as_empty(self, tmp_path: pathlib.Path, text: str):
+        # The file is there, so "no charmcraft.yaml found" would send the
+        # user looking for the wrong problem.
+        charm_dir = tmp_path / "hollow"
+        charm_dir.mkdir()
+        (charm_dir / "charmcraft.yaml").write_text(text)
+        [diag] = list(lint(charm_dir))
+        assert diag.rule_id == "FATAL"
+        assert diag.path == "charmcraft.yaml"
+        assert "No charmcraft.yaml" not in diag.message
+        assert "charmcraft.yaml is empty" in diag.message
+
+    def test_empty_split_metadata_names_both_files(self, tmp_path: pathlib.Path):
+        charm_dir = tmp_path / "hollow"
+        charm_dir.mkdir()
+        (charm_dir / "charmcraft.yaml").write_text("")
+        (charm_dir / "metadata.yaml").write_text("{}\n")
+        [diag] = list(lint(charm_dir))
+        assert "charmcraft.yaml and metadata.yaml are empty" in diag.message
 
     def test_select_unknown_category_returns_no_diagnostics(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
