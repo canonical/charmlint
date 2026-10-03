@@ -5,6 +5,9 @@ actually uses: modern charmcraft.yaml uses `title` and `links.*`; legacy
 metadata.yaml uses `display-name`, `docs`, `issues`, `source` at top
 level. Accepting the wrong spelling in the wrong file would silently
 paper over a real misplacement.
+
+A charm with both files uses metadata.yaml, which charmcraft packs as it
+is, so that is the file whose spelling counts.
 """
 
 import urllib.parse
@@ -39,7 +42,22 @@ def _is_own_charmhub_page(url: str, name: str) -> bool:
 
 
 def _is_charmcraft(context: models.CharmContext) -> bool:
-    return context.metadata.source == "charmcraft.yaml"
+    return _metadata_file(context) == "charmcraft.yaml"
+
+
+def _metadata_file(context: models.CharmContext) -> str:
+    """Return the file whose spellings the charm's metadata uses.
+
+    That is metadata.yaml whenever the charm has one, even alongside a
+    charmcraft.yaml: charmcraft packs a split charm's metadata.yaml as it
+    is, so ``title`` or ``links`` written in charmcraft.yaml never reach
+    the charm. ``context.metadata.source`` can't answer this, because the
+    merged metadata takes its source from charmcraft.yaml whenever that
+    file exists.
+    """
+    if any(node.source == "metadata.yaml" for _, node in context.metadata.items()):
+        return "metadata.yaml"
+    return context.metadata.source
 
 
 def _is_bundle(context: models.CharmContext) -> bool:
@@ -92,6 +110,10 @@ class MissingDisplayName(Rule):
     metadata.yaml, and only the spelling belonging to the file the
     charm uses counts: writing ``display-name`` in charmcraft.yaml is a
     misplacement rather than a title.
+
+    A charm with both files uses metadata.yaml's spelling, and is told
+    about metadata.yaml: charmcraft packs that file as it is, so a
+    ``title`` in charmcraft.yaml never reaches the charm.
     """
 
     category = "METADATA"
@@ -107,7 +129,7 @@ class MissingDisplayName(Rule):
         key = "title" if _is_charmcraft(context) else "display-name"
         if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(f"Empty or missing '{key}' field", path=context.metadata.source)]
+        return [self.diagnostic(f"Empty or missing '{key}' field", path=_metadata_file(context))]
 
 
 class MissingSummary(Rule):
@@ -170,7 +192,8 @@ class MissingDocs(Rule):
 
     The key is ``links.documentation`` in charmcraft.yaml and ``docs``
     at the top level in metadata.yaml, and only the spelling belonging
-    to the file the charm uses counts.
+    to the file the charm uses counts (metadata.yaml, for a charm that has
+    both).
     """
 
     category = "METADATA"
@@ -186,7 +209,7 @@ class MissingDocs(Rule):
         key = "links.documentation" if _is_charmcraft(context) else "docs"
         if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata.source)]
+        return [self.diagnostic(f"Empty or missing '{key}' URL", path=_metadata_file(context))]
 
 
 class MissingIssues(Rule):
@@ -198,7 +221,8 @@ class MissingIssues(Rule):
 
     The key is ``links.issues`` in charmcraft.yaml and ``issues`` at
     the top level in metadata.yaml, and only the spelling belonging to
-    the file the charm uses counts.
+    the file the charm uses counts (metadata.yaml, for a charm that has
+    both).
     """
 
     category = "METADATA"
@@ -214,7 +238,7 @@ class MissingIssues(Rule):
         key = "links.issues" if _is_charmcraft(context) else "issues"
         if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata.source)]
+        return [self.diagnostic(f"Empty or missing '{key}' URL", path=_metadata_file(context))]
 
 
 class MissingSource(Rule):
@@ -226,7 +250,8 @@ class MissingSource(Rule):
 
     The key is ``links.source`` in charmcraft.yaml and ``source`` at
     the top level in metadata.yaml, and only the spelling belonging to
-    the file the charm uses counts.
+    the file the charm uses counts (metadata.yaml, for a charm that has
+    both).
     """
 
     category = "METADATA"
@@ -242,7 +267,7 @@ class MissingSource(Rule):
         key = "links.source" if _is_charmcraft(context) else "source"
         if _resolve(context.metadata, key):
             return []
-        return [self.diagnostic(f"Empty or missing '{key}' URL", path=context.metadata.source)]
+        return [self.diagnostic(f"Empty or missing '{key}' URL", path=_metadata_file(context))]
 
 
 def _missing_optional_diagnostics(

@@ -640,6 +640,10 @@ metadata.yaml, and only the spelling belonging to the file the
 charm uses counts: writing `display-name` in charmcraft.yaml is a
 misplacement rather than a title.
 
+A charm with both files uses metadata.yaml's spelling, and is told
+about metadata.yaml: charmcraft packs that file as it is, so a
+`title` in charmcraft.yaml never reaches the charm.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-title>
 
 ### METADATA-003 missing-summary
@@ -683,7 +687,8 @@ deploys perfectly well without it.
 
 The key is `links.documentation` in charmcraft.yaml and `docs`
 at the top level in metadata.yaml, and only the spelling belonging
-to the file the charm uses counts.
+to the file the charm uses counts (metadata.yaml, for a charm that has
+both).
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links>
 
@@ -699,7 +704,8 @@ perfectly well without it.
 
 The key is `links.issues` in charmcraft.yaml and `issues` at
 the top level in metadata.yaml, and only the spelling belonging to
-the file the charm uses counts.
+the file the charm uses counts (metadata.yaml, for a charm that has
+both).
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-issues>
 
@@ -715,7 +721,8 @@ Advisory, because a charm deploys perfectly well without it.
 
 The key is `links.source` in charmcraft.yaml and `source` at
 the top level in metadata.yaml, and only the spelling belonging to
-the file the charm uses counts.
+the file the charm uses counts (metadata.yaml, for a charm that has
+both).
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-source>
 
