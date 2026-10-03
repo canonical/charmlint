@@ -259,6 +259,24 @@ class TestIgnoreComment:
         _write(tmp_charm, text)
         assert _sec_options(tmp_charm) == {"api-token"}
 
+    def test_own_line_covers_a_line_with_its_own_directive(self, tmp_charm: pathlib.Path):
+        # The line below the directive carries a trailing directive of its
+        # own; that doesn't make it any less the line being excused.
+        text = _TWO_SECRETS.format(comment="  # charmlint: ignore[CONFIG-002]")
+        text = text.replace(
+            "    admin-password:",
+            "    # charmlint: ignore[SECURITY-001]\n    admin-password:",
+        )
+        _write(tmp_charm, text)
+        assert _sec_options(tmp_charm) == {"api-token"}
+
+    def test_own_line_covers_a_line_with_a_legacy_noqa(self):
+        noqa = _noqa.parse(
+            "# charmlint: ignore[SECURITY-001]\nfoo: 1  # noqa: CONFIG-002\nbar: 2\n"
+        )
+        assert noqa.suppresses("SECURITY-001", 2)
+        assert not noqa.suppresses("SECURITY-001", 3)
+
 
 class TestFileIgnoreComment:
     """The bracketed ``# charmlint: file-ignore[...]`` form."""
