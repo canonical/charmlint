@@ -79,14 +79,12 @@ class NoTypeAnnotations(Rule):
     misspelt attribute or a ``None`` that was never handled before the
     charm is deployed. A charm with none at all gets no help from one.
 
-    The rule reports once per charm, not per function: annotating every
-    local is not the convention, and a rule that demanded it would fire
-    on almost every charm. Any annotation anywhere — a return type, a
-    parameter, or an annotated assignment — is enough to pass. Only the
-    charm's own source counts: ``src/`` plus any library the charm
-    publishes, never a vendored copy of someone else's library, and never
-    the tests. A charm with no functions has nothing to annotate and is
-    not reported.
+    The rule reports once per charm, not once per function. Any
+    annotation passes: a return type, a parameter, or an annotated
+    assignment. Only the charm's own source counts. That is ``src/`` plus
+    any library the charm publishes, but not a vendored copy of someone
+    else's library, and not the tests. A charm with no functions has
+    nothing to annotate and is not reported.
     """
 
     category = "STRUCTURE"
@@ -96,13 +94,8 @@ class NoTypeAnnotations(Rule):
     default_severity = models.Severity.INFO
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        # Charm-level, not per-function: annotating every local is not the
-        # convention, and a rule that demanded it would fire on almost every
-        # charm. This one fires only when the charm's own source — src/ plus
-        # any library it publishes, never a vendored copy of someone else's —
-        # has no annotation anywhere at all.
         sources = list(context.charm_sources())
-        if not any(True for module in sources for _ in module.functions()):
+        if not any(any(module.functions()) for module in sources):
             # No charm code, or no functions in it: nothing to annotate, so
             # the rule has nothing to say.
             return []

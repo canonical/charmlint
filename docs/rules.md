@@ -844,14 +844,12 @@ Annotations are what let a type checker catch a wrong event type, a
 misspelt attribute or a `None` that was never handled before the
 charm is deployed. A charm with none at all gets no help from one.
 
-The rule reports once per charm, not per function: annotating every
-local is not the convention, and a rule that demanded it would fire
-on almost every charm. Any annotation anywhere — a return type, a
-parameter, or an annotated assignment — is enough to pass. Only the
-charm's own source counts: `src/` plus any library the charm
-publishes, never a vendored copy of someone else's library, and never
-the tests. A charm with no functions has nothing to annotate and is
-not reported.
+The rule reports once per charm, not once per function. Any
+annotation passes: a return type, a parameter, or an annotated
+assignment. Only the charm's own source counts. That is `src/` plus
+any library the charm publishes, but not a vendored copy of someone
+else's library, and not the tests. A charm with no functions has
+nothing to annotate and is not reported.
 
 ## SUPPLYCHAIN
 

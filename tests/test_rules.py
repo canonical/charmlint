@@ -342,6 +342,9 @@ class Charm(ops.CharmBase):
             pytest.param("def handle(event: object):\n    pass\n", id="parameter"),
             pytest.param("def handle(*args: int):\n    pass\n", id="vararg"),
             pytest.param("def handle(**kwargs: int):\n    pass\n", id="kwarg"),
+            pytest.param("def handle(event: object, /):\n    pass\n", id="positional-only"),
+            pytest.param("def handle(*, event: object):\n    pass\n", id="keyword-only"),
+            pytest.param("async def handle(event) -> None:\n    pass\n", id="async"),
             pytest.param("PORT: int = 8080\n\n\ndef handle(event):\n    pass\n", id="assign"),
         ],
     )
