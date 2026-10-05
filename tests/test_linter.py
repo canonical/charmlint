@@ -114,6 +114,7 @@ class TestLintFiltering:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         config = LintConfig(select=["METADATA"])
         report = lint(tmp_charm, config)
+        assert list(report)
         for d in list(report):
             assert d.rule_id.startswith("METADATA"), f"Unexpected rule: {d.rule_id}"
 
@@ -160,8 +161,10 @@ class TestLintFiltering:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         config = LintConfig(min_severity=Severity.ERROR)
         report = lint(tmp_charm, config)
-        for d in list(report):
-            assert d.severity == Severity.ERROR
+        assert list(report)
+        assert {d.severity for d in report} == {Severity.ERROR}
+        # ...and there was something for the filter to remove.
+        assert lint(tmp_charm).warning_count
 
     def test_no_metadata_returns_fatal(self, tmp_path: pathlib.Path):
         charm_dir = tmp_path / "empty"
