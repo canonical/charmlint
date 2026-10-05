@@ -3,6 +3,7 @@
 import pathlib
 
 import pytest
+import yaml
 
 from charmlint import _yaml
 from charmlint._models import Yaml
@@ -127,6 +128,32 @@ class TestLoad:
         elements = node["parts"].elements or []
         assert [e["plugin"].value for e in elements] == ["dump", "nil"]
         assert [e["plugin"].line for e in elements] == [3, 4]
+
+    _MERGE_KEYS = """\
+actions:
+  backup: &act
+    description: Back up.
+    params:
+      target: {type: string}
+  restore:
+    <<: *act
+    description: Restore.
+  both:
+    <<: [*act, {extra: 1}]
+"""
+
+    def test_merge_keys_load_as_pyyaml_does(self, tmp_path: pathlib.Path):
+        node = _yaml.load(_write(tmp_path, "charmcraft.yaml", self._MERGE_KEYS))
+        assert node.value == yaml.safe_load(self._MERGE_KEYS)
+
+    def test_merge_keys_keep_provenance(self, tmp_path: pathlib.Path):
+        # A merged-in key points at where it is written (under the anchor);
+        # a key the mapping sets itself points at its own line, and wins.
+        node = _yaml.load(_write(tmp_path, "charmcraft.yaml", self._MERGE_KEYS))
+        restore = node["actions"]["restore"]
+        assert (restore["description"].value, restore["description"].line) == ("Restore.", 8)
+        assert restore["params"].line == 4
+        assert "<<" not in restore
 
 
 class TestMerge:
