@@ -229,9 +229,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Loaded config from {config.source_path}", file=sys.stderr)
 
     if args.select:
-        config.select = [s.strip() for s in args.select.split(",")]
+        config.select = _tokens(args.select)
     if args.ignore:
-        config.ignore.extend(s.strip() for s in args.ignore.split(","))
+        config.ignore.extend(_tokens(args.ignore))
     if args.min_severity:
         config.min_severity = models.Severity(args.min_severity)
 
@@ -280,6 +280,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.strict and report.warning_count > 0:
         return 2
     return 0
+
+
+def _tokens(value: str) -> list[str]:
+    """Split a comma-separated ``--select``/``--ignore`` value.
+
+    Empty tokens, from a trailing or doubled comma, name nothing and are
+    dropped rather than reported as an unknown rule.
+    """
+    return [token for token in (part.strip() for part in value.split(",")) if token]
 
 
 def cli_entry() -> None:
