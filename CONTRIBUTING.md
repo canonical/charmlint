@@ -39,7 +39,7 @@ workshop run dev lint
 
 The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
 
-The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
+The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a read-only mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
 
 ```bash
 workshop stop dev

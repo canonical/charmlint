@@ -9,7 +9,7 @@ sdks:
   # below run, and charmlint's development dependencies.
   - name: project-tools
 
-# The checks CONTRIBUTING.md asks for, through the make targets CI runs.
+# The checks CONTRIBUTING.md asks for, through the Makefile targets.
 actions:
   format: make format
   lint: make lint

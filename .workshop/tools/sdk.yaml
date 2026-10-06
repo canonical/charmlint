@@ -9,3 +9,5 @@ plugs:
   charms:
     interface: mount
     workshop-target: /home/workshop/charms
+    # charmlint only needs to read the charms, so the workshop can't write to them.
+    read-only: true
