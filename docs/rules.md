@@ -29,7 +29,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-001](#charmcraft-001-deprecated-series) | `deprecated-series` | Warning | Deprecated 'series' attribute in metadata |
 | [CHARMCRAFT-002](#charmcraft-002-naming-conventions) | `naming-conventions` | Warning | Config option names use underscores instead of hyphens |
 | [CHARMCRAFT-003](#charmcraft-003-dispatch-entrypoint-issues) | `dispatch-entrypoint-issues` | Error | Charm entrypoint missing or not executable |
-| [CHARMCRAFT-004](#charmcraft-004-unknown-top-level-field) | `unknown-top-level-field` | Warning | Unrecognised top-level field in charm metadata (possible typo) |
+| [CHARMCRAFT-004](#charmcraft-004-unknown-top-level-field) | `unknown-top-level-field` | Warning | Unrecognised top-level field in charm metadata |
 | [CHARMCRAFT-005](#charmcraft-005-unknown-resource-field) | `unknown-resource-field` | Warning | Unrecognised field inside a resource definition (possible typo) |
 | [CHARMCRAFT-006](#charmcraft-006-no-ops-main-call) | `no-ops-main-call` | Warning | Charm entrypoint does not call ops.main() |
 | [CHARMCRAFT-007](#charmcraft-007-legacy-bases) | `legacy-bases` | Info | Legacy 'bases' block instead of 'base' and 'platforms' |
@@ -194,7 +194,7 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/di
 
 ### CHARMCRAFT-004 unknown-top-level-field
 
-**Warning** — Unrecognised top-level field in charm metadata (possible typo)
+**Warning** — Unrecognised top-level field in charm metadata
 
 Flag unrecognised top-level keys in charmcraft.yaml or metadata.yaml.
 
