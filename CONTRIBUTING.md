@@ -27,6 +27,18 @@ A new or changed rule needs measurements over the charm corpus before review - s
 
 [docs/rules.md](docs/rules.md) is generated from the rule registry (CI fails if it's stale). After adding or changing a rule, regenerate it with `make docs`. Don't edit the page by hand; improve the rule docstrings instead.
 
+# Develop in a workshop
+
+[Workshop](https://ubuntu.com/workshop) definitions live in `.workshop/`. The `dev` workshop is a container with `uv`, `make`, and charmlint's development dependencies, so you don't need to install any of them on the host:
+
+```bash
+sudo snap install workshop --classic  # If you don't have it already.
+workshop launch dev
+workshop run dev lint
+```
+
+The actions run the `make` targets with the same names: `format`, `lint`, `test`, `docs`, and `docs-check`. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+
 # Project status
 
 charmlint is early work, and the implementation is subject to change (and probably will change). Please don't treat anything under `src/` as settled, or build on it expecting the internals to stay where they are.

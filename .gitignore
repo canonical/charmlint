@@ -36,3 +36,6 @@ htmlcov/
 .claude/settings.local.json
 .claude/worktrees/
 .claude/scratch/
+
+# Workshop
+.workshop.lock

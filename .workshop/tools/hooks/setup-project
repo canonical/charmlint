@@ -1,0 +1,12 @@
+# The default `.venv` would clash with the host's in the mounted project
+# directory. Workshop's SDK guidance is ~/.profile for the workshop user's own
+# variables; this hook runs uv itself, so it needs the variable in scope as
+# well. (The uv SDK already sets UV_LINK_MODE=copy.)
+export UV_PROJECT_ENVIRONMENT=/home/workshop/.venvs/charmlint
+cat <<EOF >> ~/.profile
+
+export UV_PROJECT_ENVIRONMENT=$UV_PROJECT_ENVIRONMENT
+EOF
+
+# Install charmlint and its development dependencies.
+uv sync
