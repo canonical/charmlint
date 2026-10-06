@@ -37,7 +37,18 @@ workshop launch dev
 workshop run dev lint
 ```
 
-The actions run the `make` targets with the same names: `format`, `lint`, `test`, `docs`, and `docs-check`. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+
+The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
+
+```bash
+workshop stop dev
+workshop remount dev/tools:charms ~/code/my-charm
+workshop start dev
+workshop run dev charmlint
+```
+
+Arguments go through to charmlint, and relative paths are relative to `~/charms`. If you mount a directory of charms, name the charm to lint. For example, with the hyrum cache (`~/.cache/hyrum/charms`) mounted, run `workshop run dev charmlint canonical/some-operator`.
 
 # Project status
 
