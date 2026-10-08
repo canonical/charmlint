@@ -601,30 +601,36 @@ Flag a charm that declares config options but never observes `config-changed`.
 `config-changed` is the event Juju emits when an operator runs
 `juju config`. A charm that declares options and never handles it
 picks the new values up at whatever event happens to fire next, which
-may be much later or never; from the operator's side the setting was
+may be much later or never. From the operator's side, the setting was
 silently ignored.
 
 Handling it does not have to mean observing it, and the rule stays
 quiet wherever the charm might be dealing with configuration
 somewhere charmlint cannot see:
 
-* The charm's own source names `<...>.on.config_changed` anywhere —
+* The charm's own source names `<...>.on.config_changed` anywhere:
   observed under an alias, listed for a holistic reconciler, or handed
   to a library as a refresh event.
+* An observe call could not be read statically, such as an event held
+  in a variable or a helper that observes a list of events. It may be
+  observing `config-changed`.
 * No plain `ops.CharmBase` subclass was found in the charm's own
-  source: it is either not an ops charm, built on a framework base
-  class that observes on its behalf, or assembled somewhere the scan
-  does not reach.
+  source. The charm is either not an ops charm, built on a framework
+  base class that observes on its behalf, or assembled somewhere the
+  scan does not reach.
 * The charm reconciles unconditionally in `__init__`, so it runs on
   every event including this one, or hands a callback to a
   collaborator that observes on its behalf.
 * The charm's source wires up no observers at all, which means
   something outside it does.
 * The charm's source never reads its own configuration, so the
-  options belong to a library that reads — and observes — them.
-* An observe call could not be read statically — an event held in a
-  variable, or a helper that observes a list of events — and it may
-  be observing `config-changed`.
+  options belong to a library that reads (and observes) them.
+
+Two kinds of charm should suppress the rule with a `file-ignore`
+comment in the file that declares their options: one whose options
+are only read when an action runs, so a change rightly waits for the
+next run, and one that applies its configuration outside ops
+altogether, such as in the entry point before it calls `ops.main`.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 

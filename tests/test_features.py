@@ -547,8 +547,13 @@ class TestNoConfigChangedObserver:
     """FEATURES-007 — declared config options with nothing handling a change."""
 
     def test_options_without_observer_flagged(self, tmp_charm: pathlib.Path):
+        # A library handed only the charm is not a collaborator observing for it.
         findings = _lint_source(
-            tmp_charm, _charm("framework.observe(self.on.start, self._handler)")
+            tmp_charm,
+            _charm(
+                "framework.observe(self.on.start, self._handler)\n"
+                "self.db = DatabaseRequires(self, 'db')"
+            ),
         )
         assert len(findings) == 1
         assert findings[0].severity == Severity.WARNING
@@ -592,6 +597,16 @@ class TestNoConfigChangedObserver:
             ),
         )
 
+    def test_config_changed_outside_on_still_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            _charm(
+                "framework.observe(self.on.start, self._handler)\n"
+                "self._stored.config_changed = True"
+            ),
+        )
+        assert len(findings) == 1
+
     def test_no_config_options_not_flagged(self, tmp_charm: pathlib.Path):
         assert not _lint_source(
             tmp_charm,
@@ -626,6 +641,87 @@ class TestNoConfigChangedObserver:
 
 
             ops.main(TestCharm)
+            """,
+        )
+
+    def test_charm_on_a_local_base_class_not_flagged(self, tmp_charm: pathlib.Path):
+        """The entry-point class may add observers to a plain base it extends."""
+        assert not _lint_source(
+            tmp_charm,
+            """\
+            import ops
+            from base import ExtraObservers
+
+
+            class Base(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._handler)
+
+                def _handler(self, event):
+                    print(self.config['port'])
+
+
+            class TestCharm(Base, ExtraObservers):
+                pass
+
+
+            ops.main(TestCharm)
+            """,
+        )
+
+    def test_mixin_charm_class_not_flagged(self, tmp_charm: pathlib.Path):
+        """A mixin alongside ``ops.CharmBase`` may observe for the charm."""
+        write_charm_source(
+            tmp_charm,
+            textwrap.dedent(
+                """\
+                import ops
+                from tracing import TracingMixin
+
+
+                class Base(ops.CharmBase):
+                    def __init__(self, framework):
+                        super().__init__(framework)
+                        framework.observe(self.on.start, self._handler)
+
+                    def _handler(self, event):
+                        print(self.config['port'])
+
+
+                class TestCharm(TracingMixin, ops.CharmBase):
+                    pass
+                """
+            ),
+            filename="charm_impl.py",
+        )
+        assert not _lint_source(
+            tmp_charm,
+            """\
+            import ops
+            from charm_impl import TestCharm
+
+            ops.main(TestCharm)
+            """,
+        )
+
+    def test_no_ops_charm_class_not_flagged(self, tmp_charm: pathlib.Path):
+        assert not _lint_source(
+            tmp_charm,
+            """\
+            from ops_openstack.core import OSBaseCharm, charm_main
+
+
+            class TestCharm(OSBaseCharm):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._handler)
+
+                def _handler(self, event):
+                    print(self.config['port'])
+
+
+            charm_main(TestCharm)
             """,
         )
 
