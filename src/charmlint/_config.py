@@ -8,10 +8,17 @@ from the charm directory, in the manner of ruff. A path passed via
 Keys under ``[tool.charmlint]``:
 
 - ``severity``: minimum severity to report (``error``, ``warning``, ``info``)
-- ``select`` / ``extend-select``: category prefixes or rule IDs to enable
-- ``ignore`` / ``extend-ignore``: category prefixes or rule IDs to skip
+- ``select`` / ``extend-select``: rules to enable
+- ``ignore`` / ``extend-ignore``: rules to skip
 - ``per-rule-severity``: per-rule severity overrides (e.g.
-  ``COS005 = "error"``)
+  ``"SECURITY-001" = "error"``)
+
+Everywhere a rule is named — ``select``, ``ignore``, and the keys of
+``per-rule-severity`` — it may be spelled as a rule ID
+(``SECURITY-001``), a rule name (``secret-in-plain-config``) or a
+category (``SECURITY``). A spelling that names nothing is rejected
+rather than silently ignored, so a typo is not mistaken for a rule that
+never fires.
 """
 
 import contextlib
@@ -22,6 +29,7 @@ import tomllib
 from typing import Any
 
 from . import _models as models
+from . import _selectors
 
 _PYPROJECT = "pyproject.toml"
 STANDALONE_NAMES = ("charmlint.toml", ".charmlint.toml")
@@ -80,10 +88,45 @@ def _str_list(value: Any) -> list[str]:
 
 
 def _validate(config: "LintConfig", path: pathlib.Path) -> None:
-    """Reject configs that contradict themselves."""
-    overlap = sorted(set(config.select) & set(config.ignore))
-    if overlap:
-        raise ConfigError(path, f"select and ignore both contain: {', '.join(overlap)}")
+    """Reject configs that name nothing, or that contradict themselves."""
+    unknown = sorted({
+        token
+        for token in (*config.select, *config.ignore, *config.severity_overrides)
+        if not _selectors.resolve(token)
+    })
+    if unknown:
+        raise ConfigError(
+            path,
+            f"not a known rule ID, rule name or category: {', '.join(unknown)}",
+        )
+
+    # Only tokens of the same specificity can contradict each other: a
+    # rule named in ``select`` and its category named in ``ignore`` is
+    # the ordinary way to run one rule out of a category.
+    for covered in (_rules_covered, _categories_covered):
+        overlap = sorted(covered(config.select) & covered(config.ignore))
+        if overlap:
+            raise ConfigError(path, f"select and ignore both cover: {', '.join(overlap)}")
+
+
+def _rules_covered(tokens: list[str]) -> set[str]:
+    """The rule IDs named specifically — by ID or name — among *tokens*."""
+    return {
+        rule_id
+        for token in tokens
+        if not _selectors.is_category(token)
+        for rule_id in _selectors.resolve(token)
+    }
+
+
+def _categories_covered(tokens: list[str]) -> set[str]:
+    """The rule IDs named by the category tokens among *tokens*."""
+    return {
+        rule_id
+        for token in tokens
+        if _selectors.is_category(token)
+        for rule_id in _selectors.resolve(token)
+    }
 
 
 def _read_toml(path: pathlib.Path) -> dict[str, Any] | None:

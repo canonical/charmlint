@@ -1,7 +1,7 @@
 [project]
 name = "charmlint"
-version = "0.1.0"
-description = "A charm-aware, model-agnostic linter for Juju charms"
+version = "0.2.1"
+description = "A linter for Juju charms"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
@@ -30,11 +30,13 @@ dependencies = [
 dev = [
     "pytest>=9.0.3",
     "pytest-cov>=7.0.0",
-    "hypothesis>=6.152.4",
-    "coverage[toml]>=7.13.5",
-    "ruff==0.15.14",
-    "ty==0.0.38",
-    "zizmor==1.11.0",
+    "hypothesis>=6.168.1",
+    "coverage[toml]>=7.16.1",
+    "pip-audit==2.10.1",
+    "pre-commit-hooks==6.0.0",
+    "ruff==0.16.9",
+    "ty==0.0.84",
+    "zizmor==1.30.1",
 ]
 
 [project.scripts]
@@ -44,6 +46,11 @@ charmlint = "charmlint._cli:cli_entry"
 Homepage = "https://github.com/canonical/charmlint"
 Repository = "https://github.com/canonical/charmlint"
 Issues = "https://github.com/canonical/charmlint/issues"
+
+[tool.uv]
+# Don't resolve a release until it is a week old. This covers every uv
+# resolution path (uv add, uv lock, CI), not just Dependabot's PRs.
+exclude-newer = "7 days"
 
 [build-system]
 requires = ["hatchling"]
@@ -56,7 +63,14 @@ packages = ["src/charmlint"]
 line-length = 99
 target-version = "py312"
 
+[tool.ruff.format]
+preview = true
+# A Charm Tech baseline governance file, kept byte-identical to the baseline
+# so it can be updated from there. It is still linted and type-checked.
+exclude = [".github/check-conventional-pr-title.py"]
+
 [tool.ruff.lint]
+preview = true
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -67,13 +81,19 @@ select = [
     "UP",  # pyupgrade
     "ARG", # flake8-unused-arguments
     "SIM", # flake8-simplify
+    "S",   # flake8-bandit
+    "noqa-comments",  # RUF105: use `# ruff: ignore[...]`
 ]
 ignore = [
-    "E501",  # line too long (handled by formatter)
+    "line-too-long",  # E501 (handled by formatter)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ARG002"]
+"tests/**" = [
+    "unused-method-argument",  # ARG002
+    "assert",  # S101
+    "suspicious-subprocess-import",  # S404
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["charmlint"]

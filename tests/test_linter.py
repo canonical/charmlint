@@ -1,11 +1,10 @@
 """Tests for charmlint._linter."""
 
+import dataclasses
 import pathlib
 
-import pytest
-
 from charmlint._config import LintConfig
-from charmlint._linter import _category_of, build_context, lint
+from charmlint._linter import build_context, lint
 from charmlint._models import Severity
 from tests.conftest import (
     make_full_charm,
@@ -71,6 +70,23 @@ class TestBuildContext:
         assert ctx.has_tests_unit is False
         assert ctx.has_tests_integration is False
 
+    def test_skips_directories_named_like_python_files(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n")
+        spread = tmp_charm / "tests" / "spread" / "integration" / "test_architecture.py"
+        spread.mkdir(parents=True)
+        (spread / "task.yaml").write_text("summary: a spread test\n")
+        ctx = build_context(tmp_charm)
+        assert [p.name for p in ctx.python_files] == ["charm.py"]
+
+    def test_directory_named_like_a_test_file_is_not_a_test(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "tests" / "unit" / "test_charm.py").mkdir(parents=True)
+        (tmp_charm / "tests" / "integration" / "test_charm.py").mkdir(parents=True)
+        ctx = build_context(tmp_charm)
+        assert ctx.has_tests_unit is False
+        assert ctx.has_tests_integration is False
+
     def test_metadata_source_charmcraft_yaml(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         ctx = build_context(tmp_charm)
@@ -114,6 +130,17 @@ class TestLintFiltering:
         meta001 = [d for d in list(report) if d.rule_id == "METADATA-001"]
         assert meta001
         assert meta001[0].severity == Severity.WARNING
+
+    def test_severity_override_changes_only_the_severity(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        selected = LintConfig(select=["METADATA-001"])
+        overridden = LintConfig(
+            select=["METADATA-001"], severity_overrides={"METADATA-001": "warning"}
+        )
+        [original] = list(lint(tmp_charm, selected))
+        [changed] = list(lint(tmp_charm, overridden))
+        assert original.reference_url is not None
+        assert changed == dataclasses.replace(original, severity=Severity.WARNING)
 
     def test_select_id_wins_over_ignored_category(self, tmp_charm: pathlib.Path):
         # More-specific select beats less-specific ignore.
@@ -175,54 +202,68 @@ class TestLintFiltering:
         assert "Could not load charmcraft.yaml" in diag.message
 
 
-class TestCategoryOf:
-    """Tests for the rule-ID category parser."""
+class TestLintMultiCharm:
+    """Linting a repository that holds several charms.
 
-    @pytest.mark.parametrize(
-        ("rule_id", "expected"),
-        [
-            ("OBSERVABILITY-001", "OBSERVABILITY"),
-            ("CHARMCRAFT-005", "CHARMCRAFT"),
-            ("TESTING-003", "TESTING"),
-            ("ATTESTATION-001", "ATTESTATION"),
-            ("ACTIONS-007", "ACTIONS"),
-        ],
-    )
-    def test_well_formed_ids(self, rule_id: str, expected: str):
-        assert _category_of(rule_id) == expected
+    Each charm gets its own context, so a rule that cross-references code
+    against metadata never reads one charm's ``charmcraft.yaml`` alongside
+    another charm's ``src/``. Paths are written relative to the repository
+    root so a finding says which charm it came from.
+    """
 
-    @pytest.mark.parametrize(
-        "rule_id",
-        [
-            # No trailing digits.
-            "FOO",
-            # Missing separator.
-            "COS001",
-            # Trailing letter after the digits.
-            "COS-5G",
-            # Digits before the dash.
-            "COS9-001",
-            # Digit prefix.
-            "123",
-            # Empty string.
-            "",
-            # Lowercase prefix — ID convention is uppercase only.
-            "cos-001",
-        ],
-    )
-    def test_unrecognised_ids_round_trip(self, rule_id: str):
-        # An unrecognised ID returns itself so it cannot accidentally
-        # match a real category in select / ignore.
-        assert _category_of(rule_id) == rule_id
+    def _repo(self, tmp_path: pathlib.Path) -> pathlib.Path:
+        for name in ("alpha", "beta"):
+            charm_dir = tmp_path / "charms" / name
+            (charm_dir / "src").mkdir(parents=True)
+            make_full_charm(charm_dir)
+            write_charmcraft_yaml(charm_dir, {"name": name})
+        return tmp_path
 
-    def test_real_registered_rules_round_trip(self):
-        # Every registered rule's ID must extract to a non-empty
-        # category string — guard against future IDs that drift from
-        # the convention.
-        from charmlint._rules import get_all_rules
+    def test_reports_findings_from_every_charm(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        paths = {d.path for d in lint(repo) if d.path}
+        assert any(p.startswith("charms/alpha/") for p in paths)
+        assert any(p.startswith("charms/beta/") for p in paths)
 
-        for rule_id in get_all_rules():
-            category = _category_of(rule_id)
-            assert category
-            assert category != rule_id, f"{rule_id} did not produce a category"
-            assert rule_id.startswith(category)
+    def test_report_charm_dir_is_the_repository_root(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        assert lint(repo).charm_dir == repo.resolve()
+
+    def test_paths_are_relative_to_the_repository_root(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        write_charm_source(repo / "charms" / "alpha", "import ops\n")
+        for diagnostic in lint(repo):
+            if diagnostic.path is not None:
+                assert diagnostic.path.startswith("charms/")
+
+    def test_single_charm_paths_are_left_charm_relative(self, tmp_charm: pathlib.Path):
+        # The common case must be untouched: no prefix when the path the
+        # user gave is itself the charm.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        for diagnostic in lint(tmp_charm):
+            if diagnostic.path is not None:
+                assert not diagnostic.path.startswith("test-charm/")
+
+    def test_each_charm_gets_its_own_metadata(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        # METADATA-001 fires on a charm with no name. Giving beta no name
+        # and alpha one proves the two contexts are not sharing metadata.
+        (repo / "charms" / "beta" / "charmcraft.yaml").write_text("summary: no name here\n")
+        fired = {d.path for d in lint(repo) if d.rule_id == "METADATA-001"}
+        assert fired == {"charms/beta/charmcraft.yaml"}
+
+    def test_no_charm_below_the_root_is_fatal(self, tmp_path: pathlib.Path):
+        (tmp_path / "docs").mkdir()
+        report = lint(tmp_path)
+        assert report.error_count == 1
+        assert next(iter(report)).rule_id == "FATAL"
+
+    def test_noqa_is_applied_per_charm(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        for name in ("alpha", "beta"):
+            (repo / "charms" / name / "charmcraft.yaml").write_text("summary: no name\n")
+        (repo / "charms" / "alpha" / "charmcraft.yaml").write_text(
+            "# charmlint: file-ignore[METADATA-001]\nsummary: no name\n"
+        )
+        fired = {d.path for d in lint(repo) if d.rule_id == "METADATA-001"}
+        assert fired == {"charms/beta/charmcraft.yaml"}

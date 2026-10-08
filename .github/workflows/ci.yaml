@@ -16,15 +16,31 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
       - name: uv lock --check
         run: uv lock --check
       - name: ruff check
-        run: uv run --group dev ruff check src tests
+        run: uv run --group dev ruff check
       - name: ruff format
-        run: uv run --group dev ruff format --check src tests
+        run: uv run --group dev ruff format --check
       - name: ty
-        run: uv run --group dev ty check src tests
+        run: uv run --group dev ty check
+      - name: Rule reference up to date
+        run: make docs-check
+
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      # Audit exactly what uv.lock pins (runtime and dev), by hash, without
+      # letting pip re-resolve anything.
+      - name: Export locked requirements
+        run: uv export --frozen --all-groups --no-emit-project --format requirements-txt --output-file requirements.txt
+      - name: pip-audit
+        run: uv run --frozen --group dev pip-audit --disable-pip --require-hashes --requirement requirements.txt
 
   python-unit:
     runs-on: ubuntu-latest
@@ -36,7 +52,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Unit tests

@@ -1,0 +1,14 @@
+# A separate project rather than a dependency group of charmlint, because the
+# publish workflow runs `cyclonedx-py environment .venv` to describe
+# charmlint's runtime closure. cyclonedx-py has to be installed somewhere, and
+# not in the venv it describes, or it and its dependencies end up in the SBOM.
+[project]
+name = "charmlint-sbom"
+version = "0"
+requires-python = ">=3.12"
+dependencies = ["cyclonedx-bom>=7"]
+description = "Isolated lockfile for the cyclonedx-py used by the publish workflow."
+
+[tool.uv]
+# Match the root project: don't resolve a release until it is a week old.
+exclude-newer = "7 days"

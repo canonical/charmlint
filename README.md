@@ -1,99 +1,65 @@
 # charmlint
 
-A charm-aware, model-agnostic linter for [Juju](https://juju.is/) charms.
+[![CI](https://github.com/canonical/charmlint/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/canonical/charmlint/actions/workflows/ci.yaml)
+[![PyPI](https://img.shields.io/pypi/v/charmlint)](https://pypi.org/project/charmlint/)
 
-charmlint checks charm source code against Canonical's Juju charm best practices:
-observability (COS integration, ops-tracing), security (PEP 740 PyPI attestations),
-testing structure, metadata completeness, configuration quality, and more.
+A linter for [Juju](https://canonical.com/juju) charms.
 
-Extracted from [`tonyandrewmeyer/cantrip`](https://github.com/tonyandrewmeyer/cantrip),
-where charmlint grew as an internal component of the Cantrip AI charm builder.
-
-## Installation
-
-```bash
-uv sync --dev
-```
+charmlint checks charm source code against Canonical's charm best practices: observability, security, testing, metadata, configuration, and more. It's for charm authors and reviewers who want best-practice gaps caught before review rather than during it, locally or in CI. It isn't tied to any AI assistant or model: it works the same whether you run it yourself or from Claude Code, Copilot, Codex, or any other coding agent.
 
 ## Usage
 
-```bash
-uv run charmlint /path/to/charm
-uv run charmlint --format json /path/to/charm
-uv run charmlint --select COS,META /path/to/charm
-uv run charmlint --ignore ATT002 --strict /path/to/charm
-```
-
-Or install and run directly:
+charmlint requires Python 3.12 or later. Run it from PyPI with `uvx`, no install needed:
 
 ```bash
-uv run pip install -e .
-charmlint /path/to/charm
+uvx charmlint /path/to/charm
 ```
 
-## Running tests
+Or add it to a charm's dev dependencies and run it with `uv run`:
 
 ```bash
-uv run pytest tests/ -v
+uv add --dev charmlint
+uv run charmlint
 ```
 
-## Rule catalogue
+charmlint doesn't follow SemVer: a minor release can add or tighten rules, so an upgrade may turn a clean run into a failing one. If you set version bounds, see [docs/versioning.md](docs/versioning.md#pinning-charmlint) for how to pin.
 
-Rule IDs follow `CATEGORY-###` (for example `SECURITY-001`,
-`METADATA-003`). See [docs/id-scheme.md](docs/id-scheme.md) for the full
-category catalogue and naming rules.
+Common options:
+
+```bash
+uvx charmlint --format json .
+uvx charmlint --select SECURITY,METADATA-001 .
+uvx charmlint --ignore no-readme --strict .
+```
+
+`charmlint --help` lists the rest. Errors cause charmlint to exit with code 1. With `--strict`, warnings cause charmlint to exit with code 2.
 
 ## Configuration
 
-Configure under `[tool.charmlint]` in `pyproject.toml`, or in a standalone
-`charmlint.toml` / `.charmlint.toml`. Discovery walks up from the charm
-directory, in the manner of ruff.
+Configure under `[tool.charmlint]` in `pyproject.toml`:
 
 ```toml
 [tool.charmlint]
-severity = "warning"  # minimum severity to report
-select = ["OBSERVABILITY", "METADATA"]
-ignore = ["ATTESTATION-002"]
-
-[tool.charmlint.per-rule-severity]
-"OBSERVABILITY-005" = "error"
+select = ["SECURITY", "METADATA"]
+ignore = ["METADATA-002"]
 ```
 
-## Suppressing findings inline
+You can also use a standalone `charmlint.toml` or `.charmlint.toml` file, with the same keys at the top level (no `[tool.charmlint]` header).
 
-Individual findings can be silenced from within a charm's YAML files with
-ruff-style `# noqa` comments.
+Individual findings can be suppressed inline with `# charmlint: ignore[SECURITY-001]`. See [docs/configuration.md](docs/configuration.md) for all settings and suppression directives.
 
-An inline `# noqa` suppresses every finding reported on that line; add a
-comma-separated list of codes to suppress only those. A code is a full
-rule ID (`SECURITY-001`) or a category (`SECURITY`):
+## Documentation
 
-```yaml
-config:
-  options:
-    admin-password:  # noqa: SECURITY-001
-      type: string
-```
+- [docs/rules.md](docs/rules.md) — every rule and what it checks for
+- [docs/id-scheme.md](docs/id-scheme.md) — rule IDs and the category catalogue
+- [docs/configuration.md](docs/configuration.md) — configuration and inline suppression
+- [docs/versioning.md](docs/versioning.md) — versioning and compatibility policy
+- [SECURITY.md](SECURITY.md) — reporting vulnerabilities
 
-A file-level `# charmlint: noqa` (on any line) suppresses the whole file;
-`# charmlint: noqa: SECURITY-001` suppresses only the listed rules across
-the file:
+## Community and support
 
-```yaml
-# charmlint: noqa: SECURITY-001
-```
+Questions and discussion are welcome on [Matrix](https://matrix.to/#/#charmhub-charmdev:ubuntu.com) and [Discourse](https://discourse.charmhub.io/). If you find a bug or have a feature request, please open a [GitHub issue](https://github.com/canonical/charmlint/issues). Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-Inline `# noqa` only applies to findings that carry a line number;
-findings that anchor to a whole file are silenced with a file-level
-directive instead. Only YAML files are scanned.
+## Contributing
 
-## Versioning
-
-charmlint follows a ruff-style versioning scheme: the minor version carries
-breaking changes (such as new or sharpened rules being enabled by default)
-and the patch version carries bug fixes. See
-[docs/versioning.md](docs/versioning.md) for the full policy.
-
-## License
-
-Apache 2.0 — see [LICENSE](LICENSE).
+Improvements to the rules, the code, and the documentation are all welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers development setup, tests, and pull requests. Contributors need to sign the [Canonical contributor licence agreement](https://ubuntu.com/legal/contributors).
