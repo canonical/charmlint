@@ -1,5 +1,6 @@
 """Tests for charmlint._linter."""
 
+import dataclasses
 import pathlib
 
 from charmlint._config import LintConfig
@@ -129,6 +130,17 @@ class TestLintFiltering:
         meta001 = [d for d in list(report) if d.rule_id == "METADATA-001"]
         assert meta001
         assert meta001[0].severity == Severity.WARNING
+
+    def test_severity_override_changes_only_the_severity(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        selected = LintConfig(select=["METADATA-001"])
+        overridden = LintConfig(
+            select=["METADATA-001"], severity_overrides={"METADATA-001": "warning"}
+        )
+        [original] = list(lint(tmp_charm, selected))
+        [changed] = list(lint(tmp_charm, overridden))
+        assert original.reference_url is not None
+        assert changed == dataclasses.replace(original, severity=Severity.WARNING)
 
     def test_select_id_wins_over_ignored_category(self, tmp_charm: pathlib.Path):
         # More-specific select beats less-specific ignore.

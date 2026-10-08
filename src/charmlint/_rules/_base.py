@@ -15,34 +15,32 @@ _RULES: dict[str, "Rule"] = {}
 # The category catalogue, mirroring the table in docs/id-scheme.md. A rule
 # may only use a category from this list, and configuration may only name
 # one from this list, so a typo in either is caught rather than silently
-# matching nothing. A category with no rules yet is still valid to name in
-# a config: it starts matching when its first rule lands.
-CATEGORIES = frozenset(
-    {
-        "ACTIONS",
-        "ATTESTATION",
-        "CHARMCRAFT",
-        "CONFIG",
-        "CORRECTNESS",
-        "DEPRECATION",
-        "DOCUMENTATION",
-        "EVENTS",
-        "FEATURES",
-        "JUJU",
-        "LIBRARY",
-        "METADATA",
-        "OBSERVABILITY",
-        "OPS",
-        "PEBBLE",
-        "PERFORMANCE",
-        "RELATIONS",
-        "SECURITY",
-        "STATUS",
-        "STRUCTURE",
-        "SUPPLYCHAIN",
-        "TESTING",
-    }
-)
+# matching nothing. A category with no rules yet names nothing, so a config
+# naming it is rejected like a typo until its first rule lands.
+CATEGORIES = frozenset({
+    "ACTIONS",
+    "ATTESTATION",
+    "CHARMCRAFT",
+    "CONFIG",
+    "CORRECTNESS",
+    "DEPRECATION",
+    "DOCUMENTATION",
+    "EVENTS",
+    "FEATURES",
+    "JUJU",
+    "LIBRARY",
+    "METADATA",
+    "OBSERVABILITY",
+    "OPS",
+    "PEBBLE",
+    "PERFORMANCE",
+    "RELATIONS",
+    "SECURITY",
+    "STATUS",
+    "STRUCTURE",
+    "SUPPLYCHAIN",
+    "TESTING",
+})
 
 # A rule name is ruff-style kebab-case: the wordier spelling of its ID.
 _NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")

@@ -90,15 +90,13 @@ class ConfigMissingDescription(Rule):
 # helper class is likely to own. ``self.config`` is deliberately absent: a
 # helper class with its own ``self.config`` dict is common, so that spelling
 # is only read inside a charm class (see ``_charm_config_reads``).
-_MODEL_CONFIG_SPELLINGS = frozenset(
-    {
-        "self.model.config",
-        "self.charm.config",
-        "self.charm.model.config",
-        "charm.config",
-        "charm.model.config",
-    }
-)
+_MODEL_CONFIG_SPELLINGS = frozenset({
+    "self.model.config",
+    "self.charm.config",
+    "self.charm.model.config",
+    "charm.config",
+    "charm.model.config",
+})
 _SELF_CONFIG = "self.config"
 # A class is taken to be a charm if a base resolves to ops' CharmBase, or is
 # simply *named* like a charm — charms routinely subclass an intermediate base
@@ -199,3 +197,46 @@ class ConfigOptionUndeclared(Rule):
                     )
                 )
         return diagnostics
+
+
+class ConfigOptionsNotNested(Rule):
+    """Config options must sit under an ``options`` key.
+
+    Juju reads a charm's config options from ``options``, one level below
+    ``config:`` in ``charmcraft.yaml`` (or at the top level of
+    ``config.yaml``). With that level missing, charmcraft still packs the
+    charm, and it is ``juju deploy`` that refuses it, with ``invalid config:
+    empty configuration``.
+
+    The other config rules still check options written one level too high,
+    so their findings are about the options themselves rather than about
+    where they are.
+    """
+
+    category = "CONFIG"
+    number = 8
+    name = "config-options-not-nested"
+    description = "Config options are not under an `options` key"
+    default_severity = models.Severity.ERROR
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        section = context.config_section
+        if not section or "options" in section:
+            return []
+        if section.source == "config.yaml":
+            where, fix_hint = "config.yaml", "Indent the options under a top-level `options:` key"
+        else:
+            where, fix_hint = "`config`", "Indent the options under `config.options`"
+        # config.yaml's options start at the top of the file, where there is
+        # no key line to anchor to, so anchor to the first of them instead.
+        line = section.line or next(option.line for _, option in section.items())
+        return [
+            self.diagnostic(
+                f"Config options in {where} are not under an `options` key, "
+                f"so Juju will refuse to deploy the charm",
+                path=section.source,
+                line=line,
+                fix_hint=fix_hint,
+            )
+        ]

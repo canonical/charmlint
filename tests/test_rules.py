@@ -17,7 +17,7 @@ import pytest
 from charmlint._linter import lint
 from charmlint._models import Severity
 from charmlint._rules._base import get_all_rules
-from tests.conftest import make_full_charm, write_charmcraft_yaml
+from tests.conftest import make_full_charm, write_charm_source, write_charmcraft_yaml
 
 _RULES_WITH_URL = sorted(
     (r for r in get_all_rules().values() if r.reference_url is not None),
@@ -183,11 +183,15 @@ class TestMetadataRules:
         assert not meta_ids
 
     def test_legacy_bundle_yaml_skips_metadata_rules(self, tmp_charm: pathlib.Path):
+        # A charmcraft.yaml that doesn't say ``type: bundle``: the bundle.yaml
+        # beside it is what marks the directory as a bundle.
+        write_charmcraft_yaml(tmp_charm, {"description": "A bundle."})
+        without = {d.rule_id for d in lint(tmp_charm)}
+        assert "METADATA-001" in without
         (tmp_charm / "bundle.yaml").write_text("applications: {}\n")
-        write_charmcraft_yaml(tmp_charm, {})
-        report = lint(tmp_charm)
-        meta_ids = {d.rule_id for d in list(report) if d.rule_id.startswith("METADATA")}
-        assert not meta_ids
+        report = list(lint(tmp_charm))
+        assert "FATAL" not in {d.rule_id for d in report}
+        assert not {d.rule_id for d in report if d.rule_id.startswith("METADATA")}
 
 
 class TestDocumentationRules:
@@ -225,13 +229,13 @@ def _fetch_status(url: str) -> int:
     """Return the HTTP status for *url*, retrying transient answers."""
     for attempt in range(3):
         try:
-            request = urllib.request.Request(url, method="HEAD")
-            with urllib.request.urlopen(request, timeout=10) as response:
+            request = urllib.request.Request(url, method="HEAD")  # ruff: ignore[suspicious-url-open-usage]
+            with urllib.request.urlopen(request, timeout=10) as response:  # ruff: ignore[suspicious-url-open-usage]
                 return response.status
         except urllib.error.HTTPError as exc:
             if exc.code == 405:
                 # HEAD not allowed — retry with GET.
-                with urllib.request.urlopen(url, timeout=10) as response:
+                with urllib.request.urlopen(url, timeout=10) as response:  # ruff: ignore[suspicious-url-open-usage]
                     return response.status
             if exc.code not in _TRANSIENT_CODES or attempt == 2:
                 raise
@@ -311,6 +315,77 @@ class TestStructureRules:
         (tmp_charm / "icon.svg").mkdir()
         report = lint(tmp_charm)
         assert "STRUCTURE-002" in {d.rule_id for d in report}
+
+    def test_no_type_annotations(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(
+            tmp_charm,
+            """\
+import ops
+
+
+class Charm(ops.CharmBase):
+    def __init__(self, framework):
+        super().__init__(framework)
+
+    def _on_start(self, event):
+        self.unit.status = ops.ActiveStatus()
+""",
+        )
+        annotations = [d for d in lint(tmp_charm) if d.rule_id == "STRUCTURE-003"]
+        assert len(annotations) == 1
+        assert annotations[0].severity == Severity.INFO
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            pytest.param("def handle(event) -> None:\n    pass\n", id="return"),
+            pytest.param("def handle(event: object):\n    pass\n", id="parameter"),
+            pytest.param("def handle(*args: int):\n    pass\n", id="vararg"),
+            pytest.param("def handle(**kwargs: int):\n    pass\n", id="kwarg"),
+            pytest.param("def handle(event: object, /):\n    pass\n", id="positional-only"),
+            pytest.param("def handle(*, event: object):\n    pass\n", id="keyword-only"),
+            pytest.param("async def handle(event) -> None:\n    pass\n", id="async"),
+            pytest.param("PORT: int = 8080\n\n\ndef handle(event):\n    pass\n", id="assign"),
+        ],
+    )
+    def test_annotations_present_no_diagnostic(self, tmp_charm: pathlib.Path, source: str):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, source)
+        assert "STRUCTURE-003" not in {d.rule_id for d in lint(tmp_charm)}
+
+    def test_no_functions_no_diagnostic(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "PORT = 8080\n")
+        assert "STRUCTURE-003" not in {d.rule_id for d in lint(tmp_charm)}
+
+    def test_no_charm_source_no_diagnostic(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        assert "STRUCTURE-003" not in {d.rule_id for d in lint(tmp_charm)}
+
+    def test_vendored_library_annotations_do_not_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "def handle(event):\n    pass\n")
+        vendored = tmp_charm / "lib" / "charms" / "other_charm" / "v0"
+        vendored.mkdir(parents=True)
+        (vendored / "thing.py").write_text("def handle(event: object) -> None:\n    pass\n")
+        assert "STRUCTURE-003" in {d.rule_id for d in lint(tmp_charm)}
+
+    def test_owned_library_annotations_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test-charm"})
+        write_charm_source(tmp_charm, "def handle(event):\n    pass\n")
+        owned = tmp_charm / "lib" / "charms" / "test_charm" / "v0"
+        owned.mkdir(parents=True)
+        (owned / "thing.py").write_text("def handle(event: object) -> None:\n    pass\n")
+        assert "STRUCTURE-003" not in {d.rule_id for d in lint(tmp_charm)}
+
+    def test_test_annotations_do_not_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "def handle(event):\n    pass\n")
+        unit = tmp_charm / "tests" / "unit"
+        unit.mkdir(parents=True)
+        (unit / "test_charm.py").write_text("def test_thing() -> None:\n    pass\n")
+        assert "STRUCTURE-003" in {d.rule_id for d in lint(tmp_charm)}
 
 
 class TestTestingRules:

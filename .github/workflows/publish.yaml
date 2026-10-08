@@ -63,17 +63,19 @@ jobs:
               sys.exit(1)
           print(f"Building {version}")
 
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
         with:
           enable-cache: false
 
       - name: Build sdist and wheel
         run: uv build
 
+      # cyclonedx-py runs from its own locked project (.github/sbom) so that
+      # neither it nor the dev group is synced into the venv it describes.
       - name: Generate CycloneDX SBOM
         run: |
           uv sync --frozen --no-dev
-          uv run --with cyclonedx-bom cyclonedx-py environment .venv \
+          uv run --frozen --project .github/sbom cyclonedx-py environment .venv \
             --output-format JSON \
             --output-file sbom.cdx.json
 

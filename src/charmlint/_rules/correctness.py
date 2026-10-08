@@ -188,18 +188,16 @@ def _is_event_defer(node: ast.AST) -> bool:
 # `pre-commit`, `commit`, `collect-unit-status` and `collect-app-status`
 # are `LifecycleEvent`s, which raise from the base override in
 # `ops.framework`. Action events are handled separately, by suffix.
-_NON_DEFERRABLE_EVENTS = frozenset(
-    {
-        "stop",
-        "remove",
-        "secret_expired",
-        "secret_rotate",
-        "pre_commit",
-        "commit",
-        "collect_unit_status",
-        "collect_app_status",
-    }
-)
+_NON_DEFERRABLE_EVENTS = frozenset({
+    "stop",
+    "remove",
+    "secret_expired",
+    "secret_rotate",
+    "pre_commit",
+    "commit",
+    "collect_unit_status",
+    "collect_app_status",
+})
 
 
 def _is_non_deferrable(event: str) -> bool:
@@ -306,28 +304,26 @@ class NonDeferrableEventDeferred(Rule):
 # metadata says. Kept as literals rather than read from an installed ops:
 # charmlint lints a charm it does not import, and the charm's ops version
 # is not charmlint's.
-_LIFECYCLE_EVENTS = frozenset(
-    {
-        "install",
-        "start",
-        "stop",
-        "remove",
-        "update_status",
-        "config_changed",
-        "upgrade_charm",
-        "pre_series_upgrade",
-        "post_series_upgrade",
-        "leader_elected",
-        "leader_settings_changed",
-        "collect_metrics",
-        "secret_changed",
-        "secret_expired",
-        "secret_rotate",
-        "secret_remove",
-        "collect_app_status",
-        "collect_unit_status",
-    }
-)
+_LIFECYCLE_EVENTS = frozenset({
+    "install",
+    "start",
+    "stop",
+    "remove",
+    "update_status",
+    "config_changed",
+    "upgrade_charm",
+    "pre_series_upgrade",
+    "post_series_upgrade",
+    "leader_elected",
+    "leader_settings_changed",
+    "collect_metrics",
+    "secret_changed",
+    "secret_expired",
+    "secret_rotate",
+    "secret_remove",
+    "collect_app_status",
+    "collect_unit_status",
+})
 
 # The per-name events ``CharmBase.__init__`` defines from the charm's
 # metadata, as ``<name><suffix>``. Each entry gives the suffix, the

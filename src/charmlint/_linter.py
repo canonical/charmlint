@@ -109,16 +109,18 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
 
     # Load config options (charmcraft.yaml or config.yaml).
     config_section = metadata.get("config")
+    if not config_section:
+        config_section = _yaml.load(charm_dir / "config.yaml")
+    config_section = _mapping_or_absent(config_section)
+    # Without an `options` key, Juju refuses the charm (CONFIG-008 reports
+    # it), but the options are still worth checking for everything else, so
+    # take them from the section itself.
+    config_options = config_section
     if "options" in config_section:
         # `config: {options: }` is an empty (not absent) option set — take
-        # it as-is, rather than falling through and treating the literal
-        # key 'options' as an option name.
+        # it as-is, rather than treating the literal key 'options' as an
+        # option name.
         config_options = config_section["options"]
-    elif config_section:
-        config_options = config_section
-    else:
-        config_data = _yaml.load(charm_dir / "config.yaml")
-        config_options = config_data.get("options") if "options" in config_data else config_data
     config_options = _mapping_or_absent(config_options)
 
     # Parse pyproject.toml once, for every rule that reads a charm's
@@ -147,6 +149,7 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
         metadata=metadata,
         actions=actions,
         config_options=config_options,
+        config_section=config_section,
         pyproject=pyproject,
         python_files=python_files,
         python_sources=python_sources,
@@ -248,17 +251,7 @@ def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[mod
         # Apply severity overrides.
         override = _effective_severity(rule, config)
         if override is not None:
-            diagnostics = [
-                models.Diagnostic(
-                    rule_id=d.rule_id,
-                    severity=override,
-                    message=d.message,
-                    path=d.path,
-                    line=d.line,
-                    fix_hint=d.fix_hint,
-                )
-                for d in diagnostics
-            ]
+            diagnostics = [dataclasses.replace(d, severity=override) for d in diagnostics]
 
         # Filter by minimum severity.
         if config.min_severity:

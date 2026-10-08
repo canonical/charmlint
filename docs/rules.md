@@ -39,6 +39,7 @@ config file overrides it per rule.
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
 | [CONFIG-006](#config-006-config-option-undeclared) | `config-option-undeclared` | Error | Config key read in src/ is not a declared config option |
+| [CONFIG-008](#config-008-config-options-not-nested) | `config-options-not-nested` | Error | Config options are not under an `options` key |
 | [CORRECTNESS-001](#correctness-001-defer-without-return) | `defer-without-return` | Warning | event.defer() not immediately followed by return |
 | [CORRECTNESS-002](#correctness-002-defer-before-raise) | `defer-before-raise` | Warning | event.defer() immediately followed by raise |
 | [CORRECTNESS-003](#correctness-003-exec-result-not-consumed) | `exec-result-not-consumed` | Error | container.exec() result not consumed (no .wait() / .wait_output()) |
@@ -65,6 +66,8 @@ config file overrides it per rule.
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
 | [STRUCTURE-002](#structure-002-no-icon) | `no-icon` | Info | No icon.svg found |
+| [STRUCTURE-003](#structure-003-no-type-annotations) | `no-type-annotations` | Info | No type annotations found in charm source |
+| [SUPPLYCHAIN-001](#supplychain-001-oci-image-missing-upstream-source) | `oci-image-missing-upstream-source` | Info | oci-image resource declared without an 'upstream-source' |
 | [SUPPLYCHAIN-005](#supplychain-005-ops-dependency-unpinned) | `ops-dependency-unpinned` | Warning | ops dependency has no version specifier |
 | [SUPPLYCHAIN-006](#supplychain-006-ops-dependency-exactly-pinned) | `ops-dependency-exactly-pinned` | Info | ops dependency pinned with `==` |
 | [TESTING-001](#testing-001-no-unit-tests) | `no-unit-tests` | Warning | No unit tests found in tests/unit/ or unit_tests/ |
@@ -336,6 +339,23 @@ charm's to declare, and a computed key cannot be resolved statically.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
+### CONFIG-008 config-options-not-nested
+
+**Error** — Config options are not under an `options` key
+
+Config options must sit under an `options` key.
+
+Juju reads a charm's config options from `options`, one level below
+`config:` in `charmcraft.yaml` (or at the top level of
+`config.yaml`). With that level missing, charmcraft still packs the
+charm, and it is `juju deploy` that refuses it, with `invalid config: empty configuration`.
+
+The other config rules still check options written one level too high,
+so their findings are about the options themselves rather than about
+where they are.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config>
+
 ## CORRECTNESS
 
 Correctness.
@@ -508,12 +528,12 @@ find out is to get a shell on the unit.
 Charms with no workload to version — integrators, configurators,
 proxies, interface placeholders — are the real exception, and the
 rule detects only the ones that say so in their name, through the
-suffixes in :data:`_NO_WORKLOAD_SUFFIXES`. Nothing else in the
+suffixes in `_NO_WORKLOAD_SUFFIXES`. Nothing else in the
 metadata declares "I have a workload" outside of `containers:`, and
 every code-side proxy measured against the corpus
 (`operator_libs_linux`, snap, apt, systemd, `subprocess`) fires at
 the population's base rate, so it separates nothing. Rather than guess
-at the rest, the rule asks such a charm to say so once::
+at the rest, the rule asks such a charm to say so once:
 
     # charmlint: file-ignore[FEATURES-005]
 
@@ -536,7 +556,7 @@ in the tree.
 Three routes are still not resolved, each of which would make this a
 false positive: a `getattr(self.unit, ...)` lookup, a call made by a
 *vendored* library on the charm's behalf, and any framework not in
-:data:`_WORKLOAD_VERSION_SETTERS`. A charm with no reachable source of
+`_WORKLOAD_VERSION_SETTERS`. A charm with no reachable source of
 its own is left alone entirely.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version>
@@ -564,7 +584,7 @@ A name counts as a constant only when every assignment to it in the
 same file is a string literal, so a charm that seeds a variable with
 a placeholder and then overwrites it with a real lookup is not
 flagged. Neither is the `self._version() or ""` fallback idiom, nor
-a placeholder passed on its own: see :data:`_VERSION_PLACEHOLDERS`.
+a placeholder passed on its own: see `_VERSION_PLACEHOLDERS`.
 A constant defined in another module is not followed, which is a
 deliberate gap — it would add false-positive risk for no finding the
 corpus can show.
@@ -814,9 +834,32 @@ viewBox are charmcraft's business, not this rule's.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/icon-svg-file/>
 
+### STRUCTURE-003 no-type-annotations
+
+**Info** — No type annotations found in charm source
+
+Check that the charm's own source uses type annotations at all.
+
+Annotations are what let a type checker catch a wrong event type, a
+misspelt attribute or a `None` that was never handled before the
+charm is deployed. A charm with none at all gets no help from one.
+
+The rule reports once per charm, not once per function. Any
+annotation passes: a return type, a parameter, or an annotated
+assignment. Only the charm's own source counts. That is `src/` plus
+any library the charm publishes, but not a vendored copy of someone
+else's library, and not the tests. A charm with no functions has
+nothing to annotate and is not reported.
+
 ## SUPPLYCHAIN
 
 Supply chain / maintainability.
+
+### SUPPLYCHAIN-001 oci-image-missing-upstream-source
+
+**Info** — oci-image resource declared without an 'upstream-source'
+
+Flag an `oci-image` resource with no `upstream-source`.
 
 ### SUPPLYCHAIN-005 ops-dependency-unpinned
 

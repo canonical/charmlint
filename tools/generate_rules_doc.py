@@ -16,8 +16,10 @@ and prints the command to run. That is what CI calls.
 
 The docstrings are written in the same reStructuredText-flavoured style as
 the rest of the source, so ``double backticks`` are rewritten to Markdown's
-single ones on the way out. Everything else — paragraphs, ``*emphasis*`` —
-is already Markdown as it stands.
+single ones, a cross-reference role (``:data:`NAME```) becomes
+a plain code span, and the ``::`` that introduces a literal block becomes a
+single colon (the indented block is already code in Markdown). Everything
+else — paragraphs, ``*emphasis*`` — is already Markdown as it stands.
 """
 
 from __future__ import annotations
@@ -158,10 +160,17 @@ def cell(text: str) -> str:
 def markdown(text: str) -> str:
     """Return *text* with the source's RST inline markup as Markdown.
 
-    Only ``double backticks`` need translating; a run that wraps across a
+    ``double backticks`` become single ones; a run that wraps across a
     source line is joined back onto one, so the Markdown code span holds
-    the spelling the docstring meant rather than a newline.
+    the spelling the docstring meant rather than a newline. A role such as
+    ``:data:`NAME``` is a cross-reference Markdown can't follow, so it is
+    shown as the code span it names. A paragraph ending in ``::`` ends in a
+    colon instead. In RST, ``text ::`` introduces a literal block without
+    rendering a colon, so a ``::`` preceded by a space is dropped.
     """
+    text = re.sub(r":[a-z]+:`~?([^`]+)`", r"`\1`", text)
+    text = re.sub(r"(\S)::$", r"\1:", text, flags=re.M)
+    text = re.sub(r"\s+::$", "", text, flags=re.M)
     return re.sub(r"``(.+?)``", lambda m: f"`{' '.join(m.group(1).split())}`", text, flags=re.S)
 
 
