@@ -344,7 +344,6 @@ _METADATA_EVENTS: tuple[tuple[str, str, str], ...] = (
     ("_action", "actions", "an action under `actions:`"),
 )
 
-_CHARM_BASES = frozenset({"ops.CharmBase", "ops.charm.CharmBase"})
 _CHARM_EVENTS_BASES = frozenset({"ops.CharmEvents", "ops.charm.CharmEvents"})
 _EVENT_SOURCE = frozenset({"ops.EventSource", "ops.framework.EventSource"})
 
@@ -475,7 +474,7 @@ def _charm_classes(module: models.Module, custom_events: set[str]) -> Iterator[_
     imports = _ast.Imports.of(module)
     for node in module.walk(ast.ClassDef):
         bases = _base_names(node, imports)
-        if not bases or any(base not in _CHARM_BASES for base in bases):
+        if not bases or any(base not in _ast.CHARM_BASES for base in bases):
             continue
         yield _CharmClass(
             node=node,
