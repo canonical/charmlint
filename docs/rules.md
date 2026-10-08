@@ -601,8 +601,8 @@ Flag a charm that declares config options but never observes `config-changed`.
 `config-changed` is the event Juju emits when an operator runs
 `juju config`. A charm that declares options and never handles it
 picks the new values up at whatever event happens to fire next, which
-may be much later or never. From the operator's side, the setting was
-silently ignored.
+may be much later or never. From the Juju user's perspective, the
+setting was silently ignored.
 
 Handling it does not have to mean observing it, and the rule stays
 quiet wherever the charm might be dealing with configuration
