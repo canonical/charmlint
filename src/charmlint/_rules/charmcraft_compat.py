@@ -632,6 +632,63 @@ class LegacyBases(Rule):
         ]
 
 
+class OverrideBuildSkipsDefault(Rule):
+    """Flag an ``override-build`` that never runs the plugin's own build.
+
+    An ``override-build`` scriptlet replaces the part's build step
+    entirely unless it calls ``craftctl default``. For the ``charm``,
+    ``python``, ``uv`` and ``poetry`` plugins the default step is what
+    installs the charm code and its dependencies into the part, so a
+    scriptlet that leaves it out either fails to pack or packs a charm
+    that can't import its dependencies on the first hook.
+
+    A part that also has its own ``override-stage`` is left alone: that
+    is the step that takes up what the build installed, so a part that
+    replaces it has taken over the lifecycle and is not relying on the
+    plugin. That is the shape of a reactive charm built with charmcraft,
+    which uses the ``charm`` plugin as a shell around ``charm build``.
+    A scriptlet that uses ``snapcraftctl`` is also left alone: there is
+    no ``snapcraftctl`` in charmcraft, so the build fails on that before
+    the missing default matters. Any other deliberate reimplementation of the build should
+    be suppressed with a ``noqa`` on the ``override-build`` line.
+    """
+
+    category = "CHARMCRAFT"
+    number = 10
+    name = "override-build-skips-default"
+    description = "override-build never runs 'craftctl default' for a Python plugin"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://documentation.ubuntu.com/craft-parts/latest/common/craft-parts/reference/part_properties/#override-build"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        parts = context.metadata.get("parts")
+        if parts.source != "charmcraft.yaml":
+            return []
+        diagnostics: list[models.Diagnostic] = []
+        for part_name, part in parts.items():
+            plugin = part.get("plugin").value if "plugin" in part else part_name
+            if plugin not in _PYTHON_PLUGINS:
+                continue
+            override = part.get("override-build")
+            if not isinstance(override.value, str) or "override-stage" in part:
+                continue
+            commands = _strip_shell_comments(override.value)
+            if _CRAFTCTL_DEFAULT.search(commands) or _SNAPCRAFTCTL.search(commands):
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"override-build for the '{part_name}' part never runs "
+                    f"'craftctl default', so the {plugin} plugin's build step is "
+                    f"skipped and the charm and its dependencies are not installed",
+                    path=override.source,
+                    line=override.line,
+                    fix_hint="Call 'craftctl default' in the scriptlet, before or after "
+                    "the extra commands",
+                )
+            )
+        return diagnostics
+
+
 def _entrypoint(context: models.CharmContext) -> str:
     """Return the charm-relative path of the entrypoint charmcraft will use.
 
@@ -903,3 +960,24 @@ def _edit_distance(a: str, b: str, threshold: int) -> int:
             curr[j + 1] = min(prev[j + 1] + 1, curr[j] + 1, prev[j] + cost)
         prev = curr
     return prev[len(b)]
+
+
+# The plugins whose default build step installs the charm and its Python
+# dependencies into the part. ``nil`` and ``dump`` have little or nothing to
+# skip, and the other plugins aren't how a charm gets built.
+_PYTHON_PLUGINS: frozenset[str] = frozenset({"charm", "python", "uv", "poetry"})
+
+_CRAFTCTL_DEFAULT = re.compile(r"\bcraftctl\s+default\b")
+_SNAPCRAFTCTL = re.compile(r"\bsnapcraftctl\b")
+
+
+def _strip_shell_comments(script: str) -> str:
+    """Return *script* with its shell comments removed.
+
+    A ``#`` starts a comment at the start of a word, so one at the start
+    of a line or after whitespace is cut along with the rest of the line,
+    while one inside a word (``$#``, a URL fragment) is kept. Quoting is
+    not tracked: a quoted ``" #"`` is cut too, which can only hide a
+    ``craftctl default`` later on the same line, not invent one.
+    """
+    return "\n".join(re.sub(r"(^|\s)#.*", "", line) for line in script.splitlines())

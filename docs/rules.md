@@ -35,6 +35,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-007](#charmcraft-007-legacy-bases) | `legacy-bases` | Info | Legacy 'bases' block instead of 'base' and 'platforms' |
 | [CHARMCRAFT-008](#charmcraft-008-charm-user) | `charm-user` | Warning | Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user' |
 | [CHARMCRAFT-009](#charmcraft-009-container-runs-as-root) | `container-runs-as-root` | Warning | Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity |
+| [CHARMCRAFT-010](#charmcraft-010-override-build-skips-default) | `override-build-skips-default` | Warning | override-build never runs 'craftctl default' for a Python plugin |
 | [CONFIG-001](#config-001-config-missing-type) | `config-missing-type` | Warning | Config option is missing a type |
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
@@ -293,6 +294,31 @@ same as elsewhere in this module: a malformed section is not a
 privilege finding.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers>
+
+### CHARMCRAFT-010 override-build-skips-default
+
+**Warning** — override-build never runs 'craftctl default' for a Python plugin
+
+Flag an `override-build` that never runs the plugin's own build.
+
+An `override-build` scriptlet replaces the part's build step
+entirely unless it calls `craftctl default`. For the `charm`,
+`python`, `uv` and `poetry` plugins the default step is what
+installs the charm code and its dependencies into the part, so a
+scriptlet that leaves it out either fails to pack or packs a charm
+that can't import its dependencies on the first hook.
+
+A part that also has its own `override-stage` is left alone: that
+is the step that takes up what the build installed, so a part that
+replaces it has taken over the lifecycle and is not relying on the
+plugin. That is the shape of a reactive charm built with charmcraft,
+which uses the `charm` plugin as a shell around `charm build`.
+A scriptlet that uses `snapcraftctl` is also left alone: there is
+no `snapcraftctl` in charmcraft, so the build fails on that before
+the missing default matters. Any other deliberate reimplementation of the build should
+be suppressed with a `noqa` on the `override-build` line.
+
+Reference: <https://documentation.ubuntu.com/craft-parts/latest/common/craft-parts/reference/part_properties/#override-build>
 
 ## CONFIG
 
