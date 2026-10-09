@@ -146,6 +146,7 @@ or about to break on a Juju/charmcraft version bump.
 | Integration tests on pytest-operator/python-libjuju | #162 | | |
 | Jubilant misuse | #163 | | |
 | `testing.Context` with legacy `meta=`/`config=` kwargs | | #55 | |
+| Tests depend on `ops-scenario` instead of `ops[testing]` (TESTING-004) | #427 | #437 | 84 of 655 charms, 231 findings, 0 FP |
 | Manual config/param parsing where `load_config()`/`load_params()` exist | #168 | | |
 | Old-style `__init__(self, *args)` boilerplate | #169 | | |
 

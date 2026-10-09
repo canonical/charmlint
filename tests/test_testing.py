@@ -3,6 +3,8 @@
 import pathlib
 import textwrap
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from tests.conftest import write_charmcraft_yaml
@@ -197,7 +199,7 @@ def _ops_scenario_findings(charm_dir: pathlib.Path, files: dict[str, str]):
 
 
 class TestUsesOpsScenario:
-    """TESTING-004 — tests must not depend on the standalone ops-scenario package."""
+    """TESTING-004 — tests depend on ops[testing], not ops-scenario."""
 
     def test_import_flagged(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(
@@ -330,6 +332,25 @@ class TestUsesOpsScenario:
         assert len(findings) == 1
         assert "`tool.poetry.group.unit.dependencies`" in findings[0].message
 
+    @pytest.mark.parametrize(
+        ("pyproject", "section"),
+        [
+            ('[project]\ndependencies = ["ops-scenario"]\n', "project.dependencies"),
+            (
+                '[tool.poetry.dev-dependencies]\nops_scenario = "*"\n',
+                "tool.poetry.dev-dependencies",
+            ),
+            (
+                '[tool.poetry.dependencies]\n"Ops.Scenario" = "^7"\n',
+                "tool.poetry.dependencies",
+            ),
+        ],
+    )
+    def test_pyproject_layout_flagged(self, tmp_charm: pathlib.Path, pyproject: str, section: str):
+        findings = _ops_scenario_findings(tmp_charm, {"pyproject.toml": pyproject})
+        assert len(findings) == 1
+        assert f"`{section}`" in findings[0].message
+
     def test_pyproject_without_it_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(
             tmp_charm,
@@ -363,6 +384,12 @@ class TestUsesOpsScenario:
         assert len(findings) == 1
         assert findings[0].path == "requirements-dev.txt"
         assert findings[0].line == 3
+
+    def test_requirements_in_file_flagged(self, tmp_charm: pathlib.Path):
+        findings = _ops_scenario_findings(
+            tmp_charm, {"test-requirements.in": "pytest\nops-scenario\n"}
+        )
+        assert [(d.path, d.line) for d in findings] == [("test-requirements.in", 2)]
 
     def test_compiled_requirements_file_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(
@@ -409,6 +436,21 @@ class TestUsesOpsScenario:
         )
         assert [d.line for d in findings] == [2]
 
+    def test_tox_ini_other_keys_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _ops_scenario_findings(
+            tmp_charm,
+            {"tox.ini": "[testenv:unit]\nsetenv =\n    ops-scenario=1\ndeps = pytest\n"},
+        )
+        assert not findings
+
+    def test_tox_ini_colon_without_space_is_not_a_factor(self, tmp_charm: pathlib.Path):
+        # tox passes ``unit:ops-scenario`` to the installer whole, so the
+        # requirement it names is ``unit``, not ``ops-scenario``.
+        findings = _ops_scenario_findings(
+            tmp_charm, {"tox.ini": "[testenv:unit]\ndeps = unit:ops-scenario\n"}
+        )
+        assert not findings
+
     def test_tox_toml_deps_flagged(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(
             tmp_charm,
@@ -425,6 +467,13 @@ class TestUsesOpsScenario:
         assert len(findings) == 1
         assert findings[0].path == "tox.toml"
         assert "`env.unit.deps`" in findings[0].message
+
+    def test_tox_toml_env_run_base_flagged(self, tmp_charm: pathlib.Path):
+        findings = _ops_scenario_findings(
+            tmp_charm, {"tox.toml": '[env_run_base]\ndeps = ["ops-scenario"]\n'}
+        )
+        assert len(findings) == 1
+        assert "`env_run_base.deps`" in findings[0].message
 
     def test_broken_tox_toml_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(tmp_charm, {"tox.toml": "[env.unit\n"})
