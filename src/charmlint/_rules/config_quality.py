@@ -101,7 +101,6 @@ _SELF_CONFIG = "self.config"
 # A class is taken to be a charm if a base resolves to ops' CharmBase, or is
 # simply *named* like a charm — charms routinely subclass an intermediate base
 # class of their own, and missing those would blind the rule to most charms.
-_OPS_CHARM_BASES = frozenset({"ops.CharmBase", "ops.charm.CharmBase"})
 _CHARM_BASE_SUFFIXES = ("Charm", "CharmBase")
 
 
@@ -111,7 +110,7 @@ def _is_charm_class(node: ast.ClassDef, imports: _ast.Imports) -> bool:
         resolved = imports.resolve(base)
         if resolved is None:
             continue
-        if resolved in _OPS_CHARM_BASES or resolved.rsplit(".", 1)[-1].endswith(
+        if resolved in _ast.CHARM_BASES or resolved.rsplit(".", 1)[-1].endswith(
             _CHARM_BASE_SUFFIXES
         ):
             return True

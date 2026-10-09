@@ -239,13 +239,14 @@ def _fetch_status(url: str) -> int:
                     return response.status
             if exc.code not in _TRANSIENT_CODES or attempt == 2:
                 raise
-        except urllib.error.URLError:
+        except (urllib.error.URLError, TimeoutError):
             if attempt == 2:
                 raise
         time.sleep(2**attempt)
     raise AssertionError("unreachable")
 
 
+@pytest.mark.network
 class TestReferenceUrls:
     """Every rule with a reference_url must point somewhere live."""
 

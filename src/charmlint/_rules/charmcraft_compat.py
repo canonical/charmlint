@@ -338,7 +338,7 @@ class OpsMainCall(Rule):
         if not imports.imports_module("ops"):
             return []
         for call in module.walk(ast.Call):
-            if _ast.call_target(call, imports) in _OPS_MAIN_TARGETS:
+            if _ast.call_target(call, imports) in _ast.OPS_MAIN_TARGETS:
                 return []
         return [
             self.diagnostic(
@@ -763,13 +763,6 @@ def _assumes_k8s(assumes: object) -> bool:
     if isinstance(assumes, dict):
         return any(_assumes_k8s(item) for item in assumes.values())
     return False
-
-
-# Every spelling of the ops entrypoint, canonicalised: ``ops.main`` is the
-# submodule and the function of the same name inside it, and both are
-# callable. ``_ast.Imports`` resolves the aliases, so ``main(MyCharm)``
-# after ``from ops import main`` lands on ``ops.main`` like the rest.
-_OPS_MAIN_TARGETS = frozenset({"ops.main", "ops.main.main"})
 
 
 # Top-level keys valid in charmcraft.yaml (modern and legacy forms). A
