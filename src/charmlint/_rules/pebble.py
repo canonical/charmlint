@@ -144,18 +144,19 @@ class PebbleCheckLevelAlive(Rule):
     """Detect a Pebble check with ``level: alive`` in a layer built in charm source.
 
     Juju points the sidecar container's Kubernetes liveness probe at
-    Pebble's ``/v1/health?level=alive``, so a failing ``alive`` check gets
-    the whole container restarted by Kubernetes, rather than the service
-    by Pebble or the charm. A workload that is slow to start, or briefly
-    unhealthy during an upgrade, ends up in a restart loop. Use a check
-    with no ``level`` and ``on-check-failure`` on the service instead.
+    Pebble's ``/v1/health?level=alive``, so once an ``alive`` check is down
+    Kubernetes restarts the whole container, rather than Pebble or the
+    charm restarting the service. A workload that is slow to start, or
+    briefly unhealthy during an upgrade, ends up in a restart loop. Use a
+    check with no ``level`` and ``on-check-failure`` on the service instead.
 
-    A check is recognised by its shape: a dict literal with a ``level``
-    of ``"alive"`` (or ``ops.pebble.CheckLevel.ALIVE``) alongside an
-    ``http``, ``tcp`` or ``exec`` key. A level computed at runtime is left
-    alone, as is a layer read from a YAML file. A fast-starting workload
-    whose author really does want Kubernetes to restart the container can
-    suppress the rule on that line.
+    A check is recognised by its shape: a dict literal, or a call such as
+    ``CheckDict(...)`` or ``dict(...)`` with keyword arguments, that has a
+    ``level`` of ``"alive"`` (or ``ops.pebble.CheckLevel.ALIVE``) alongside
+    an ``http``, ``tcp`` or ``exec`` key. A level computed at runtime is
+    left alone, as is a layer read from a YAML file. A fast-starting
+    workload whose author really does want Kubernetes to restart the
+    container can suppress the rule on that line.
     """
 
     category = "PEBBLE"
@@ -163,20 +164,19 @@ class PebbleCheckLevelAlive(Rule):
     name = "pebble-check-level-alive"
     description = "Pebble check uses level 'alive', which drives the Kubernetes liveness probe"
     default_severity = models.Severity.INFO
-    reference_url = "https://documentation.ubuntu.com/ops/latest/howto/manage-containers/manage-pebble-health-checks/"
+    reference_url = "https://canonical.com/juju/docs/ops/latest/howto/manage-containers/manage-pebble-health-checks/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
         for module in context.charm_sources():
             imports = _ast.Imports.of(module)
-            for check in _check_dicts(module):
-                level = _ast.dict_get(check, "level")
-                if level is None or not _is_alive(level, imports):
+            for level in _check_levels(module):
+                if not _is_alive(level, imports):
                     continue
                 diagnostics.append(
                     self.diagnostic(
                         "Pebble check has level 'alive', so Kubernetes restarts the "
-                        "whole container whenever it fails",
+                        "whole container when the check is down",
                         path=module.path,
                         line=level.lineno,
                         fix_hint=(
@@ -188,13 +188,24 @@ class PebbleCheckLevelAlive(Rule):
         return diagnostics
 
 
-# Keys only a Pebble check dict carries: the three kinds of check.
+# Keys only a Pebble check carries: the three kinds of check.
 _CHECK_MARKERS = frozenset({"http", "tcp", "exec"})
 
 
-def _check_dicts(module: models.Module) -> list[ast.Dict]:
-    """Return every dict literal shaped like a Pebble check."""
-    return [node for node in module.walk(ast.Dict) if _CHECK_MARKERS & _ast.dict_keys(node)]
+def _check_levels(module: models.Module) -> list[ast.expr]:
+    """Return the ``level`` of every dict literal or keyword call shaped like a Pebble check."""
+    levels: list[ast.expr] = []
+    for node in module.walk(ast.Dict, ast.Call):
+        if isinstance(node, ast.Dict):
+            if _CHECK_MARKERS & _ast.dict_keys(node):
+                level = _ast.dict_get(node, "level")
+                if level is not None:
+                    levels.append(level)
+            continue
+        keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg is not None}
+        if _CHECK_MARKERS & keywords.keys() and "level" in keywords:
+            levels.append(keywords["level"])
+    return levels
 
 
 def _is_alive(level: ast.expr, imports: _ast.Imports) -> bool:
@@ -204,5 +215,4 @@ def _is_alive(level: ast.expr, imports: _ast.Imports) -> bool:
     # ``CheckLevel.ALIVE.value`` is the same thing spelled the long way.
     if isinstance(level, ast.Attribute) and level.attr == "value":
         level = level.value
-    resolved = imports.resolve(level)
-    return resolved is not None and resolved.endswith("CheckLevel.ALIVE")
+    return imports.resolve(level) == "ops.pebble.CheckLevel.ALIVE"

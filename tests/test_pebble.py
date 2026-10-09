@@ -301,6 +301,76 @@ class TestPebbleCheckLevelAlive:
         )
         assert len(findings) == 1
 
+    def test_check_level_enum_via_pebble_module_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer(
+                '"level": pebble.CheckLevel.ALIVE,\n"tcp": {"port": 8080},',
+                imports="import ops\n        from ops import pebble",
+            ),
+        )
+        assert len(findings) == 1
+
+    def test_unimported_check_level_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer('"level": CheckLevel.ALIVE,\n"tcp": {"port": 8080},'),
+        )
+        assert findings == []
+
+    def test_other_check_level_enum_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer(
+                '"level": CheckLevel.ALIVE,\n"tcp": {"port": 8080},',
+                imports="import ops\n        from monitoring import CheckLevel",
+            ),
+        )
+        assert findings == []
+
+    def test_check_dict_keywords_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+                from ops.pebble import CheckDict, HttpDict
+
+                class C(ops.CharmBase):
+                    def _checks(self):
+                        return {
+                            "up": CheckDict(
+                                override="replace",
+                                level="alive",
+                                http=HttpDict(url="http://localhost:8080/"),
+                            ),
+                        }
+            """,
+        )
+        assert len(findings) == 1
+        assert findings[0].line == 9
+
+    def test_dict_call_keywords_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                CHECK = dict(level=ops.pebble.CheckLevel.ALIVE, exec={"command": "/bin/check"})
+            """,
+        )
+        assert len(findings) == 1
+
+    def test_check_dict_keywords_without_level_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                from ops.pebble import CheckDict
+
+                CHECK = CheckDict(override="replace", tcp={"port": 8080})
+            """,
+        )
+        assert findings == []
+
     def test_check_built_separately_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_check_level(
             tmp_charm,

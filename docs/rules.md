@@ -774,20 +774,21 @@ Reference: <https://ubuntu.com/docs/pebble/reference/layer-specification/>
 Detect a Pebble check with `level: alive` in a layer built in charm source.
 
 Juju points the sidecar container's Kubernetes liveness probe at
-Pebble's `/v1/health?level=alive`, so a failing `alive` check gets
-the whole container restarted by Kubernetes, rather than the service
-by Pebble or the charm. A workload that is slow to start, or briefly
-unhealthy during an upgrade, ends up in a restart loop. Use a check
-with no `level` and `on-check-failure` on the service instead.
+Pebble's `/v1/health?level=alive`, so once an `alive` check is down
+Kubernetes restarts the whole container, rather than Pebble or the
+charm restarting the service. A workload that is slow to start, or
+briefly unhealthy during an upgrade, ends up in a restart loop. Use a
+check with no `level` and `on-check-failure` on the service instead.
 
-A check is recognised by its shape: a dict literal with a `level`
-of `"alive"` (or `ops.pebble.CheckLevel.ALIVE`) alongside an
-`http`, `tcp` or `exec` key. A level computed at runtime is left
-alone, as is a layer read from a YAML file. A fast-starting workload
-whose author really does want Kubernetes to restart the container can
-suppress the rule on that line.
+A check is recognised by its shape: a dict literal, or a call such as
+`CheckDict(...)` or `dict(...)` with keyword arguments, that has a
+`level` of `"alive"` (or `ops.pebble.CheckLevel.ALIVE`) alongside
+an `http`, `tcp` or `exec` key. A level computed at runtime is
+left alone, as is a layer read from a YAML file. A fast-starting
+workload whose author really does want Kubernetes to restart the
+container can suppress the rule on that line.
 
-Reference: <https://documentation.ubuntu.com/ops/latest/howto/manage-containers/manage-pebble-health-checks/>
+Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-containers/manage-pebble-health-checks/>
 
 ## SECURITY
 
