@@ -102,7 +102,7 @@ def _parse_pep508(
 ) -> _OpsDependency | None:
     """Parse a PEP 508 requirement string, returning ``None`` if it isn't ``ops``."""
     match = _PEP508_RE.match(entry)
-    if match is None or _dependencies.normalize(match.group("name")) != "ops":
+    if match is None or _dependencies.normalise(match.group("name")) != "ops":
         return None
     # Drop any environment marker: `ops>=2.23; python_version < "3.12"`
     # constrains when the dependency applies, not which versions satisfy it.

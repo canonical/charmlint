@@ -15,7 +15,7 @@ from typing import Any
 _NAME = re.compile(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 
 
-def normalize(name: str) -> str:
+def normalise(name: str) -> str:
     """PEP 503 name normalisation: runs of ``-_.`` collapse, and case folds."""
     return re.sub(r"[-_.]+", "-", name).lower()
 
@@ -27,7 +27,7 @@ def requirement_name(requirement: str) -> str | None:
     ``-r other.txt`` option line.
     """
     match = _NAME.match(requirement)
-    return normalize(match.group(1)) if match else None
+    return normalise(match.group(1)) if match else None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -101,7 +101,7 @@ def _poetry_table(table: Any, section: str) -> Iterator[Declaration]:
         return
     for name, value in table.items():
         yield Declaration(
-            section=section, name=normalize(name), requirement=None, poetry_value=value
+            section=section, name=normalise(name), requirement=None, poetry_value=value
         )
 
 
