@@ -122,7 +122,7 @@ class UsesOpsScenario(Rule):
                     "Tests import scenario directly — the supported import is ops.testing",
                     path=module.path,
                     line=line,
-                    fix_hint="Import from ops.testing instead, e.g. `from ops import testing`",
+                    fix_hint="Import from ops.testing instead, for example, `from ops import testing`",
                 )
             )
         return diagnostics
