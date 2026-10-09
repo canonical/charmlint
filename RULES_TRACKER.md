@@ -222,7 +222,7 @@ large fraction of the fleet by design. They need a decision on scope
 | Stateful charm without a leader-elected handler | | #50 | Same |
 | No `set_workload_version()` | | #46 | 9 of 84 findings are fixture charms — needs #206 |
 | No `assumes:` juju version | | #22 | All 7 FPs are placeholder charms — needs #206 |
-| No `config-changed` observer | | #54 | |
+| No `config-changed` observer (FEATURES-007) | | #54 | 8 of 655 charms: 5 TP, 3 that should `file-ignore` (options read only by actions, or before `ops.main`) |
 | No `upgrade-charm` observer | | #23 | |
 | Pebble health check coverage | | #45 | |
 | Description must mention required relations | | #78 | |

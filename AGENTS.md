@@ -16,6 +16,8 @@ uv sync
 uv run pytest
 ```
 
+Tests that need the network (the reference-URL checks) are deselected by default; run them with `-m network`.
+
 ## Lint
 
 ```bash
