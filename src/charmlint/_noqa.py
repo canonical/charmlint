@@ -138,7 +138,7 @@ def parse(text: str, *, legacy_noqa: bool = True) -> FileNoqa:
     for lineno, line in enumerate(text.splitlines(), start=1):
         _scan(line, lineno, legacy_noqa, file_level, by_line, pending)
         # A code line takes the pending directives even when it carries a
-        # trailing directive of its own: that is still the line they excuse.
+        # trailing directive of its own.
         if pending and _is_code_line(line):
             by_line.setdefault(lineno, []).extend(pending)
             pending.clear()
