@@ -301,24 +301,25 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ch
 
 Flag an `override-build` that never runs the plugin's own build.
 
-An `override-build` scriptlet replaces the part's build step
-entirely unless it calls `craftctl default`. For the `charm`,
-`python`, `uv` and `poetry` plugins the default step is what
-installs the charm code and its dependencies into the part, so a
-scriptlet that leaves it out either fails to pack or packs a charm
-that can't import its dependencies on the first hook.
+An `override-build` script replaces the part's build step entirely
+unless it calls `craftctl default`. For the `charm`, `python`,
+`uv` and `poetry` plugins the default step is what installs the
+charm code, its dependencies and `dispatch` into the part. Without
+it, `charmcraft pack` still succeeds, but the charm holds only its
+metadata, so Juju has nothing to run for any hook.
 
-A part that also has its own `override-stage` is left alone: that
-is the step that takes up what the build installed, so a part that
-replaces it has taken over the lifecycle and is not relying on the
-plugin. That is the shape of a reactive charm built with charmcraft,
-which uses the `charm` plugin as a shell around `charm build`.
-A scriptlet that uses `snapcraftctl` is also left alone: there is
-no `snapcraftctl` in charmcraft, so the build fails on that before
-the missing default matters. Any other deliberate reimplementation of the build should
-be suppressed with a `noqa` on the `override-build` line.
+A part whose own `override-stage` doesn't call `craftctl default`
+is left alone: it has replaced the step that takes up what the build
+installed, so it isn't relying on the plugin. That is the legacy way
+of building a reactive charm with Charmcraft, using the `charm`
+plugin as a shell around `charm build`, from before Charmcraft had
+a `reactive` plugin. A script that uses `snapcraftctl` is also
+left alone: there is no `snapcraftctl` in Charmcraft, so the build
+fails on that before the missing default matters. Any other
+deliberate reimplementation of the build should be suppressed with a
+`noqa` on the `override-build` line.
 
-Reference: <https://documentation.ubuntu.com/craft-parts/latest/common/craft-parts/reference/part_properties/#override-build>
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build>
 
 ## CONFIG
 

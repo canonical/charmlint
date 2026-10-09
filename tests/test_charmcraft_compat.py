@@ -2,9 +2,11 @@
 
 import pathlib
 
-from charmlint._linter import lint
+import pytest
+
+from charmlint._linter import build_context, lint
 from charmlint._models import CharmContext, Diagnostic, LintReport, Severity
-from charmlint._rules.charmcraft_compat import Entrypoint
+from charmlint._rules.charmcraft_compat import Entrypoint, OverrideBuildSkipsDefault
 from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 
@@ -1327,6 +1329,20 @@ class TestOverrideBuildSkipsDefault:
         assert len(diags) == 1
         assert "uv plugin" in diags[0].message
 
+    @pytest.mark.parametrize("plugin", ["", "''", "null"])
+    def test_empty_plugin_defaults_to_the_part_name(self, tmp_charm: pathlib.Path, plugin: str):
+        """craft-parts falls back to the part name for any empty plugin, not just a missing one."""
+        _parts_charm(tmp_charm, f"  uv:\n    plugin: {plugin}\n    override-build: echo hi\n")
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        assert len(diags) == 1
+        assert "uv plugin" in diags[0].message
+
+    @pytest.mark.parametrize("plugin", ["[charm]", "{charm: uv}"])
+    def test_non_string_plugin_not_flagged(self, tmp_charm: pathlib.Path, plugin: str):
+        _parts_charm(tmp_charm, f"  charm:\n    plugin: {plugin}\n    override-build: echo hi\n")
+        # Run the rule alone: SUPPLYCHAIN-005/006 don't survive this input yet.
+        assert not OverrideBuildSkipsDefault().check(build_context(tmp_charm))
+
     def test_part_name_is_ignored_when_plugin_is_given(self, tmp_charm: pathlib.Path):
         _parts_charm(tmp_charm, "  charm:\n    plugin: nil\n    override-build: echo hi\n")
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
@@ -1369,8 +1385,29 @@ class TestOverrideBuildSkipsDefault:
         )
         assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
 
+    def test_other_craftctl_commands_are_not_the_default(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n"
+            "    override-build: |\n"
+            "      uv export --frozen -o requirements.txt\n"
+            "      craftctl set version=1.0\n",
+        )
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            '[ "$#" -eq 0 ] && craftctl default',
+            "curl -fsSO https://example.com/notes#latest && craftctl default",
+        ],
+    )
+    def test_hash_inside_a_word_is_not_a_comment(self, tmp_charm: pathlib.Path, line: str):
+        _parts_charm(tmp_charm, f"  charm:\n    override-build: |\n      {line}\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
     def test_part_with_own_override_stage_not_flagged(self, tmp_charm: pathlib.Path):
-        """A reactive charm built with charmcraft takes over staging as well."""
+        """The legacy reactive build replaces staging as well as the build."""
         _parts_charm(
             tmp_charm,
             "  charm:\n"
@@ -1380,6 +1417,20 @@ class TestOverrideBuildSkipsDefault:
             "      cp -r $CRAFT_PART_BUILD/build/builds/*/* $CRAFT_STAGE/\n",
         )
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_override_stage_that_runs_the_default_does_not_exempt(self, tmp_charm: pathlib.Path):
+        """A default stage step still relies on what the build should have installed."""
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n"
+            "    plugin: python\n"
+            "    override-build: |\n"
+            "      pip install --target $CRAFT_PART_INSTALL requests\n"
+            "    override-stage: |\n"
+            "      craftctl default\n"
+            "      rm -rf $CRAFT_STAGE/tests\n",
+        )
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
 
     def test_snapcraftctl_left_to_its_own_finding(self, tmp_charm: pathlib.Path):
         _parts_charm(tmp_charm, "  charm:\n    override-build: snapcraftctl build\n")
