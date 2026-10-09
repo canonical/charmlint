@@ -35,6 +35,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-007](#charmcraft-007-legacy-bases) | `legacy-bases` | Info | Legacy 'bases' block instead of 'base' and 'platforms' |
 | [CHARMCRAFT-008](#charmcraft-008-charm-user) | `charm-user` | Warning | Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user' |
 | [CHARMCRAFT-009](#charmcraft-009-container-runs-as-root) | `container-runs-as-root` | Warning | Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity |
+| [CHARMCRAFT-010](#charmcraft-010-override-build-skips-default) | `override-build-skips-default` | Warning | override-build never runs 'craftctl default' for a Python plugin |
 | [CONFIG-001](#config-001-config-missing-type) | `config-missing-type` | Warning | Config option is missing a type |
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
@@ -294,6 +295,32 @@ same as elsewhere in this module: a malformed section is not a
 privilege finding.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers>
+
+### CHARMCRAFT-010 override-build-skips-default
+
+**Warning** — override-build never runs 'craftctl default' for a Python plugin
+
+Flag an `override-build` that never runs the plugin's own build.
+
+An `override-build` script replaces the part's build step entirely
+unless it calls `craftctl default`. For the `charm`, `python`,
+`uv` and `poetry` plugins the default step is what installs the
+charm code, its dependencies and `dispatch` into the part. Without
+it, `charmcraft pack` still succeeds, but the charm holds only its
+metadata, so Juju has nothing to run for any hook.
+
+A part whose own `override-stage` doesn't call `craftctl default`
+is left alone: it has replaced the step that takes up what the build
+installed, so it isn't relying on the plugin. That is the legacy way
+of building a reactive charm with Charmcraft, using the `charm`
+plugin as a shell around `charm build`, from before Charmcraft had
+a `reactive` plugin. A script that uses `snapcraftctl` is also
+left alone: there is no `snapcraftctl` in Charmcraft, so the build
+fails on that before the missing default matters. Any other
+deliberate reimplementation of the build should be suppressed with a
+`noqa` on the `override-build` line.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build>
 
 ## CONFIG
 
