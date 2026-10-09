@@ -1,25 +1,34 @@
 name: Publish
 
-# Publish to PyPI on tag push.
-# Publish to TestPyPI on manual dispatch to exercise the same key steps.
+# Publishing a GitHub release is what puts the package on PyPI. A manual run
+# builds a .devN version and publishes it to TestPyPI instead, to exercise the
+# same key steps.
+#
+# `published` rather than `released`, so pre-releases publish too.
 
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions: {}
 
+# One publish at a time per release, and one manual run at a time. Two runs
+# would build the same thing and race each other to the index.
+concurrency:
+  group: publish-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
-    name: Build and publish to ${{ github.event_name == 'push' && 'PyPI' || 'TestPyPI' }} (Trusted Publishing)
+    name: Build and publish to ${{ github.event_name == 'release' && 'PyPI' || 'TestPyPI' }} (Trusted Publishing)
     runs-on: ubuntu-latest
     environment:
       # The name must match the environment registered with the trusted
       # publisher on PyPI (and separately on TestPyPI).
-      name: ${{ github.event_name == 'push' && 'publish-pypi' || 'publish-testpypi' }}
+      name: ${{ github.event_name == 'release' && 'publish-pypi' || 'publish-testpypi' }}
       # Cosmetic: the link shown against the deployment in the GitHub UI.
-      url: ${{ github.event_name == 'push' && 'https://pypi.org/p/charmlint' || 'https://test.pypi.org/p/charmlint' }}
+      url: ${{ github.event_name == 'release' && 'https://pypi.org/p/charmlint' || 'https://test.pypi.org/p/charmlint' }}
     permissions:
       id-token: write  # OIDC to PyPI + sigstore for attestations.
       attestations: write  # Write build-provenance + SBOM predicates.
@@ -27,12 +36,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          # The commit the release's tag points at, named rather than left to
+          # whatever the event's default checkout would be. Empty for a manual
+          # run, which builds the ref it was dispatched from.
+          ref: ${{ github.event.release.tag_name }}
           persist-credentials: false
 
       - name: Check the tag matches the project version
-        if: github.event_name == 'push'
+        if: github.event_name == 'release'
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.event.release.tag_name }}
         shell: python
         run: |
           import os, pathlib, sys, tomllib
@@ -103,4 +116,4 @@ jobs:
       - name: Publish
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
         with:
-          repository-url: ${{ github.event_name == 'push' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
+          repository-url: ${{ github.event_name == 'release' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}

@@ -94,6 +94,11 @@ ignore = [
     "assert",  # S101
     "suspicious-subprocess-import",  # S404
 ]
+# The release scripts run git, gh and uvx, with argument lists rather than a shell.
+".github/release/**" = [
+    "suspicious-subprocess-import",  # S404
+    "subprocess-without-shell-equals-true",  # S603
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["charmlint"]
