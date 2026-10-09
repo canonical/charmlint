@@ -32,7 +32,7 @@ env:
   # The team's release tools, pinned to a commit rather than a branch. They
   # aren't on PyPI, so they can't go in a dependency group.
   CHANGELOG: >-
-    git+https://github.com/canonical/charm-tech-code@cc25c095ea7fee6277d02460771861fb5c5d398f#subdirectory=changelog
+    git+https://github.com/canonical/charm-tech-code@badfec21db1c3e2ab95fccaa3a77f411d7ed2057#subdirectory=changelog
 
 # One run per pull request at a time. Drafts don't reserve their tag name, so
 # two runs of this could each create a draft for the same release.

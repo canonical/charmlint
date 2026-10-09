@@ -95,7 +95,9 @@ Run the ["Propose a release"](https://github.com/canonical/charmlint/actions/wor
 - `version`: leave this empty for an ordinary release. The workflow counts from the last `v*` tag and reads the conventional commits since then: a `feat` or a breaking change makes it a minor release, and anything else makes it a patch release. That's close to [docs/versioning.md](docs/versioning.md), but not the same: a `fix` that makes a rule report more is a minor release there, and a `feat` that only adds a CLI flag is a patch release. Fill this in when the commits won't give the right answer, or for a pre-release such as `0.3.0rc1`. What you type is used as it stands.
 - `dry_run`: do everything except push the branch and open the PR. The proposed version, the changelog entry and the drafted notes go in the run summary.
 
-The workflow writes the [CHANGES.md](CHANGES.md) entry, updates the version in `pyproject.toml` and `uv.lock`, drafts the release title and notes, and opens a PR from a `release-prep-X.Y.Z` branch.
+The workflow writes the [CHANGES.md](CHANGES.md) entry, updates the version in `pyproject.toml` and `uv.lock`, drafts the release title and notes, and opens a draft PR from a `release-prep-X.Y.Z` branch. The PR's description lists the next steps, with the PR's number ready for the next workflow.
+
+The PR is a draft so that you can tidy it up before asking anyone else to look: resolve the **Unsure:** notes the model left, cut anything a reader doesn't need, and fix the changelog entry if it needs it. Then mark it ready for review and ask for one.
 
 Review both halves of it:
 
