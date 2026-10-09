@@ -62,6 +62,7 @@ config file overrides it per rule.
 | [METADATA-009](#metadata-009-provides-missing-optional) | `provides-missing-optional` | Info | provides endpoint missing explicit `optional` field |
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
+| [PEBBLE-006](#pebble-006-pebble-check-level-alive) | `pebble-check-level-alive` | Info | Pebble check uses level 'alive', which drives the Kubernetes liveness probe |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
@@ -765,6 +766,28 @@ f-string, or any other expression is left alone: the rule can't tell
 what it evaluates to, and the common cases are already strings.
 
 Reference: <https://ubuntu.com/docs/pebble/reference/layer-specification/>
+
+### PEBBLE-006 pebble-check-level-alive
+
+**Info** — Pebble check uses level 'alive', which drives the Kubernetes liveness probe
+
+Detect a Pebble check with `level: alive` in a layer built in charm source.
+
+Juju points the sidecar container's Kubernetes liveness probe at
+Pebble's `/v1/health?level=alive`, so a failing `alive` check gets
+the whole container restarted by Kubernetes, rather than the service
+by Pebble or the charm. A workload that is slow to start, or briefly
+unhealthy during an upgrade, ends up in a restart loop. Use a check
+with no `level` and `on-check-failure` on the service instead.
+
+A check is recognised by its shape: a dict literal with a `level`
+of `"alive"` (or `ops.pebble.CheckLevel.ALIVE`) alongside an
+`http`, `tcp` or `exec` key. A level computed at runtime is left
+alone, as is a layer read from a YAML file. A fast-starting workload
+whose author really does want Kubernetes to restart the container can
+suppress the rule on that line.
+
+Reference: <https://documentation.ubuntu.com/ops/latest/howto/manage-containers/manage-pebble-health-checks/>
 
 ## SECURITY
 

@@ -238,3 +238,146 @@ class TestPebbleEnvNonString:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(tmp_charm, "def broken(:\n")
         assert [d.rule_id for d in lint(tmp_charm)] == ["FATAL"]
+
+
+def _lint_check_level(charm_dir: pathlib.Path, source: str, filename: str = "charm.py"):
+    """Lint a charm with *source* in src/, returning PEBBLE-006 findings."""
+    write_charmcraft_yaml(charm_dir, {"name": "test"})
+    write_charm_source(charm_dir, textwrap.dedent(source), filename)
+    report = lint(charm_dir)
+    return [d for d in report if d.rule_id == "PEBBLE-006"]
+
+
+def _check_layer(check: str, imports: str = "import ops") -> str:
+    """A charm source defining a Pebble layer with one check, *check* being its body."""
+    body = textwrap.indent(textwrap.dedent(check), " " * 24)
+    return f"""\
+        {imports}
+
+        class C(ops.CharmBase):
+            @property
+            def _pebble_layer(self):
+                return ops.pebble.Layer({{
+                    "checks": {{
+                        "up": {{
+{body}
+                        }},
+                    }},
+                }})
+    """
+
+
+class TestPebbleCheckLevelAlive:
+    """PEBBLE-006 — a Pebble check with level 'alive'."""
+
+    def test_alive_string_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer(
+                '"override": "replace",\n'
+                '"level": "alive",\n'
+                '"http": {"url": "http://localhost:8080/"},'
+            ),
+        )
+        assert len(findings) == 1
+        assert findings[0].severity == Severity.INFO
+        assert findings[0].path == "src/charm.py"
+        assert findings[0].line == 10
+
+    def test_check_level_enum_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer('"level": ops.pebble.CheckLevel.ALIVE,\n"tcp": {"port": 8080},'),
+        )
+        assert len(findings) == 1
+
+    def test_check_level_enum_imported_from_pebble_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer(
+                '"level": CheckLevel.ALIVE.value,\n"exec": {"command": "/bin/check"},',
+                imports="import ops\n        from ops.pebble import CheckLevel",
+            ),
+        )
+        assert len(findings) == 1
+
+    def test_check_built_separately_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        check = {"level": "alive", "http": {"url": "http://localhost/"}}
+                        return ops.pebble.Layer({"checks": {"up": check}})
+            """,
+        )
+        assert len(findings) == 1
+
+    def test_module_beside_charm_py_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            'CHECKS = {"up": {"level": "alive", "tcp": {"port": 80}}}\n',
+            filename="services.py",
+        )
+        assert len(findings) == 1
+        assert findings[0].path == "src/services.py"
+
+    def test_ready_level_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer('"level": "ready",\n"http": {"url": "http://localhost:8080/"},'),
+        )
+        assert findings == []
+
+    def test_no_level_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer('"override": "replace",\n"http": {"url": "http://localhost:8080/"},'),
+        )
+        assert findings == []
+
+    def test_computed_level_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer('"level": self._level,\n"http": {"url": "http://localhost:8080/"},'),
+        )
+        assert findings == []
+
+    def test_level_outside_a_check_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                STATES = {"level": "alive", "message": "ok"}
+
+                class C(ops.CharmBase):
+                    pass
+            """,
+        )
+        assert findings == []
+
+    def test_querying_alive_checks_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _healthy(self, container):
+                        checks = container.get_checks(level=ops.pebble.CheckLevel.ALIVE)
+                        return all(c.status == "up" for c in checks.values())
+            """,
+        )
+        assert findings == []
+
+    def test_layer_in_tests_not_flagged(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n")
+        (tmp_charm / "tests" / "unit").mkdir(parents=True)
+        (tmp_charm / "tests" / "unit" / "test_charm.py").write_text(
+            textwrap.dedent(_check_layer('"level": "alive",\n"http": {"url": "http://x/"},'))
+        )
+        assert [d for d in lint(tmp_charm) if d.rule_id == "PEBBLE-006"] == []
