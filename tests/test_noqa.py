@@ -277,6 +277,15 @@ class TestIgnoreComment:
         assert noqa.suppresses("SECURITY-001", 2)
         assert not noqa.suppresses("SECURITY-001", 3)
 
+    def test_own_line_covers_a_line_with_a_file_ignore(self):
+        noqa = _noqa.parse(
+            "# charmlint: ignore[SECURITY-001]\n"
+            "foo: 1  # charmlint: file-ignore[CONFIG-002]\n"
+            "bar: 2\n"
+        )
+        assert noqa.suppresses("SECURITY-001", 2)
+        assert not noqa.suppresses("SECURITY-001", 3)
+
 
 class TestFileIgnoreComment:
     """The bracketed ``# charmlint: file-ignore[...]`` form."""
