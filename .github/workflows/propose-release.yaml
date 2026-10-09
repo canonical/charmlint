@@ -37,7 +37,8 @@ permissions: {}
 env:
   # The team's release tools, pinned to a commit rather than a branch: a
   # release should be reproducible, and these decide what the changelog and
-  # the drafted notes say.
+  # the drafted notes say. They aren't on PyPI, so they can't go in a
+  # dependency group.
   CHANGELOG: >-
     git+https://github.com/canonical/charm-tech-code@cc25c095ea7fee6277d02460771861fb5c5d398f#subdirectory=changelog
   DRAFT_RELEASE_NOTES: >-
@@ -46,14 +47,20 @@ env:
 jobs:
   propose:
     name: Propose a release
-    # Releases only come from main.
-    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     environment: release-notes  # Required to access secrets.OPENROUTER_API_KEY.
     permissions:
       contents: write  # To push the release-prep branch.
       pull-requests: write  # To open the pull request.
     steps:
+      - name: Check that this is running from main
+        if: ${{ github.ref != 'refs/heads/main' }}
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          echo "::error::Releases only come from main, but this was run from $REF."
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0  # The whole history and its tags: the release is counted from the tag.

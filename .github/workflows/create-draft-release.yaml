@@ -29,7 +29,8 @@ on:
 permissions: {}
 
 env:
-  # The team's release tools, pinned to a commit rather than a branch.
+  # The team's release tools, pinned to a commit rather than a branch. They
+  # aren't on PyPI, so they can't go in a dependency group.
   CHANGELOG: >-
     git+https://github.com/canonical/charm-tech-code@cc25c095ea7fee6277d02460771861fb5c5d398f#subdirectory=changelog
 

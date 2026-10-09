@@ -90,7 +90,7 @@ Two workflows make a release, and you decide twice: once when you review the ver
 
 ## 1. Propose the release
 
-Run the ["Propose a release"](https://github.com/canonical/charmlint/actions/workflows/propose-release.yaml) workflow from `main`. It takes two inputs:
+Run the ["Propose a release"](https://github.com/canonical/charmlint/actions/workflows/propose-release.yaml) workflow from `main`. A run from any other branch stops with an error. It takes two inputs:
 
 - `version`: leave this empty for an ordinary release. The workflow counts from the last `v*` tag and reads the conventional commits since then: a `feat` or a breaking change makes it a minor release, and anything else makes it a patch release. That's close to [docs/versioning.md](docs/versioning.md), but not the same: a `fix` that makes a rule report more is a minor release there, and a `feat` that only adds a CLI flag is a patch release. Fill this in when the commits won't give the right answer, or for a pre-release such as `0.3.0rc1`. What you type is used as it stands.
 - `dry_run`: do everything except push the branch and open the PR. The proposed version, the changelog entry and the drafted notes go in the run summary.
@@ -112,10 +112,13 @@ Nothing is published and the tag doesn't exist yet. Edit the draft if you need t
 
 ## 3. Publish the draft
 
-Publishing the draft creates the `vX.Y.Z` tag, which starts `.github/workflows/publish.yaml`. That publishes to [PyPI](https://pypi.org/project/charmlint/) with Trusted Publishing, and attests the build and its SBOM. It stops before building if the tag doesn't match the version in `pyproject.toml`. If that happens, don't move the tag (the tag ruleset won't let you anyway) - delete the release, and release the next patch version instead.
+Publishing the draft creates the `vX.Y.Z` tag, which starts `.github/workflows/publish.yaml`. That publishes to [PyPI](https://pypi.org/project/charmlint/) with Trusted Publishing, and attests the build and its SBOM. It stops before building if the tag doesn't match the version in `pyproject.toml`. If that happens, don't move the tag (the tag ruleset won't let you anyway). Delete the release, and release the next patch version instead.
 
 To try the publish workflow out without releasing anything, run it manually from the Actions tab. A manual run publishes a `.devN` build to TestPyPI instead.
 
-## Settings a repository admin has to create
+## Settings a repository admin has to change
 
-An environment called `release-notes`, holding an `OPENROUTER_API_KEY` secret and an `OPENROUTER_MODEL` variable. Without them, "Propose a release" puts a placeholder where the notes would go and carries on, and you write the notes yourself in the PR description.
+Two things live in the repository settings, so no PR can add them:
+
+- "Allow GitHub Actions to create and approve pull requests", under Actions > General > Workflow permissions. Without it, "Propose a release" fails when it opens the PR.
+- An environment called `release-notes`, holding an `OPENROUTER_API_KEY` secret and an `OPENROUTER_MODEL` variable. Without them, "Propose a release" puts a placeholder where the notes would go and carries on, and you write the notes yourself in the PR description.
