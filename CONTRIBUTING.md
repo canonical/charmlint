@@ -86,11 +86,36 @@ If you need to bring in the latest changes from `main` after the review has star
 
 # Releasing
 
-charmlint is published to [PyPI](https://pypi.org/project/charmlint/) by `.github/workflows/publish.yaml`, with Trusted Publishing, whenever a `v*` tag is pushed.
+Two workflows make a release, and you decide twice: once when you review the version-bump PR, and once when you publish the draft release. Nothing reaches PyPI until you publish the draft, so an abandoned attempt costs at most a branch and a draft to delete. Releases only come from `main`.
 
-1. Work out the new version from [docs/versioning.md](docs/versioning.md): a minor bump if anything since the last release adds a rule or changes what a rule reports, and a patch bump otherwise.
-2. Open a PR that bumps the version (`uv version --bump minor` or `--bump patch` updates both `pyproject.toml` and `uv.lock`), titled like `chore: bump version to 0.3.0`, and merge it.
-3. Create a GitHub release on the merge commit, with a new `vX.Y.Z` tag that matches the version and a short summary of what changed. Creating the release pushes the tag, which starts the publish workflow.
-4. Check that the publish run succeeds. It stops before building if the tag doesn't match the version in `pyproject.toml`. If that happens, don't move the tag (the tag ruleset won't let you anyway) - bump the patch version and release again.
+## 1. Propose the release
 
-To try the workflow out without releasing anything, run it manually from the Actions tab. A manual run publishes a `.devN` build to TestPyPI instead.
+Run the ["Propose a release"](https://github.com/canonical/charmlint/actions/workflows/propose-release.yaml) workflow from `main`. It takes two inputs:
+
+- `version`: leave this empty for an ordinary release. The workflow counts from the last `v*` tag and reads the conventional commits since then: a `feat` or a breaking change makes it a minor release, and anything else makes it a patch release. That's close to [docs/versioning.md](docs/versioning.md), but not the same: a `fix` that makes a rule report more is a minor release there, and a `feat` that only adds a CLI flag is a patch release. Fill this in when the commits won't give the right answer, or for a pre-release such as `0.3.0rc1`. What you type is used as it stands.
+- `dry_run`: do everything except push the branch and open the PR. The proposed version, the changelog entry and the drafted notes go in the run summary.
+
+The workflow writes the [CHANGES.md](CHANGES.md) entry, updates the version in `pyproject.toml` and `uv.lock`, drafts the release title and notes, and opens a PR from a `release-prep-X.Y.Z` branch.
+
+Review both halves of it:
+
+- The diff: the version and the changelog entry. If a commit message needs adjusting in the changelog, edit `CHANGES.md` in this PR: the draft release copies this version's section from there.
+- The release title and notes, which are in the PR description under the "Release title" and "Release notes" headings. Edit them there, and keep the hidden `<!-- release-title:start -->`/`<!-- release-notes:start -->` markers (and their `end` partners): that's where the next workflow reads them from. Write only the summary for the title, since the version is added for you. Everything outside the markers is for reviewers and goes no further.
+
+The PR is opened with the workflow's own token, so GitHub won't start the usual checks on it. Close and reopen the PR to get them to run, then merge it once they pass.
+
+## 2. Create the draft release
+
+Once the PR is merged, run the ["Create the draft release"](https://github.com/canonical/charmlint/actions/workflows/create-draft-release.yaml) workflow with the PR's number. It checks that the PR was merged into `main` and changed the version in `pyproject.toml`, then creates a **draft** release on the merge commit, titled with the version and your summary. The body is the notes from the PR description, then this version's section of `CHANGES.md`, an "All commits" link, and a line thanking any contributors from outside the team. A version with an `a`, `b` or `rc` in it is marked as a pre-release.
+
+Nothing is published and the tag doesn't exist yet. Edit the draft if you need to.
+
+## 3. Publish the draft
+
+Publishing the draft creates the `vX.Y.Z` tag, which starts `.github/workflows/publish.yaml`. That publishes to [PyPI](https://pypi.org/project/charmlint/) with Trusted Publishing, and attests the build and its SBOM. It stops before building if the tag doesn't match the version in `pyproject.toml`. If that happens, don't move the tag (the tag ruleset won't let you anyway) - delete the release, and release the next patch version instead.
+
+To try the publish workflow out without releasing anything, run it manually from the Actions tab. A manual run publishes a `.devN` build to TestPyPI instead.
+
+## Settings a repository admin has to create
+
+An environment called `release-notes`, holding an `OPENROUTER_API_KEY` secret and an `OPENROUTER_MODEL` variable. Without them, "Propose a release" puts a placeholder where the notes would go and carries on, and you write the notes yourself in the PR description.
