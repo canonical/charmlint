@@ -1,0 +1,13 @@
+name: tools
+version: "0.1"
+summary: Development tools for charmlint.
+
+plugs:
+  # The charms the `charmlint` action lints. Only the project directory is
+  # mounted into the workshop by default, so point this at a charm, or at a
+  # directory of charms, with `workshop remount dev/tools:charms <dir>`.
+  charms:
+    interface: mount
+    workshop-target: /home/workshop/charms
+    # charmlint only needs to read the charms, so the workshop can't write to them.
+    read-only: true

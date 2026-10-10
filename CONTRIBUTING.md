@@ -29,6 +29,29 @@ A new or changed rule needs measurements over the charm corpus before review - s
 
 [docs/rules.md](docs/rules.md) is generated from the rule registry (CI fails if it's stale). After adding or changing a rule, regenerate it with `make docs`. Don't edit the page by hand; improve the rule docstrings instead.
 
+# Develop in a workshop
+
+[Workshop](https://ubuntu.com/workshop) definitions live in `.workshop/`. The `dev` workshop is a container with `uv`, `make`, and charmlint's development dependencies, so you don't need to install any of them on the host:
+
+```bash
+sudo snap install workshop --classic  # If you don't have it already.
+workshop launch dev
+workshop run dev lint
+```
+
+The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+
+The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a read-only mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
+
+```bash
+workshop stop dev
+workshop remount dev/tools:charms ~/code/my-charm
+workshop start dev
+workshop run dev charmlint
+```
+
+Arguments go through to charmlint, and relative paths are relative to `~/charms`. If you mount a directory of charms, name the charm to lint. For example, with the hyrum cache (`~/.cache/hyrum/charms`) mounted, run `workshop run dev charmlint canonical/some-operator`.
+
 # Project status
 
 charmlint is early work, and the implementation is subject to change (and probably will change). Please don't treat anything under `src/` as settled, or build on it expecting the internals to stay where they are.

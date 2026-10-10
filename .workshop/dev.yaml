@@ -1,0 +1,22 @@
+name: dev
+base: ubuntu@26.04
+sdks:
+  - name: uv
+    channel: latest/stable
+  # The project- prefix tells Workshop to load this SDK from .workshop/tools/
+  # rather than the store, and the directory and the name in its sdk.yaml must
+  # both match what follows the prefix. It installs make, which the actions
+  # below run, and charmlint's development dependencies.
+  - name: project-tools
+
+# The checks CONTRIBUTING.md asks for, through the Makefile targets.
+actions:
+  format: make format
+  lint: make lint
+  test: make test
+  docs: make docs
+  docs-check: make docs-check
+  # Run this checkout's charmlint, from the charms mount (see tools/sdk.yaml),
+  # so that the default path and relative paths are charms rather than the
+  # charmlint project.
+  charmlint: cd ~/charms && uv run --project /project charmlint "$@"
