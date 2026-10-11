@@ -30,7 +30,7 @@ When `select` and `ignore` disagree, the more specific spelling wins: `select = 
 
 ## Suppressing findings inline
 
-Individual findings can be silenced from within a charm's YAML and Python files, with ruff-style suppression comments. Codes inside a directive are the same three spellings as `select` and `ignore` accept — rule ID, rule name, or category.
+Individual findings can be silenced from within a charm's YAML, Python and TOML files and its pip requirements files (`requirements.txt`, `requirements.in`), with ruff-style suppression comments. Codes inside a directive are the same three spellings as `select` and `ignore` accept — rule ID, rule name, or category.
 
 `# charmlint: ignore[...]` suppresses the listed rules on one line. At the end of a line it covers that line; on a line of its own it covers the next line that is not blank or a comment:
 
@@ -79,5 +79,4 @@ config:
       type: string
 ```
 
-In Python files, charmlint only considers `# charmlint:` directives; `# noqa` is for ruff.
-
+In Python files, charmlint only considers `# charmlint:` directives; `# noqa` is for ruff. TOML and requirements files only have the `# charmlint:` forms too.

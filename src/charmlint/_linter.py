@@ -329,7 +329,9 @@ def lint(
 
 # The files scanned for suppression comments: every kind of file a rule
 # reports on that has ``#`` comments (TOML, and pip requirements files,
-# which are ``.txt`` or ``.in``). The bare ``noqa`` forms are honoured only
+# which are ``.txt`` or ``.in``). The gate is the extension, not the
+# file's role, so a finding in any other ``.txt`` file can be suppressed
+# too, which is harmless since the directive has to say ``charmlint:``. The bare ``noqa`` forms are honoured only
 # in YAML: in a Python file such a comment is ruff's, and it has never been
 # a form for the others.
 _NOQA_SUFFIXES = frozenset({".yaml", ".yml", ".py", ".toml", ".txt", ".in"})
@@ -341,8 +343,9 @@ def _apply_noqa(
 ) -> list[models.Diagnostic]:
     """Drop diagnostics silenced by a suppression comment in their file.
 
-    Only YAML and Python files are scanned. A diagnostic with no path, or
-    one in another kind of file, or in an unreadable one, is always kept.
+    Only the files in ``_NOQA_SUFFIXES`` are scanned: YAML, Python, TOML
+    and pip requirements files. A diagnostic with no path, or one in
+    another kind of file, or in an unreadable one, is always kept.
     """
     cache: dict[str, _noqa.FileNoqa | None] = {}
 

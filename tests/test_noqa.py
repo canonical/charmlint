@@ -392,9 +392,19 @@ class TestPackagingSuppression:
         (tmp_charm / name).write_text("ops==3.7.1  # charmlint: ignore[SUPPLYCHAIN-006]\n")
         assert self._pinning_hits(tmp_charm) == []
 
+    def test_trailing_ignore_in_pyproject_suppresses(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text(
+            '[project]\nname = "x"\ndependencies = [\n    "ops",\n]\n'
+        )
+        assert self._pinning_hits(tmp_charm) == ["SUPPLYCHAIN-005"]
+        (tmp_charm / "pyproject.toml").write_text(
+            '[project]\nname = "x"\ndependencies = [\n'
+            '    "ops",  # charmlint: ignore[SUPPLYCHAIN-005]\n]\n'
+        )
+        assert self._pinning_hits(tmp_charm) == []
+
     def test_file_ignore_in_pyproject_suppresses(self, tmp_charm: pathlib.Path):
-        # tomllib keeps no positions, so pyproject findings anchor to the file
-        # and only a file-level directive can reach them.
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
         pyproject = '[project]\nname = "x"\ndependencies = ["ops"]\n'
         (tmp_charm / "pyproject.toml").write_text(pyproject)

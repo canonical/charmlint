@@ -54,9 +54,10 @@ class _OpsDependency:
     #: (``"project.dependencies"``) or the file name for a flat
     #: requirements file. Names a place a charm author can go and look.
     section: str
-    #: 1-based line, or ``None`` for a ``pyproject.toml`` match —
-    #: ``tomllib`` discards positions, so a finding there anchors to
-    #: the file.
+    #: 1-based line, or ``None`` when it can't be found. ``tomllib``
+    #: discards positions, so for ``pyproject.toml`` the line is found
+    #: by looking for the entry in the text (see :func:`_toml_line`),
+    #: and a layout that lookup doesn't follow anchors to the file.
     line: int | None
 
     @property
@@ -121,7 +122,9 @@ def _parse_pep508(
     )
 
 
-def _parse_poetry(value: Any, source: str, section: str) -> _OpsDependency:
+def _parse_poetry(
+    value: Any, source: str, section: str, line: int | None = None
+) -> _OpsDependency:
     """Parse a Poetry dependency value (bare string, or table with ``version``)."""
     if isinstance(value, dict):
         specifier = str(value.get("version", ""))
@@ -135,7 +138,7 @@ def _parse_poetry(value: Any, source: str, section: str) -> _OpsDependency:
         extras=extras,
         source=source,
         section=section,
-        line=None,
+        line=line,
     )
 
 
@@ -156,12 +159,49 @@ def _walk_pep508_list(entries: Any):
             yield entry
 
 
-def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
+_TOML_HEADER_RE = re.compile(r"^\[\[?(?P<name>[^\[\]]+)\]\]?\s*(?:#.*)?$")
+
+
+def _toml_line(text: str, table: str, key: str, entry: str | None = None) -> int | None:
+    """Return the 1-based line declaring *entry* under *key* in ``[table]``.
+
+    ``tomllib`` keeps no positions, but a dependency is almost always
+    written the plain way: a ``[table]`` header, a ``key =`` line, and
+    the requirement as a quoted string in the array that follows. That
+    is enough to find the line without a positions-preserving parser.
+    With no *entry*, the ``key =`` line itself is the answer (Poetry's
+    ``ops = "^2"``). Anything written another way, such as a dotted key
+    or an inline table, returns ``None`` and the finding anchors to the
+    file instead.
+    """
+    quoted = (f'"{entry}"', f"'{entry}'") if entry is not None else ()
+    key_re = re.compile(rf"""^\s*["']?{re.escape(key)}["']?\s*=""")
+    in_table = after_key = False
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        header = _TOML_HEADER_RE.match(line.strip())
+        if header is not None:
+            name = header.group("name").replace(" ", "").replace('"', "").replace("'", "")
+            in_table = name == table
+            after_key = False
+            continue
+        if not in_table:
+            continue
+        if not after_key and key_re.match(line):
+            if entry is None:
+                return lineno
+            after_key = True
+        if after_key and any(q in line for q in quoted):
+            return lineno
+    return None
+
+
+def _find_ops_in_pyproject(data: dict[str, Any], text: str = "") -> _OpsDependency | None:
     """Look for an ``ops`` dependency across the common pyproject.toml layouts.
 
     *data* is the charm's parsed ``pyproject.toml``, read once by the
-    linter core. ``None`` means no ``ops`` dependency appears in any
-    known location.
+    linter core, and *text* the same file unparsed, which is only used
+    to find the line (:func:`_toml_line`). ``None`` means no ``ops``
+    dependency appears in any known location.
     """
     source = "pyproject.toml"
 
@@ -169,14 +209,17 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
     project = data.get("project")
     if isinstance(project, dict):
         for entry in _walk_pep508_list(project.get("dependencies")):
-            dep = _parse_pep508(entry, source, "project.dependencies")
+            line = _toml_line(text, "project", "dependencies", entry)
+            dep = _parse_pep508(entry, source, "project.dependencies", line)
             if dep is not None and not dep.is_test_only:
                 return dep
         optional = project.get("optional-dependencies")
         if isinstance(optional, dict):
             for name, entries in optional.items():
                 for entry in _walk_pep508_list(entries):
-                    dep = _parse_pep508(entry, source, f"project.optional-dependencies.{name}")
+                    line = _toml_line(text, "project.optional-dependencies", name, entry)
+                    section = f"project.optional-dependencies.{name}"
+                    dep = _parse_pep508(entry, source, section, line)
                     if dep is not None and not dep.is_test_only:
                         return dep
 
@@ -185,7 +228,8 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
     if isinstance(groups, dict):
         for name, entries in groups.items():
             for entry in _walk_pep508_list(entries):
-                dep = _parse_pep508(entry, source, f"dependency-groups.{name}")
+                line = _toml_line(text, "dependency-groups", name, entry)
+                dep = _parse_pep508(entry, source, f"dependency-groups.{name}", line)
                 if dep is not None and not dep.is_test_only:
                     return dep
 
@@ -200,7 +244,8 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
                 if isinstance(deps, dict):
                     for name, value in deps.items():
                         if _normalize(name) == "ops":
-                            dep = _parse_poetry(value, source, f"tool.poetry.{key}")
+                            line = _toml_line(text, f"tool.poetry.{key}", name)
+                            dep = _parse_poetry(value, source, f"tool.poetry.{key}", line)
                             if not dep.is_test_only:
                                 return dep
             poetry_groups = poetry.get("group")
@@ -212,11 +257,9 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
                     if isinstance(deps, dict):
                         for name, value in deps.items():
                             if _normalize(name) == "ops":
-                                dep = _parse_poetry(
-                                    value,
-                                    source,
-                                    f"tool.poetry.group.{group_name}.dependencies",
-                                )
+                                table = f"tool.poetry.group.{group_name}.dependencies"
+                                line = _toml_line(text, table, name)
+                                dep = _parse_poetry(value, source, table, line)
                                 if not dep.is_test_only:
                                     return dep
 
@@ -345,7 +388,11 @@ def _find_ops_dep(context: models.CharmContext) -> _OpsDependency | None:
     :func:`_requirements_files`.
     """
     if context.pyproject is not None:
-        dep = _find_ops_in_pyproject(context.pyproject)
+        try:
+            text = (context.charm_dir / "pyproject.toml").read_text()
+        except OSError:
+            text = ""
+        dep = _find_ops_in_pyproject(context.pyproject, text)
         if dep is not None:
             return dep
 
