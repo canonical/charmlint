@@ -86,30 +86,65 @@ class NamingConventions(Rule):
         return diagnostics
 
 
-def _strip_shell_comments(text: str) -> str:
-    """Return *text* with shell comments removed, line structure intact.
+def _shell_code(text: str) -> tuple[str, str]:
+    """Return *text* with shell comments removed, and the same with quotes blanked.
 
-    A ``#`` starts a comment only at the start of a word and outside
-    quotes, so ``exec ./src/charm.py --tag=a#b`` and ``echo "a # b"``
-    keep their text while ``# use exec here`` loses all of it. Lines are
-    kept (emptied rather than dropped) so nothing that was on separate
-    lines is joined.
+    A ``#`` starts a comment only at the start of a word, outside quotes,
+    and not escaped with a backslash, so ``exec ./src/charm.py --tag=a#b``,
+    ``echo "a # b"`` and ``echo \\#`` keep their text while
+    ``# use exec here`` loses all of it. Quotes are tracked across lines,
+    as the shell does, and a backslash escapes the next character outside
+    single quotes. Lines are kept (emptied rather than dropped) so nothing
+    that was on separate lines is joined, except where a backslash ends the
+    line and the shell joins them too.
+
+    The second string is the first with every quoted character replaced by
+    a space. The two are the same length, so a match found in the second,
+    where a quoted ``exec`` can't be found, can be read from the first.
     """
-    stripped: list[str] = []
-    for line in text.splitlines():
-        quote: str | None = None
-        cut = len(line)
-        for index, char in enumerate(line):
-            if quote is not None:
-                if char == quote:
-                    quote = None
-            elif char in "'\"":
-                quote = char
-            elif char == "#" and (index == 0 or line[index - 1].isspace()):
-                cut = index
-                break
-        stripped.append(line[:cut])
-    return "\n".join(stripped)
+    code: list[str] = []
+    bare: list[str] = []
+    quote: str | None = None
+    escaped = False
+    at_word_start = True
+    in_comment = False
+    for char in text:
+        if char == "\n" and escaped and not in_comment:
+            # A line continuation: the shell joins the two lines, so the
+            # command after ``exec \`` is read from the next one. Spaces
+            # stand in for both characters, keeping the two strings aligned.
+            escaped = False
+            code[-1] = bare[-1] = " "
+            code.append(" ")
+            bare.append(" ")
+            continue
+        if char == "\n":
+            in_comment = False
+            escaped = False
+            at_word_start = quote is None
+            code.append(char)
+            bare.append(char)
+            continue
+        if in_comment:
+            continue
+        quoted = quote is not None
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif quote is not None:
+            if char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+            quoted = True
+        elif char == "#" and at_word_start:
+            in_comment = True
+            continue
+        at_word_start = quote is None and char.isspace()
+        code.append(char)
+        bare.append(" " if quoted else char)
+    return "".join(code), "".join(bare)
 
 
 class Entrypoint(Rule):
@@ -224,18 +259,22 @@ class Entrypoint(Rule):
 
     def _command_line(self, dispatch_content: str) -> str | None:
         """Return the dispatch line that runs the charm, sans any ``exec``."""
-        # Comments are stripped first: a hand-written dispatch explaining
-        # itself in prose ("not bound by exec argument limits") is not
+        # Comments and quoted text are set aside first: a hand-written
+        # dispatch explaining itself in prose ("not bound by exec argument
+        # limits"), or printing a message that mentions exec, is not
         # declaring an entrypoint. The ``[ \t]`` rather than ``\s`` keeps
         # the match on one line, so an ``exec`` at the end of a line cannot
-        # take the next line as its argument either.
-        code = _strip_shell_comments(dispatch_content)
-        # The command dispatch hands control to, e.g. the ``./src/charm.py``
-        # in ``PYTHONPATH=lib:venv exec ./src/charm.py``. Stops at a shell
-        # separator so a trailing redirect or ``&&`` is not swallowed in.
-        match = re.search(r"\bexec[ \t]+(?P<rest>[^\n;&|<>]+)", code)
+        # take the next line as its argument either, and ``exec`` has to
+        # start a word, so ``FOO=exec ./x.py`` is not an exec.
+        code, bare = _shell_code(dispatch_content)
+        match = re.search(r"(?<![^\s;&|(])exec(?=[ \t])", bare)
         if match is not None:
-            return match.group("rest")
+            # The command dispatch hands control to, e.g. the ``./src/charm.py``
+            # in ``PYTHONPATH=lib:venv exec ./src/charm.py``, read from the
+            # unblanked text so a quoted path keeps its name. Stops at a shell
+            # separator so a trailing redirect or ``&&`` is not swallowed in.
+            rest = re.match(r"[ \t]+(?P<rest>[^\n;&|<>]+)", code[match.end() :])
+            return rest.group("rest") if rest is not None else None
         # No ``exec``: hand-written dispatch scripts often just run the charm
         # as their last statement. Only the last statement is considered, so a
         # ``.py`` path mentioned earlier in the script is not mistaken for the
