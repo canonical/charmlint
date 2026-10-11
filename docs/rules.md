@@ -820,25 +820,33 @@ Performance.
 
 Detect the same Pebble state read made twice in one function.
 
-`container.get_plan()` and `container.get_service(name)` each open a
-connection to pebbled over the workload's unix socket and wait for the
-reply. Making the same call twice in a function does the round trip
-twice for a result that has not changed in between; storing it in a
-local is both faster and easier to read.
+`container.get_plan()`, `get_services()`, `get_service(name)`,
+`get_checks()` and `get_check(name)` each open a connection to
+pebbled over the workload's unix socket and wait for the reply. Making
+the same call twice in a function does the round trip twice for a
+result that has not changed in between; storing it in a local is both
+faster and easier to read.
 
-Three things stop a repeat from being reported, because in each case the
-second call is not redundant: a change to the same container between the
-two that affects what is read (`add_layer` for the plan, that plus the
-start/stop family for a service), a reassignment of the receiver or of
-the service name between them, and the two calls sitting in alternative
-branches of the same `if` or `match`, where only one of them runs.
+A repeat is not reported when the second call is not redundant:
+
+* Something between the two changes what is read: `add_layer` for
+  the plan, that plus `replan` and the start/stop family for
+  services, and `replan` and `start_checks`/`stop_checks` for
+  checks.
+* The receiver or an argument is rebound between them, by any form of
+  assignment.
+* A call between them might change the container where the rule can't
+  see: one that is handed the container, or a method call on `self`
+  when the container is reached through `self`.
+* The two calls sit in alternative branches of the same `if` or
+  `match`, so only one of them runs.
 
 The container is recognised by what it is called, so a repeat on a
 variable not named like a container is left alone. `get_service` is a
 common method name elsewhere, and with no type information the name is
 all there is to go on.
 
-Reference: <https://documentation.ubuntu.com/ops/latest/reference/pebble/>
+Reference: <https://canonical.com/juju/docs/ops/latest/reference/pebble/>
 
 ## SECURITY
 

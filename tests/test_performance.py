@@ -401,19 +401,180 @@ class TestRepeatedPebbleState:
         )
         assert findings == []
 
-    def test_unrelated_methods_clean(self, tmp_charm: pathlib.Path):
+    def test_other_reads_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_source(
             tmp_charm,
             """\
             def _reconcile(self, container):
                 a = container.get_services()
                 b = container.get_services()
-                c = container.get_checks("up")
-                d = container.get_checks("up")
+                c = container.get_checks("up", level=LEVEL)
+                d = container.get_checks("up", level=LEVEL)
+                e = container.get_check("up")
+                f = container.get_check("up")
+                return a, b, c, d, e, f
+            """,
+        )
+        assert [d.line for d in findings] == [3, 5, 7]
+        assert "container.get_checks('up', level=LEVEL)" in findings[1].message
+
+    def test_keyword_spelling_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                a = container.get_service(service_name=SERVICE)
+                b = container.get_service(service_name=SERVICE)
+                return a, b
+            """,
+        )
+        assert len(findings) == 1
+
+    def test_uncomparable_argument_clean(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                a = container.get_service(f"{NAME}-app")
+                b = container.get_service(f"{NAME}-app")
+                c = container.get_checks(level=levels[0])
+                d = container.get_checks(level=levels[0])
                 return a, b, c, d
             """,
         )
         assert findings == []
+
+    def test_unrelated_methods_clean(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                a = container.get_notices()
+                b = container.get_notices()
+                c = container.exists("/etc/app")
+                d = container.exists("/etc/app")
+                return a, b, c, d
+            """,
+        )
+        assert findings == []
+
+    def test_check_mutation_clears(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                before = container.get_check("up")
+                container.start_checks("up")
+                after = container.get_check("up")
+                return before, after
+            """,
+        )
+        assert findings == []
+
+    def test_service_mutation_keeps_plan(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                before = container.get_plan()
+                container.restart("app")
+                after = container.get_plan()
+                return before, after
+            """,
+        )
+        assert len(findings) == 1
+
+    def test_for_rebind_clears(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                first = container.get_plan()
+                for container in self.unit.containers.values():
+                    print(container.get_plan())
+                return first
+            """,
+        )
+        assert findings == []
+
+    def test_with_rebind_clears(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                first = container.get_plan()
+                with pick() as container:
+                    print(container.get_plan())
+                return first
+            """,
+        )
+        assert findings == []
+
+    def test_walrus_rebind_clears(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                first = container.get_plan()
+                if (container := pick()) is not None:
+                    print(container.get_plan())
+                return first
+            """,
+        )
+        assert findings == []
+
+    def test_tuple_rebind_clears(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                first = container.get_plan()
+                container, name = pick()
+                return first, name, container.get_plan()
+            """,
+        )
+        assert findings == []
+
+    def test_container_passed_to_helper_clears(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            def _reconcile(self, container):
+                before = container.get_plan()
+                self._push_layer(container)
+                after = container.get_plan()
+                return before, after
+            """,
+        )
+        assert findings == []
+
+    def test_self_method_clears_self_container(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            class C:
+                def _reconcile(self):
+                    before = self._container.get_plan()
+                    self._push_layer()
+                    after = self._container.get_plan()
+                    return before, after
+            """,
+        )
+        assert findings == []
+
+    def test_self_method_keeps_local_container(self, tmp_charm: pathlib.Path):
+        findings = _lint_source(
+            tmp_charm,
+            """\
+            class C:
+                def _reconcile(self, container):
+                    before = container.get_plan()
+                    self._log()
+                    after = container.get_plan()
+                    return before, after
+            """,
+        )
+        assert len(findings) == 1
 
     def test_vendored_lib_skipped(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})

@@ -8,32 +8,47 @@ from .. import _ast
 from .. import _models as models
 from ._base import Rule
 
-# The two ``ops.Container`` methods that read Pebble state and are cheap to
-# hoist: both return a snapshot that stays valid until something changes it.
-# ``get_plan`` takes no arguments, ``get_service`` takes the service name.
-_READS = frozenset({"get_plan", "get_service"})
+# The ``ops.Container`` methods that read Pebble state. Each returns a
+# snapshot that stays valid until something changes it, so a second
+# identical call in the same function is a second round trip for the same
+# answer.
+_PLAN_READS = frozenset({"get_plan"})
+_SERVICE_READS = frozenset({"get_services", "get_service"})
+_CHECK_READS = frozenset({"get_checks", "get_check"})
+_READS = _PLAN_READS | _SERVICE_READS | _CHECK_READS
 
-# Container methods that change what a read would return. A read after one
-# of these is re-reading what was just written, which is correct rather than
-# wasteful, so a mutation ends the run of reads it sits in.
+# Each read's signature on ``ops.Container``: how many arguments it takes
+# (``None`` for any number of positional ones), and the keyword names it
+# accepts. A call that doesn't fit is some other object's method of the
+# same name.
+_SIGNATURES: dict[str, tuple[int | None, frozenset[str]]] = {
+    "get_plan": (0, frozenset()),
+    "get_services": (None, frozenset()),
+    "get_service": (1, frozenset({"service_name"})),
+    "get_checks": (None, frozenset({"level"})),
+    "get_check": (1, frozenset({"check_name"})),
+}
+
+# Container methods that change what a read would return, mapped to the
+# reads they make stale. A read after one of these is re-reading what was
+# just written, which is correct rather than wasteful, so a mutation ends
+# the run of reads it sits in.
 #
-# Only ``add_layer`` changes the plan: ``replan`` and the start/stop family
-# act on the services the plan already describes, so they invalidate
-# ``get_service`` — which reports a service's live status — and leave
-# ``get_plan`` alone.
-_SERVICE_MUTATIONS = frozenset({
-    "add_layer",
-    "replan",
-    "autostart",
-    "start",
-    "stop",
-    "restart",
-    "start_services",
-    "stop_services",
-    "restart_services",
-    "send_signal",
-})
-_PLAN_MUTATIONS = frozenset({"add_layer"})
+# ``add_layer`` changes the plan, and with it the services and checks the
+# plan describes. ``replan`` and the start/stop family act on services the
+# plan already has, so they leave ``get_plan`` alone. ``replan`` also
+# starts and stops checks, as do ``start_checks`` and ``stop_checks``.
+_INVALIDATES: dict[str, frozenset[str]] = {
+    "add_layer": _READS,
+    "replan": _SERVICE_READS | _CHECK_READS,
+    "autostart": _SERVICE_READS,
+    "start": _SERVICE_READS,
+    "stop": _SERVICE_READS,
+    "restart": _SERVICE_READS,
+    "send_signal": _SERVICE_READS,
+    "start_checks": _CHECK_READS,
+    "stop_checks": _CHECK_READS,
+}
 
 # charmlint has no type inference, so a Pebble container is recognised by
 # what the variable holding it is called, the same heuristic that
@@ -41,16 +56,6 @@ _PLAN_MUTATIONS = frozenset({"add_layer"})
 # method name on unrelated API clients, and one of those was the only thing
 # this rule found in the charm corpus before the guard was added.
 _CONTAINER_HINTS = ("container", "workload")
-
-
-def _invalidated_by(method: str) -> frozenset[str]:
-    """Return the read methods a call to *method* on a container invalidates."""
-    invalidated: set[str] = set()
-    if method in _PLAN_MUTATIONS:
-        invalidated.add("get_plan")
-    if method in _SERVICE_MUTATIONS:
-        invalidated.add("get_service")
-    return frozenset(invalidated)
 
 
 def _is_container(receiver: str) -> bool:
@@ -61,34 +66,48 @@ def _is_container(receiver: str) -> bool:
 
 # Statement fields holding a nested statement list. Walked by the traversal
 # below rather than by the expression scan, so a call is attributed to the
-# statement that actually contains it.
+# statement that actually contains it. Wider than ``_ast._BODY_FIELDS``
+# because the expression scan has to skip every nested list, including the
+# ``except`` handlers and ``match`` cases that ``_ast`` reaches separately.
 _BODY_FIELDS = frozenset({"body", "orelse", "finalbody", "handlers", "cases"})
+
+
+# What a read looked up: the method, and its arguments as the source spells
+# them.
+_Key = tuple[str, tuple[str, ...]]
 
 
 @dataclasses.dataclass(frozen=True)
 class _Event:
-    """One Pebble call on a named receiver, in the function that holds it.
+    """One Pebble read, or one thing that makes earlier reads stale.
 
-    ``key`` identifies what was read — ``("get_plan", "")`` or
-    ``("get_service", "<name>")``. ``invalidates`` is empty for a read, and
-    for anything else names the reads it makes stale: a mutating method
-    invalidates what it changes, and a reassignment of a name invalidates
-    every read that mentions it.
+    A read has a ``key``: the method and its arguments, such as
+    ``("get_service", ("'app'",))``. Anything else has ``key`` set to
+    ``None`` and ``invalidates`` naming the read methods it makes stale. A
+    mutating container method invalidates what it changes. A reassignment
+    of a name, or a call that might change a container out of sight,
+    invalidates every read that mentions the name.
 
     ``branch`` is the chain of conditional branches the call sits in, used
     to tell two calls that both run from two that are alternatives.
     """
 
     receiver: str
-    key: tuple[str, str]
+    key: _Key | None
     invalidates: frozenset[str]
     branch: tuple[tuple[int, int], ...]
     node: ast.stmt | ast.expr
 
-    @property
-    def read(self) -> bool:
-        """Whether this event reads Pebble state rather than disturbing it."""
-        return not self.invalidates
+    def makes_stale(self, receiver: str, key: _Key) -> bool:
+        """Whether this event makes a read of *key* on *receiver* stale."""
+        if key[0] not in self.invalidates:
+            return False
+        return any(_names_within(self.receiver, name) for name in (receiver, *key[1]))
+
+
+def _names_within(name: str, spelling: str) -> bool:
+    """Whether *spelling* is *name* or an attribute reached through it."""
+    return spelling == name or spelling.startswith(f"{name}.")
 
 
 def _branches_exclude(left: _Event, right: _Event) -> bool:
@@ -153,31 +172,44 @@ def _walk_body(
             yield from _walk_body(handler.body, branch)
 
 
-def _read_key(call: ast.Call) -> tuple[str, str] | None:
-    """Return the read this call performs, or ``None`` if it is not one.
+def _spell(argument: ast.expr) -> str | None:
+    """Spell an argument the way the source did, or ``None`` if it can't be compared.
 
-    The second element is the service name *as the source spells it*, which
-    is what makes two calls comparable. A string literal is kept quoted and
-    a name is not, so ``get_service(SERVICE)`` and ``get_service('SERVICE')``
-    stay distinct. Charms overwhelmingly name the service with a module
-    constant or an enum member rather than a literal, so a rule that only
-    understood literals would miss nearly every real case.
+    A string literal is kept quoted and a name is not, so
+    ``get_service(SERVICE)`` and ``get_service('SERVICE')`` stay distinct.
+    Charms overwhelmingly name the service with a module constant or an
+    enum member rather than a literal, so a rule that only understood
+    literals would miss nearly every real case. Anything else, such as an
+    f-string, a subscript, or a call, is not comparable.
+    """
+    if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+        return repr(argument.value)
+    return _ast.dotted_name(argument)
 
-    Anything else — an f-string, a subscript, a call — is not comparable
-    and yields ``None``.
+
+def _read_key(call: ast.Call) -> _Key | None:
+    """Return the read this call performs, or ``None`` if it is not a comparable one.
+
+    A read with an argument that can't be compared yields ``None`` too, and
+    so records no event. That is safe because a read never makes another
+    read stale: only a mutation, a rebind, or an opaque call does.
     """
     method = call.func.attr if isinstance(call.func, ast.Attribute) else None
-    if method not in _READS or call.keywords:
+    if method not in _READS:
         return None
-    if method == "get_plan":
-        return ("get_plan", "") if not call.args else None
-    if len(call.args) != 1:
+    count, keywords = _SIGNATURES[method]
+    if any(keyword.arg not in keywords for keyword in call.keywords):
         return None
-    argument = call.args[0]
-    if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
-        return ("get_service", repr(argument.value))
-    spelling = _ast.dotted_name(argument)
-    return ("get_service", spelling) if spelling is not None else None
+    if count is not None and len(call.args) + len(call.keywords) != count:
+        return None
+    spellings = [_spell(argument) for argument in call.args]
+    spellings += [
+        None if (value := _spell(keyword.value)) is None else f"{keyword.arg}={value}"
+        for keyword in call.keywords
+    ]
+    if None in spellings:
+        return None
+    return (method, tuple(s for s in spellings if s is not None))
 
 
 def _rebinds(statement: ast.stmt) -> set[str]:
@@ -185,15 +217,42 @@ def _rebinds(statement: ast.stmt) -> set[str]:
 
     A receiver that is reassigned may be a different container afterwards,
     and a service name that is reassigned may name a different service, so
-    an assignment ends the run of reads the same way a mutation does.
+    an assignment ends the run of reads the same way a mutation does. Every
+    way of binding a name counts: ``=``, ``for`` targets, ``with ... as``,
+    ``:=``, and tuple unpacking all store to it.
     """
-    if isinstance(statement, ast.Assign):
-        targets: Sequence[ast.expr] = statement.targets
-    elif isinstance(statement, ast.AnnAssign | ast.AugAssign):
-        targets = [statement.target]
-    else:
-        return set()
-    return {name for name in (_ast.dotted_name(t) for t in targets) if name is not None}
+    return {
+        name
+        for node in _expressions(statement)
+        if isinstance(node, ast.Name | ast.Attribute) and isinstance(node.ctx, ast.Store)
+        for name in (_ast.dotted_name(node),)
+        if name is not None
+    }
+
+
+def _hidden_mutations(call: ast.Call) -> set[str]:
+    """Return the names whose container *call* might change out of sight.
+
+    The rule only looks inside one function, so a helper that pushes a
+    layer is invisible: ``self._push_layer(container)`` between two
+    ``container.get_plan()`` calls makes the second read necessary. With
+    no way to look inside the helper, a call that is handed a container,
+    or a method call on ``self`` (which can reach ``self._container``), is
+    assumed to change it. That costs some true positives, which is the
+    right trade for an informational rule.
+    """
+    names: set[str] = set()
+    for argument in (*call.args, *(keyword.value for keyword in call.keywords)):
+        name = _ast.dotted_name(argument)
+        if name is not None and (name == "self" or _is_container(name)):
+            names.add(name)
+    if (
+        isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "self"
+    ):
+        names.add("self")
+    return names
 
 
 def _events(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Event]:
@@ -205,50 +264,60 @@ def _events(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Event]:
     found: list[_Event] = []
     for statement, branch in _walk_body(function.body, ()):
         for name in _rebinds(statement):
-            found.append(_Event(name, ("", ""), frozenset(_READS), branch, statement))
+            found.append(_Event(name, None, _READS, branch, statement))
         for node in _expressions(statement):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            if not isinstance(node, ast.Call):
+                continue
+            for name in _hidden_mutations(node):
+                found.append(_Event(name, None, _READS, branch, node))
+            if not isinstance(node.func, ast.Attribute):
                 continue
             receiver = _ast.dotted_name(node.func.value)
             if receiver is None or not _is_container(receiver):
-                # An unreadable receiver — a call or a subscript in the chain
-                # — gives nothing to compare two spellings by, and one that is
+                # An unreadable receiver (a call or a subscript in the chain)
+                # gives nothing to compare two spellings by, and one that is
                 # not named like a container is assumed not to be one.
                 continue
             key = _read_key(node)
             if key is not None:
                 found.append(_Event(receiver, key, frozenset(), branch, node))
                 continue
-            invalidates = _invalidated_by(node.func.attr)
+            invalidates = _INVALIDATES.get(node.func.attr)
             if invalidates:
-                found.append(_Event(receiver, ("", ""), invalidates, branch, node))
+                found.append(_Event(receiver, None, invalidates, branch, node))
     found.sort(key=lambda event: (event.node.lineno, event.node.col_offset))
     return found
 
 
-def _describe(receiver: str, key: tuple[str, str]) -> str:
+def _describe(receiver: str, key: _Key) -> str:
     """Spell the repeated call the way the source did."""
-    method, argument = key
-    if method == "get_plan":
-        return f"{receiver}.get_plan()"
-    return f"{receiver}.get_service({argument})"
+    method, arguments = key
+    return f"{receiver}.{method}({', '.join(arguments)})"
 
 
 class RepeatedPebbleState(Rule):
     """Detect the same Pebble state read made twice in one function.
 
-    ``container.get_plan()`` and ``container.get_service(name)`` each open a
-    connection to pebbled over the workload's unix socket and wait for the
-    reply. Making the same call twice in a function does the round trip
-    twice for a result that has not changed in between; storing it in a
-    local is both faster and easier to read.
+    ``container.get_plan()``, ``get_services()``, ``get_service(name)``,
+    ``get_checks()`` and ``get_check(name)`` each open a connection to
+    pebbled over the workload's unix socket and wait for the reply. Making
+    the same call twice in a function does the round trip twice for a
+    result that has not changed in between; storing it in a local is both
+    faster and easier to read.
 
-    Three things stop a repeat from being reported, because in each case the
-    second call is not redundant: a change to the same container between the
-    two that affects what is read (``add_layer`` for the plan, that plus the
-    start/stop family for a service), a reassignment of the receiver or of
-    the service name between them, and the two calls sitting in alternative
-    branches of the same ``if`` or ``match``, where only one of them runs.
+    A repeat is not reported when the second call is not redundant:
+
+    * Something between the two changes what is read: ``add_layer`` for
+      the plan, that plus ``replan`` and the start/stop family for
+      services, and ``replan`` and ``start_checks``/``stop_checks`` for
+      checks.
+    * The receiver or an argument is rebound between them, by any form of
+      assignment.
+    * A call between them might change the container where the rule can't
+      see: one that is handed the container, or a method call on ``self``
+      when the container is reached through ``self``.
+    * The two calls sit in alternative branches of the same ``if`` or
+      ``match``, so only one of them runs.
 
     The container is recognised by what it is called, so a repeat on a
     variable not named like a container is left alone. ``get_service`` is a
@@ -261,7 +330,7 @@ class RepeatedPebbleState(Rule):
     name = "repeated-pebble-state"
     description = "The same Pebble state read is made more than once in one function"
     default_severity = models.Severity.INFO
-    reference_url = "https://documentation.ubuntu.com/ops/latest/reference/pebble/"
+    reference_url = "https://canonical.com/juju/docs/ops/latest/reference/pebble/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -277,17 +346,13 @@ class RepeatedPebbleState(Rule):
         diagnostics: list[models.Diagnostic] = []
         # Reads still standing for each (receiver, key), cleared whenever the
         # receiver is written to.
-        pending: dict[tuple[str, tuple[str, str]], list[_Event]] = {}
+        pending: dict[tuple[str, _Key], list[_Event]] = {}
         for event in _events(function):
-            if not event.read:
+            if event.key is None:
                 # A write to the container invalidates what was read from it;
                 # a write to the name a service was looked up by makes two
                 # calls that read alike no longer the same lookup.
-                stale = [
-                    k
-                    for k in pending
-                    if event.receiver in (k[0], k[1][1]) and k[1][0] in event.invalidates
-                ]
+                stale = [k for k in pending if event.makes_stale(*k)]
                 for key in stale:
                     del pending[key]
                 continue
