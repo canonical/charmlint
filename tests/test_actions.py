@@ -31,6 +31,16 @@ class TestActionMissingObserver:
         assert actions[0].severity == Severity.WARNING
         assert "do-thing" in actions[0].message
 
+    def test_action_name_that_is_not_a_string(self, tmp_charm: pathlib.Path):
+        # Unquoted, YAML 1.1 reads these keys as False and None.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nactions:\n  no: {description: x}\n  null: {description: x}\n"
+        )
+        write_charm_source(tmp_charm, "import ops\n")
+        report = lint(tmp_charm)
+        assert "ACTIONS-001" not in {d.rule_id for d in report}
+
     def test_action_with_observer_not_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,
