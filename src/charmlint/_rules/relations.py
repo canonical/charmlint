@@ -50,15 +50,28 @@ class UnorderedValueInDatabag(Rule):
 # looks through them to what was passed in. ``json.dumps`` is one of
 # them: ``sort_keys=True`` orders a mapping's keys and does nothing for
 # the order of the list it was handed.
-_TRANSPARENT_CALLS = frozenset(
-    {"list", "tuple", "dict", "str", "repr", "json.dumps", "yaml.dump", "yaml.safe_dump"}
-)
+_TRANSPARENT_CALLS = frozenset({
+    "list",
+    "tuple",
+    "dict",
+    "str",
+    "repr",
+    "json.dumps",
+    "yaml.dump",
+    "yaml.safe_dump",
+})
 
 # Methods that reformat their receiver without reordering it, so the
 # instability of ``",".join(x)`` is the instability of ``x``.
-_TRANSPARENT_METHODS = frozenset(
-    {"join", "format", "encode", "decode", "hex", "isoformat", "strftime"}
-)
+_TRANSPARENT_METHODS = frozenset({
+    "join",
+    "format",
+    "encode",
+    "decode",
+    "hex",
+    "isoformat",
+    "strftime",
+})
 
 # Calls that settle an order, so nothing below them is unordered any more.
 _ORDER_SANITISERS = frozenset({"sorted"})
