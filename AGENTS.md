@@ -18,6 +18,8 @@ The `dev` [Workshop](https://ubuntu.com/workshop) in `.workshop/` has the same t
 uv run pytest
 ```
 
+Tests that need the network (the reference-URL checks) are deselected by default; run them with `-m network`.
+
 ## Lint
 
 ```bash

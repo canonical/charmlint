@@ -177,6 +177,12 @@ class Imports:
         return any(mod == name or mod.startswith(f"{name}.") for mod in self.modules)
 
 
+# The canonical names :meth:`Imports.resolve` gives ops' charm base class and
+# its entry point. ``ops.main`` is both the submodule and the callable inside it.
+CHARM_BASES = frozenset({"ops.CharmBase", "ops.charm.CharmBase"})
+OPS_MAIN_TARGETS = frozenset({"ops.main", "ops.main.main"})
+
+
 # --- Calls -----------------------------------------------------------------
 
 
