@@ -50,6 +50,22 @@ Most of the attention belongs on the rule itself:
 
 The implementation gets a lighter pass. We're more lenient about "agent-isms" here than in the other Charm Tech repos: if the code is more verbose or more defensive than a person would have written it, and it's correct and readable, that's ok. That's not a license to let quality slide - we still want code we'd be happy to maintain, and unnecessary comments (especially ones referring to history) should still go. But if you find yourself choosing, spend the time on the rule rather than on the style of the code implementing it.
 
+# Rules
+
+The pinned tracking issue lists the open rule and engine work in the order we'd like to take it. Roughly, the value of a rule is the number of charms that have the defect, times how bad the defect is, divided by the risk of false positives. Two kinds of work jump the queue:
+
+* False positives in rules that already ship. A false positive is worse than a gap, and a rule that's already in the default `select` is costing trust today.
+* Engine work that several queued rules are blocked on - anything that would otherwise be re-implemented in each rule, or retrofitted into every rule written before it.
+
+A rule that prescribes a feature rather than finding a defect, or that would fire on a large fraction of charms by design, needs a decision on scope (in its issue) before it's worth writing.
+
+For a rule PR:
+
+* One rule (or one group of rules that share a factory) per PR. Helpers that several rules share land in their own PR first.
+* Rule IDs are `CATEGORY-###`, as described in [docs/id-scheme.md](docs/id-scheme.md). A number in an older issue's title (`CORR008`, say) isn't reserved: the ID is assigned when the rule is written.
+* Include the rule's tests, the `_rules/__init__.py` import if it adds a module, and the regenerated `docs/rules.md`.
+* Put the corpus measurements in the PR description, counted as [docs/corpus.md](docs/corpus.md) describes. If the false-positive rate isn't close to zero, tighten the rule and measure again.
+
 # AI
 
 You're welcome to submit pull requests that are partly or entirely generated using generative AI tools. However, you must review the code yourself before moving the PR out of draft -- by submitting the PR, you are claiming personal responsibility for its quality and suitability. If you are not capable of reviewing the PR, please do not submit it (maybe you'd like to open an issue instead). PRs that are clearly (co-)authored by tools will be closed without review unless there is a human author that claims responsibility for the PR.
