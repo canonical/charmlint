@@ -53,8 +53,16 @@ Issues = "https://github.com/canonical/charmlint/issues"
 exclude-newer = "7 days"
 
 [build-system]
-requires = ["uv_build>=0.9.18,<0.10"]
+# uv uses the backend it bundles only when its own version is inside this
+# range; outside it, every build installs uv_build from PyPI instead. Move
+# the upper bound with uv when releasing.
+requires = ["uv_build>=0.9.18,<0.13"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The sdist carries what it takes to run the test suite, for packagers who
+# build from it. The tests load tools/generate_rules_doc.py by path.
+source-include = ["tests/**", "tools/**"]
 
 [tool.ruff]
 line-length = 99
