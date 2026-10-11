@@ -228,6 +228,21 @@ class Module:
         yield from self.walk(ast.FunctionDef, ast.AsyncFunctionDef)
 
 
+def library_owner(metadata: Yaml) -> str | None:
+    """Return the ``lib/charms/`` directory a charm publishes its libraries under.
+
+    Charmhub names are hyphenated and Python packages are not, so
+    ``my-charm`` publishes into ``lib/charms/my_charm/``. ``None`` when the
+    charm doesn't declare a name.
+
+    The one place this is worked out: the linter core needs it to tell an
+    owned library from a vendored one before the context exists, and rules
+    read it as :attr:`CharmContext.library_owner`.
+    """
+    name = metadata.get("name").value
+    return name.replace("-", "_") if isinstance(name, str) else None
+
+
 @dataclasses.dataclass
 class CharmContext:
     """All the data a rule needs, loaded once by the linter engine."""
@@ -274,6 +289,11 @@ class CharmContext:
         for module in self.python_modules:
             if not scopes or module.scope in scopes:
                 yield module
+
+    @property
+    def library_owner(self) -> str | None:
+        """The ``lib/charms/`` directory this charm publishes its libraries under."""
+        return library_owner(self.metadata)
 
     def charm_sources(self) -> Iterator[Module]:
         """Yield the modules the charm's author maintains.

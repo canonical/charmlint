@@ -1,6 +1,5 @@
 """Library rules — vendored fetch-libs copies with PyPI replacements."""
 
-from .. import _ast
 from .. import _models as models
 from ._base import Rule
 
@@ -13,7 +12,7 @@ from ._base import Rule
 #    `rollingops`. We match on the `<lib>` module name regardless of the
 #    owning charm. If a same-named lib under an unrelated owner ever
 #    triggers a false positive, add an explicit exclusion rather than
-#    re-scoping by owner — the one owner that is checked is the charm's
+#    re-scoping by owner. The one owner this rule skips is the charm's
 #    own, whose libraries are its source rather than a vendored copy.
 # 2. `lib/charms/<owner>/vN/<lib>.py` — a shared interface library.
 #    The `<owner>` charm varies by lib (tls-certificates-interface,
@@ -82,8 +81,12 @@ class FetchLibsHasPyPI(Rule):
         # to delete the file and depend on the package built from it is
         # never right. The name is only known at lint time, so no exclusion
         # list can cover this.
-        charm_name = context.metadata.get("name").value
-        own = _ast.library_owner(charm_name) if isinstance(charm_name, str) else None
+        #
+        # The whole directory is skipped, not just the libraries the charm
+        # publishes. Anything else in it would have to be someone else's
+        # library copied in by hand, since fetch-lib writes under the
+        # publishing charm's name, never the fetching one's.
+        own = context.library_owner
 
         diagnostics: list[models.Diagnostic] = []
         for owner_dir in sorted(charms_root.iterdir()):

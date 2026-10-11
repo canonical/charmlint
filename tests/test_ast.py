@@ -13,14 +13,16 @@ from charmlint._linter import build_context, lint
 from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 
-def parse(source: str, path: str = "src/charm.py", charm_name: str | None = None) -> models.Module:
+def parse(
+    source: str, path: str = "src/charm.py", library_owner: str | None = None
+) -> models.Module:
     """Parse a source snippet as if it lived at *path* in a charm."""
     charm_dir = pathlib.PurePosixPath("/charm")
     return _ast.parse(
         pathlib.Path(charm_dir / path),
         textwrap.dedent(source),
         pathlib.Path(charm_dir),
-        charm_name,
+        library_owner,
     )
 
 
@@ -58,7 +60,7 @@ class TestScope:
     @pytest.mark.parametrize(
         ("path", "expected"),
         [
-            # The charm publishes into its own name, hyphens underscored.
+            # The charm publishes into its own directory.
             ("lib/charms/my_charm/v0/thing.py", models.Scope.OWNED_LIB),
             ("lib/charms/my_charm/v2/nested/thing.py", models.Scope.OWNED_LIB),
             # Someone else's library, vendored by fetch-lib.
@@ -69,7 +71,7 @@ class TestScope:
         ],
     )
     def test_own_library_is_distinguished_from_vendored(self, path: str, expected: models.Scope):
-        assert parse("x = 1", path, charm_name="my-charm").scope == expected
+        assert parse("x = 1", path, library_owner="my_charm").scope == expected
 
     def test_without_a_charm_name_everything_under_lib_is_vendored(self):
         module = parse("x = 1", "lib/charms/my_charm/v0/thing.py")

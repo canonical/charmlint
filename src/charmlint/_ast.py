@@ -27,16 +27,7 @@ from collections.abc import Iterator, Sequence
 from . import _models as models
 
 
-def library_owner(name: str) -> str:
-    """Return the ``lib/charms/`` directory name a charm publishes under.
-
-    Charmhub names are hyphenated and Python packages are not, so
-    ``my-charm`` publishes into ``lib/charms/my_charm/``.
-    """
-    return name.replace("-", "_")
-
-
-def _scope_of(relative: pathlib.PurePosixPath, charm_name: str | None) -> models.Scope:
+def _scope_of(relative: pathlib.PurePosixPath, library_owner: str | None) -> models.Scope:
     """Classify a charm-relative path into a :class:`models.Scope`."""
     parts = relative.parts
     # Longest prefix first, so the two named suites beat the generic fallback.
@@ -53,7 +44,7 @@ def _scope_of(relative: pathlib.PurePosixPath, charm_name: str | None) -> models
         # The charm publishing the library owns that directory; every other
         # owner is a vendored copy of someone else's work.
         owner = parts[2] if parts[:2] == ("lib", "charms") and len(parts) > 2 else None
-        if owner is not None and charm_name and owner == library_owner(charm_name):
+        if owner is not None and owner == library_owner:
             return models.Scope.OWNED_LIB
         return models.Scope.VENDORED_LIB
     if parts[:1] == ("src",):
@@ -65,13 +56,14 @@ def parse(
     file: pathlib.Path,
     text: str,
     charm_dir: pathlib.Path,
-    charm_name: str | None = None,
+    library_owner: str | None = None,
 ) -> models.Module:
     """Parse one source file into a :class:`Module`.
 
-    *charm_name* is the charm's declared name, which tells a library this
-    charm publishes apart from a vendored copy of someone else's. Without
-    it, everything under ``lib/`` is taken to be vendored.
+    *library_owner* is the ``lib/charms/`` directory the charm publishes
+    under (:func:`models.library_owner`), which tells a library this charm
+    publishes apart from a vendored copy of someone else's. Without it,
+    everything under ``lib/`` is taken to be vendored.
 
     Raises :class:`SyntaxError` — with ``filename`` set — for an unparseable
     source. The linter core turns that into a fatal diagnostic; rules never
@@ -89,7 +81,7 @@ def parse(
         file=file,
         text=text,
         tree=tree,
-        scope=_scope_of(relative, charm_name),
+        scope=_scope_of(relative, library_owner),
     )
 
 

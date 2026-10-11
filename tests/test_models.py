@@ -2,7 +2,11 @@
 
 import pathlib
 
-from charmlint._models import Diagnostic, LintReport, Severity
+import pytest
+
+from charmlint._linter import build_context
+from charmlint._models import Diagnostic, LintReport, Scope, Severity
+from tests.conftest import write_charmcraft_yaml
 
 
 class TestDiagnostic:
@@ -92,3 +96,28 @@ class TestLintReport:
         assert result["total"] == 1
         assert result["errors"] == 1
         assert len(result["diagnostics"]) == 1
+
+
+class TestLibraryOwner:
+    @pytest.mark.parametrize(
+        ("metadata", "owner"),
+        [
+            ({"name": "my-charm"}, "my_charm"),
+            ({"name": "hydra"}, "hydra"),
+            ({"name": 7}, None),
+            ({}, None),
+        ],
+    )
+    def test_from_the_declared_name(self, tmp_charm: pathlib.Path, metadata, owner):
+        write_charmcraft_yaml(tmp_charm, metadata)
+        assert build_context(tmp_charm).library_owner == owner
+
+    def test_core_scopes_modules_with_the_same_owner(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "my-charm"})
+        for owner in ("my_charm", "other"):
+            lib = tmp_charm / "lib" / "charms" / owner / "v0"
+            lib.mkdir(parents=True)
+            (lib / "thing.py").write_text("x = 1\n")
+        scopes = {m.path: m.scope for m in build_context(tmp_charm).python_modules}
+        assert scopes["lib/charms/my_charm/v0/thing.py"] == Scope.OWNED_LIB
+        assert scopes["lib/charms/other/v0/thing.py"] == Scope.VENDORED_LIB
