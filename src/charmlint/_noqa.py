@@ -136,8 +136,10 @@ def parse(text: str, *, legacy_noqa: bool = True) -> FileNoqa:
     pending: list[_Directive] = []
 
     for lineno, line in enumerate(text.splitlines(), start=1):
-        matched = _scan(line, lineno, legacy_noqa, file_level, by_line, pending)
-        if not matched and pending and _is_code_line(line):
+        _scan(line, lineno, legacy_noqa, file_level, by_line, pending)
+        # A code line takes the pending directives even when it carries a
+        # trailing directive of its own.
+        if pending and _is_code_line(line):
             by_line.setdefault(lineno, []).extend(pending)
             pending.clear()
 
@@ -154,8 +156,8 @@ def _scan(
     file_level: list[_Directive],
     by_line: dict[int, list[_Directive]],
     pending: list[_Directive],
-) -> bool:
-    """Record any directive on *line*, and report whether there was one.
+) -> None:
+    """Record any directive on *line*.
 
     At most one directive is taken from a line, most specific spelling
     first, matching how ruff stops at the first directive it recognises.
@@ -163,7 +165,7 @@ def _scan(
     file_ignore = _FILE_IGNORE_RE.search(line)
     if file_ignore is not None:
         file_level.append(_Directive(_optional_codes(file_ignore.group("codes"))))
-        return True
+        return
 
     ignore = _IGNORE_RE.search(line)
     if ignore is not None:
@@ -174,19 +176,16 @@ def _scan(
         else:
             # Own-line: it covers the next line with something on it.
             pending.append(directive)
-        return True
+        return
 
     if not legacy_noqa:
-        return False
+        return
 
     legacy_inline = _LEGACY_INLINE_RE.search(line)
     if legacy_inline is not None:
         by_line.setdefault(lineno, []).append(
             _Directive(_parse_legacy_codes(legacy_inline.group("codes")))
         )
-        return True
-
-    return False
 
 
 def _is_code_line(line: str) -> bool:
