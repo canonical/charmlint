@@ -439,7 +439,7 @@ class NoConfigChangedObserver(Rule):
         observer_count = 0
         reads_config = False
         for module in context.charm_sources():
-            if _mentions_config_changed(module) or _has_opaque_observe(module):
+            if _mentions_event(module, _CONFIG_CHANGED) or _has_opaque_observe(module):
                 return []
             classes = _classes(module)
             if classes.framework or classes.holistic:
@@ -467,22 +467,107 @@ class NoConfigChangedObserver(Rule):
         ]
 
 
-def _mentions_config_changed(module: models.Module) -> bool:
-    """Whether *module* names the ``config-changed`` event at all.
+_UPGRADE_CHARM = "upgrade_charm"
 
-    Charms reach the event by more routes than a literal
-    ``framework.observe(self.on.config_changed, ...)``: through a local
-    alias for ``observe``, through a list of events fed to a holistic
-    reconciler, or by handing ``self.on.config_changed`` to a charm
-    library as its ``refresh_event``. All of them write
-    ``<...>.on.config_changed``.
+
+class NoUpgradeCharmObserver(Rule):
+    """Flag a charm that never handles the ``upgrade-charm`` event.
+
+    An upgraded unit starts from whatever the previous revision left on
+    disk. A charm that installs a snap, writes a systemd unit, or keeps
+    on-disk state in ``install``, and never redoes any of it on
+    ``upgrade-charm``, leaves the unit running the old workload or the
+    old layout under new charm code.
+
+    The rule stays quiet in the same places FEATURES-007 does, because
+    the question is the same one about a different event: the charm's own
+    source names the event anywhere, an observe call could not be read,
+    the charm class is built on something charmlint cannot see into, the
+    charm reconciles in ``__init__`` or hands a callback to a collaborator,
+    or it registers no observers at all. Only the charm's own code counts:
+    a vendored library that observes ``upgrade-charm`` refreshes its own
+    concern, not the charm's workload.
+
+    Informational: plenty of charms genuinely have nothing to do on an
+    upgrade, and Juju fires ``config-changed`` straight afterwards. A
+    charm in that position should suppress the rule with a ``file-ignore``
+    comment in the file that defines its charm class.
     """
-    return any(
-        node.attr == _CONFIG_CHANGED
-        and isinstance(node.value, ast.Attribute)
-        and node.value.attr == "on"
-        for node in module.walk(ast.Attribute)
-    )
+
+    category = "FEATURES"
+    number = 1
+    name = "no-upgrade-charm-observer"
+    description = "Charm does not observe the upgrade-charm event"
+    default_severity = models.Severity.INFO
+    reference_url = "https://canonical.com/juju/docs/juju-cli/latest/reference/hook/#upgrade-charm"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        anchor: tuple[models.Module, ast.ClassDef] | None = None
+        observer_count = 0
+        for module in context.charm_sources():
+            if _mentions_event(module, _UPGRADE_CHARM) or _has_opaque_observe(module):
+                return []
+            classes = _classes(module)
+            if classes.framework or classes.holistic:
+                return []
+            if anchor is None and classes.first_plain is not None:
+                anchor = (module, classes.first_plain)
+            for observer in _ast.observers(module):
+                observer_count += 1
+                if not observer.resolved or observer.event == _UPGRADE_CHARM:
+                    return []
+        if anchor is None or not observer_count:
+            return []
+        module, charm_class = anchor
+        return [
+            self.diagnostic(
+                "Charm never handles 'upgrade-charm', so an upgraded unit keeps whatever "
+                "the previous revision left on disk, with no chance to migrate it or "
+                "refresh the workload",
+                path=module.path,
+                line=charm_class.lineno,
+                fix_hint=(
+                    "Add `framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)` "
+                    "in __init__, or have a holistic handler reconcile the unit on it"
+                ),
+            )
+        ]
+
+
+def _mentions_event(module: models.Module, event: str) -> bool:
+    """Whether *module* names the ops event *event* at all.
+
+    Charms reach an event by more routes than a literal
+    ``framework.observe(self.on.<event>, ...)``: through a local alias for
+    ``observe``, through a list of events fed to a holistic reconciler, or
+    by handing ``self.on.<event>`` to a charm library as its
+    ``refresh_event``. All of them write ``<...>.on.<event>``.
+
+    Two more shapes name the event without going through ``.on``: passing
+    the event class (``ops.UpgradeCharmEvent``) to a helper that does the
+    observing, and comparing the hook name (``"upgrade-charm"``) against
+    ``JUJU_HOOK_NAME`` in ``__init__`` rather than observing anything.
+
+    *event* is the underscore spelling, ``config_changed``.
+    """
+    event_class = "".join(part.title() for part in event.split("_")) + "Event"
+    hook_name = event.replace("_", "-")
+    for node in module.walk(ast.Attribute, ast.Name, ast.Constant):
+        if isinstance(node, ast.Attribute):
+            if node.attr == event_class:
+                return True
+            if (
+                node.attr == event
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "on"
+            ):
+                return True
+        elif isinstance(node, ast.Name):
+            if node.id == event_class:
+                return True
+        elif node.value == hook_name:
+            return True
+    return False
 
 
 def _has_opaque_observe(module: models.Module) -> bool:
@@ -508,6 +593,8 @@ class _Classes:
     # Classes deriving straight from ``ops.CharmBase``: the ones whose
     # observers are all in the charm's own source.
     plain: int = 0
+    # The first of those, for a finding that is about the charm class.
+    first_plain: ast.ClassDef | None = None
     # A charm class built on a framework base, or on a mixin alongside
     # ``ops.CharmBase``: it inherits observers charmlint cannot see.
     framework: bool = False
@@ -531,6 +618,7 @@ def _classes(module: models.Module) -> _Classes:
         ops_bases = bases & _ast.CHARM_BASES
         if ops_bases and not bases - ops_bases:
             result.plain += 1
+            result.first_plain = result.first_plain or node
             result.holistic = (
                 result.holistic or _reconciles_in_init(node) or _delegates_to_collaborator(node)
             )

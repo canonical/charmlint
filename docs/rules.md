@@ -47,6 +47,7 @@ config file overrides it per rule.
 | [CORRECTNESS-008](#correctness-008-observe-target-mismatch) | `observe-target-mismatch` | Error | framework.observe() names an event or handler that cannot exist |
 | [CORRECTNESS-009](#correctness-009-container-name-mismatch) | `container-name-mismatch` | Error | get_container() names a container not declared in containers: |
 | [DOCUMENTATION-001](#documentation-001-no-readme) | `no-readme` | Warning | No README file found |
+| [FEATURES-001](#features-001-no-upgrade-charm-observer) | `no-upgrade-charm-observer` | Info | Charm does not observe the upgrade-charm event |
 | [FEATURES-004](#features-004-no-assumes-juju-version) | `no-assumes-juju-version` | Info | No `assumes:` entry declaring a minimum Juju version |
 | [FEATURES-005](#features-005-no-set-workload-version) | `no-set-workload-version` | Info | Charm never calls set_workload_version() |
 | [FEATURES-006](#features-006-hardcoded-workload-version) | `hardcoded-workload-version` | Warning | Workload version is a hardcoded constant, not read from the workload |
@@ -485,6 +486,34 @@ renders it.
 ## FEATURES
 
 Expected features.
+
+### FEATURES-001 no-upgrade-charm-observer
+
+**Info** — Charm does not observe the upgrade-charm event
+
+Flag a charm that never handles the `upgrade-charm` event.
+
+An upgraded unit starts from whatever the previous revision left on
+disk. A charm that installs a snap, writes a systemd unit, or keeps
+on-disk state in `install`, and never redoes any of it on
+`upgrade-charm`, leaves the unit running the old workload or the
+old layout under new charm code.
+
+The rule stays quiet in the same places FEATURES-007 does, because
+the question is the same one about a different event: the charm's own
+source names the event anywhere, an observe call could not be read,
+the charm class is built on something charmlint cannot see into, the
+charm reconciles in `__init__` or hands a callback to a collaborator,
+or it registers no observers at all. Only the charm's own code counts:
+a vendored library that observes `upgrade-charm` refreshes its own
+concern, not the charm's workload.
+
+Informational: plenty of charms genuinely have nothing to do on an
+upgrade, and Juju fires `config-changed` straight afterwards. A
+charm in that position should suppress the rule with a `file-ignore`
+comment in the file that defines its charm class.
+
+Reference: <https://canonical.com/juju/docs/juju-cli/latest/reference/hook/#upgrade-charm>
 
 ### FEATURES-004 no-assumes-juju-version
 
