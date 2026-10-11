@@ -21,20 +21,18 @@ _READS = frozenset({"get_plan", "get_service"})
 # act on the services the plan already describes, so they invalidate
 # ``get_service`` — which reports a service's live status — and leave
 # ``get_plan`` alone.
-_SERVICE_MUTATIONS = frozenset(
-    {
-        "add_layer",
-        "replan",
-        "autostart",
-        "start",
-        "stop",
-        "restart",
-        "start_services",
-        "stop_services",
-        "restart_services",
-        "send_signal",
-    }
-)
+_SERVICE_MUTATIONS = frozenset({
+    "add_layer",
+    "replan",
+    "autostart",
+    "start",
+    "stop",
+    "restart",
+    "start_services",
+    "stop_services",
+    "restart_services",
+    "send_signal",
+})
 _PLAN_MUTATIONS = frozenset({"add_layer"})
 
 # charmlint has no type inference, so a Pebble container is recognised by

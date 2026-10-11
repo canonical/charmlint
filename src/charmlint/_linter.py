@@ -1,29 +1,11 @@
 """Core linter engine — loads charm context, discovers rules, runs them."""
 
 import contextlib
+import dataclasses
 import pathlib
-import re
 
-from . import _ast, _config, _noqa, _rules, _yaml
+from . import _ast, _config, _discovery, _noqa, _rules, _selectors, _toml, _yaml
 from . import _models as models
-
-# Rule IDs follow ``<UPPERCASE-CATEGORY>-<DIGITS>`` (e.g.
-# ``METADATA-001``, ``SECURITY-003``). The category is everything before
-# the final dash-and-digits.
-_RULE_ID_PATTERN = re.compile(r"^([A-Z]+)-([0-9]+)$")
-
-
-def _category_of(rule_id: str) -> str:
-    """Return the category prefix for a rule ID.
-
-    Falls back to *rule_id* itself when the ID does not match the
-    ``<CATEGORY>-<DIGITS>`` convention so an unrecognised ID never
-    accidentally matches a category in ``select`` / ``ignore``.
-    """
-    match = _RULE_ID_PATTERN.match(rule_id)
-    if match is None:
-        return rule_id
-    return match.group(1)
 
 
 def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
@@ -33,12 +15,17 @@ def _collect_python_files(charm_dir: pathlib.Path) -> list[pathlib.Path]:
     :class:`models.Scope` when parsed, and a rule selects the scope it
     means, so collecting a tree here does not put it in front of a rule
     that did not ask for it.
+
+    Only regular files are collected: some charms lay out spread tests as a
+    directory named after a test file (e.g.
+    ``tests/spread/integration/test_architecture.py/task.yaml``), which a bare
+    glob would pick up.
     """
     files: list[pathlib.Path] = []
     for subdir in ("src", "lib", "tests"):
         d = charm_dir / subdir
         if d.is_dir():
-            files.extend(sorted(d.rglob("*.py")))
+            files.extend(sorted(p for p in d.rglob("*.py") if p.is_file()))
     return files
 
 
@@ -86,14 +73,16 @@ def _check_tests(charm_dir: pathlib.Path) -> tuple[bool, bool]:
 
     Accepts ``tests/unit/`` and the reactive-charm ``unit_tests/`` layout
     for unit tests, and matches ``test_*.py`` at any depth so nested
-    suites (e.g. ``tests/unit/test_charm/test_charm.py``) count.
+    suites (e.g. ``tests/unit/test_charm/test_charm.py``) count. Only regular
+    files count.
     """
+
+    def has_test_file(d: pathlib.Path) -> bool:
+        return d.is_dir() and any(p.is_file() for p in d.rglob("test_*.py"))
+
     unit_roots = [charm_dir / "tests" / "unit", charm_dir / "unit_tests"]
-    has_unit = any(d.is_dir() and next(d.rglob("test_*.py"), None) is not None for d in unit_roots)
-    integration_dir = charm_dir / "tests" / "integration"
-    has_integration = (
-        integration_dir.is_dir() and next(integration_dir.rglob("test_*.py"), None) is not None
-    )
+    has_unit = any(has_test_file(d) for d in unit_roots)
+    has_integration = has_test_file(charm_dir / "tests" / "integration")
     return has_unit, has_integration
 
 
@@ -120,17 +109,23 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
 
     # Load config options (charmcraft.yaml or config.yaml).
     config_section = metadata.get("config")
+    if not config_section:
+        config_section = _yaml.load(charm_dir / "config.yaml")
+    config_section = _mapping_or_absent(config_section)
+    # Without an `options` key, Juju refuses the charm (CONFIG-008 reports
+    # it), but the options are still worth checking for everything else, so
+    # take them from the section itself.
+    config_options = config_section
     if "options" in config_section:
         # `config: {options: }` is an empty (not absent) option set — take
-        # it as-is, rather than falling through and treating the literal
-        # key 'options' as an option name.
+        # it as-is, rather than treating the literal key 'options' as an
+        # option name.
         config_options = config_section["options"]
-    elif config_section:
-        config_options = config_section
-    else:
-        config_data = _yaml.load(charm_dir / "config.yaml")
-        config_options = config_data.get("options") if "options" in config_data else config_data
     config_options = _mapping_or_absent(config_options)
+
+    # Parse pyproject.toml once, for every rule that reads a charm's
+    # Python packaging (dependency pinning, build backend, tooling).
+    pyproject = _toml.load(charm_dir / "pyproject.toml")
 
     # Collect Python files and read their contents.
     python_files = _collect_python_files(charm_dir)
@@ -154,6 +149,8 @@ def build_context(charm_dir: pathlib.Path) -> models.CharmContext:
         metadata=metadata,
         actions=actions,
         config_options=config_options,
+        config_section=config_section,
+        pyproject=pyproject,
         python_files=python_files,
         python_sources=python_sources,
         python_modules=python_modules,
@@ -178,78 +175,70 @@ def _mapping_or_absent(node: models.Yaml) -> models.Yaml:
 def _should_run_rule(rule: _rules.Rule, config: _config.LintConfig) -> bool:
     """Determine whether a rule should run given the config.
 
-    Precedence: more-specific directives win over less-specific ones.
-    A rule ID beats a category, so ``select=["FOO001"]`` runs even when
-    ``ignore=["FOO"]`` — the user was more specific about running FOO001
-    than about ignoring FOO.
+    Precedence: more-specific directives win over less-specific ones. A
+    token naming one rule — its ID or its name — beats a category, so
+    ``select=["FOO-001"]`` runs even when ``ignore=["FOO"]``: the user
+    was more specific about running FOO-001 than about ignoring FOO.
     """
     rule_id = rule.id
-    category = rule.category
 
-    if rule_id in config.ignore:
+    if _selectors.matches_rule(config.ignore, rule_id):
         return False
-    if rule_id in config.select:
+    if _selectors.matches_rule(config.select, rule_id):
         return True
-    if category in config.ignore:
+    if _selectors.matches_category(config.ignore, rule_id):
         return False
     if config.select:
-        return category in config.select
+        return _selectors.matches_category(config.select, rule_id)
     return True
 
 
 def _effective_severity(rule: _rules.Rule, config: _config.LintConfig) -> models.Severity | None:
-    """Resolve the effective severity for a rule, applying config overrides."""
-    rule_id = rule.id
-    override = config.severity_overrides.get(rule_id)
-    if override:
-        try:
-            return models.Severity(override)
-        except ValueError:
-            pass
+    """Resolve the effective severity for a rule, applying config overrides.
+
+    An override key names the rule by ID, by name, or by category; a key
+    naming this rule alone wins over one naming its whole category.
+    """
+    for categories in (False, True):
+        for key, override in config.severity_overrides.items():
+            if _selectors.is_category(key) is not categories:
+                continue
+            if rule.id not in _selectors.resolve(key):
+                continue
+            try:
+                return models.Severity(override)
+            except ValueError:
+                continue
     return None
 
 
-def lint(
-    charm_dir: pathlib.Path,
-    config: _config.LintConfig | None = None,
-) -> models.LintReport:
-    """Run all enabled rules against a charm directory.
+def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[models.Diagnostic]:
+    """Run the enabled rules against one charm, and apply its ``noqa`` directives.
 
-    This is the main public API.
+    Diagnostic paths are relative to *charm_dir*, as a rule reports them.
     """
-    if config is None:
-        config = _config.LintConfig()
-
     try:
         context = build_context(charm_dir)
     except _yaml.FileLoadError as exc:
-        return models.LintReport.from_diagnostics(
-            charm_dir=charm_dir,
-            diagnostics=[
-                models.Diagnostic(
-                    rule_id="FATAL",
-                    severity=models.Severity.ERROR,
-                    message=f"Could not load {exc.path.name}: {exc.reason}",
-                    path=str(exc.path.relative_to(charm_dir))
-                    if exc.path.is_relative_to(charm_dir)
-                    else str(exc.path),
-                )
-            ],
-        )
+        return [
+            models.Diagnostic(
+                rule_id="FATAL",
+                severity=models.Severity.ERROR,
+                message=f"Could not load {exc.path.name}: {exc.reason}",
+                path=str(exc.path.relative_to(charm_dir))
+                if exc.path.is_relative_to(charm_dir)
+                else str(exc.path),
+            )
+        ]
 
     if not context.metadata:
-        return models.LintReport.from_diagnostics(
-            charm_dir=charm_dir,
-            diagnostics=[
-                models.Diagnostic(
-                    rule_id="FATAL",
-                    severity=models.Severity.ERROR,
-                    message=(
-                        "No charmcraft.yaml or metadata.yaml found — is this a charm directory?"
-                    ),
-                )
-            ],
-        )
+        return [
+            models.Diagnostic(
+                rule_id="FATAL",
+                severity=models.Severity.ERROR,
+                message="No charmcraft.yaml or metadata.yaml found — is this a charm directory?",
+            )
+        ]
 
     all_diagnostics: list[models.Diagnostic] = []
 
@@ -262,17 +251,7 @@ def lint(
         # Apply severity overrides.
         override = _effective_severity(rule, config)
         if override is not None:
-            diagnostics = [
-                models.Diagnostic(
-                    rule_id=d.rule_id,
-                    severity=override,
-                    message=d.message,
-                    path=d.path,
-                    line=d.line,
-                    fix_hint=d.fix_hint,
-                )
-                for d in diagnostics
-            ]
+            diagnostics = [dataclasses.replace(d, severity=override) for d in diagnostics]
 
         # Filter by minimum severity.
         if config.min_severity:
@@ -288,33 +267,94 @@ def lint(
 
         all_diagnostics.extend(diagnostics)
 
-    all_diagnostics = _apply_noqa(charm_dir, all_diagnostics)
-
-    return models.LintReport.from_diagnostics(charm_dir=charm_dir, diagnostics=all_diagnostics)
+    return _apply_noqa(charm_dir, all_diagnostics)
 
 
-# YAML files are the only ones scanned for ``noqa`` directives.
-_NOQA_SUFFIXES = frozenset({".yaml", ".yml"})
+def _prefixed(diagnostic: models.Diagnostic, prefix: pathlib.PurePosixPath) -> models.Diagnostic:
+    """Return *diagnostic* with its path moved from charm-relative to root-relative.
+
+    Only reached when one run covers several charms, where a bare
+    ``src/charm.py`` would not say which charm it came from.
+    """
+    if diagnostic.path is None:
+        return diagnostic
+    return dataclasses.replace(diagnostic, path=str(prefix / diagnostic.path))
+
+
+def lint(
+    path: pathlib.Path,
+    config: _config.LintConfig | None = None,
+) -> models.LintReport:
+    """Run all enabled rules against a charm directory.
+
+    This is the main public API.
+
+    *path* is normally a single charm. It may also be a repository holding
+    several charms, in which case every charm below it is linted and the
+    findings are gathered into one report, with each diagnostic's path
+    written relative to *path* so it names the charm it belongs to.
+    """
+    if config is None:
+        config = _config.LintConfig()
+
+    path = path.resolve()
+    charm_dirs = _discovery.discover_charms(path)
+
+    if not charm_dirs:
+        return models.LintReport.from_diagnostics(
+            charm_dir=path,
+            diagnostics=[
+                models.Diagnostic(
+                    rule_id="FATAL",
+                    severity=models.Severity.ERROR,
+                    message=(
+                        "No charmcraft.yaml or metadata.yaml found here or in any "
+                        "directory below — is this a charm directory?"
+                    ),
+                )
+            ],
+        )
+
+    if charm_dirs == [path]:
+        return models.LintReport.from_diagnostics(
+            charm_dir=path, diagnostics=_lint_charm(path, config)
+        )
+
+    diagnostics: list[models.Diagnostic] = []
+    for charm_dir in charm_dirs:
+        prefix = pathlib.PurePosixPath(charm_dir.relative_to(path))
+        diagnostics.extend(_prefixed(d, prefix) for d in _lint_charm(charm_dir, config))
+    return models.LintReport.from_diagnostics(charm_dir=path, diagnostics=diagnostics)
+
+
+# The files scanned for suppression comments. The bare ``noqa`` forms
+# are honoured only in YAML: in a Python file such a comment is ruff's.
+_NOQA_SUFFIXES = frozenset({".yaml", ".yml", ".py"})
+_LEGACY_NOQA_SUFFIXES = frozenset({".yaml", ".yml"})
 
 
 def _apply_noqa(
     charm_dir: pathlib.Path, diagnostics: list[models.Diagnostic]
 ) -> list[models.Diagnostic]:
-    """Drop diagnostics silenced by a ``noqa`` directive in their file.
+    """Drop diagnostics silenced by a suppression comment in their file.
 
-    Only YAML files are scanned. A diagnostic with no path, or one in a
-    non-YAML or unreadable file, is always kept.
+    Only YAML and Python files are scanned. A diagnostic with no path, or
+    one in another kind of file, or in an unreadable one, is always kept.
     """
     cache: dict[str, _noqa.FileNoqa | None] = {}
 
     def noqa_for(rel_path: str) -> _noqa.FileNoqa | None:
         if rel_path not in cache:
             file = charm_dir / rel_path
-            if file.suffix.lower() not in _NOQA_SUFFIXES:
+            suffix = file.suffix.lower()
+            if suffix not in _NOQA_SUFFIXES:
                 cache[rel_path] = None
             else:
                 try:
-                    cache[rel_path] = _noqa.parse(file.read_text(errors="replace"))
+                    cache[rel_path] = _noqa.parse(
+                        file.read_text(errors="replace"),
+                        legacy_noqa=suffix in _LEGACY_NOQA_SUFFIXES,
+                    )
                 except OSError:
                     cache[rel_path] = None
         return cache[rel_path]

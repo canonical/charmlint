@@ -56,6 +56,11 @@ def make_full_charm(charm_dir: pathlib.Path) -> None:
                         "default": 8080,
                         "description": "HTTP port",
                     },
+                    "invalid-combo": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Deliberately invalid combination, for tests",
+                    },
                 },
             },
             "actions": {
@@ -94,10 +99,13 @@ class TestCharm(ops.CharmBase):
 
     def _on_resume(self, event: ops.ActionEvent) -> None:
         event.set_results({"status": "running"})
+
+if __name__ == "__main__":
+    ops.main(TestCharm)
 """,
     )
     # Add requirements with ops-tracing.
-    (charm_dir / "requirements.txt").write_text("ops\nops-tracing\n")
+    (charm_dir / "requirements.txt").write_text("ops>=2.23,<4\nops-tracing\n")
     # Add README.
     (charm_dir / "README.md").write_text(
         "# Test Charm\n\n## Installation\n\n## Configuration\n\n## Usage\n\n## Troubleshooting\n"
