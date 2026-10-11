@@ -5,6 +5,18 @@ from ._base import Rule
 
 
 class NoReadme(Rule):
+    """Check that the charm has a README.
+
+    The README is what someone landing in the repository reads first,
+    and for many charms it is the only documentation there is.
+
+    ``README`` with a ``.md``, ``.txt`` or ``.rst`` extension satisfies
+    the rule, in any case combination, and it has to sit at the charm
+    root: a README one directory down documents that directory, not the
+    charm. An extensionless ``README`` is reported, since nothing
+    renders it.
+    """
+
     category = "DOCUMENTATION"
     number = 1
     name = "no-readme"
