@@ -52,7 +52,7 @@ The implementation gets a lighter pass. We're more lenient about "agent-isms" he
 
 # Rules
 
-The pinned tracking issue lists the open rule and engine work in the order we'd like to take it. Roughly, the value of a rule is the number of charms that have the defect, times how bad the defect is, divided by the risk of false positives. Two kinds of work jump the queue:
+We take rule and engine work in order of value. Roughly, the value of a rule is the number of charms that have the defect, times how bad the defect is, divided by the risk of false positives. Two kinds of work jump the queue:
 
 * False positives in rules that already ship. A false positive is worse than a gap, and a rule that's already in the default `select` is costing trust today.
 * Engine work that several queued rules are blocked on - anything that would otherwise be re-implemented in each rule, or retrofitted into every rule written before it.
