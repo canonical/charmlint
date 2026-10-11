@@ -52,6 +52,19 @@ def _is_bundle(context: models.CharmContext) -> bool:
 
 
 class MissingName(Rule):
+    """Check that the charm declares a ``name``.
+
+    ``name`` is the charm's identity: what it is published under on
+    Charmhub, and what ``juju deploy`` is given. charmcraft refuses to
+    pack a charm without one, so the charm is not merely untidy, it
+    does not build.
+
+    An empty value counts as missing — ``name:`` with nothing after it
+    names nothing. Bundles are skipped, here and in the rest of this
+    family: these are charm-metadata fields, and a bundle declares none
+    of them.
+    """
+
     category = "METADATA"
     number = 1
     name = "missing-name"
@@ -68,6 +81,19 @@ class MissingName(Rule):
 
 
 class MissingDisplayName(Rule):
+    """Check that the charm declares a human-readable title.
+
+    The title is the name Charmhub shows for the charm, where ``name``
+    is the identifier it is deployed by. Juju never needs it, so a
+    charm without one still works — it just appears under its
+    package-style name wherever a person is reading.
+
+    The key is ``title`` in charmcraft.yaml and ``display-name`` in
+    metadata.yaml, and only the spelling belonging to the file the
+    charm uses counts: writing ``display-name`` in charmcraft.yaml is a
+    misplacement rather than a title.
+    """
+
     category = "METADATA"
     number = 2
     name = "missing-display-name"
@@ -85,6 +111,14 @@ class MissingDisplayName(Rule):
 
 
 class MissingSummary(Rule):
+    """Check that the charm declares a ``summary``.
+
+    The summary is the one-line description that identifies the charm
+    in ``juju info``, in ``charmhub`` search results, and anywhere else
+    charms are listed rather than read about. charmcraft requires it to
+    pack.
+    """
+
     category = "METADATA"
     number = 3
     name = "missing-summary"
@@ -101,6 +135,17 @@ class MissingSummary(Rule):
 
 
 class MissingDescription(Rule):
+    """Check that the charm declares a ``description``.
+
+    The description is the prose Charmhub shows on the charm's page:
+    what the charm deploys, and what someone is choosing when they
+    choose it. charmcraft requires it to pack.
+
+    Only presence is checked. Whether the description is worth reading
+    is not something a linter can tell, so a one-word description
+    satisfies this rule.
+    """
+
     category = "METADATA"
     number = 4
     name = "missing-description"
@@ -117,6 +162,17 @@ class MissingDescription(Rule):
 
 
 class MissingDocs(Rule):
+    """Check that the charm links to its documentation.
+
+    Without the link, a reader who finds the charm on Charmhub has
+    nowhere to go for how to operate it. Advisory, because a charm
+    deploys perfectly well without it.
+
+    The key is ``links.documentation`` in charmcraft.yaml and ``docs``
+    at the top level in metadata.yaml, and only the spelling belonging
+    to the file the charm uses counts.
+    """
+
     category = "METADATA"
     number = 5
     name = "missing-docs"
@@ -134,6 +190,17 @@ class MissingDocs(Rule):
 
 
 class MissingIssues(Rule):
+    """Check that the charm links to its issue tracker.
+
+    The link is how someone who hits a bug in the charm reports it
+    rather than working around it. Advisory, because a charm deploys
+    perfectly well without it.
+
+    The key is ``links.issues`` in charmcraft.yaml and ``issues`` at
+    the top level in metadata.yaml, and only the spelling belonging to
+    the file the charm uses counts.
+    """
+
     category = "METADATA"
     number = 6
     name = "missing-issues"
@@ -151,6 +218,17 @@ class MissingIssues(Rule):
 
 
 class MissingSource(Rule):
+    """Check that the charm links to its source.
+
+    The link is how someone reading the charm on Charmhub finds the
+    code behind it — to see what it actually does, or to fix it.
+    Advisory, because a charm deploys perfectly well without it.
+
+    The key is ``links.source`` in charmcraft.yaml and ``source`` at
+    the top level in metadata.yaml, and only the spelling belonging to
+    the file the charm uses counts.
+    """
+
     category = "METADATA"
     number = 7
     name = "missing-source"

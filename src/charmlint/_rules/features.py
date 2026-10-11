@@ -1,166 +1,83 @@
-"""Features rules — behaviour and capabilities a charm is expected to have.
+"""Features rules — capabilities a charm is expected to have.
 
-Some of these rules are about what the charm's Python does, and some
-about what the charm tells Juju it needs: a charm that relies on a
-feature Juju only added in a recent release has no way to refuse an
-older controller unless it says so in its metadata.
+Some of these rules are about what the charm tells Juju it needs, and
+some about what its Python does at runtime; what they have in common is
+a capability an operator expects to be there and has no way to add from
+outside the charm.
 """
 
 import ast
+import dataclasses
 
 from .. import _ast
 from .. import _models as models
 from ._base import Rule
 
+# `assumes` entries nest: a group is a single-key mapping whose value is
+# the list of nested entries. Both quantifiers are valid at any depth.
+_GROUP_KEYS = ("any-of", "all-of")
 
-class NoUpgradeCharmObserver(Rule):
-    """Detect a charm that never mentions the ``upgrade-charm`` event.
 
-    Reported only when the charm's wiring is legible end to end: its class
-    subclasses ``ops.CharmBase`` here, it registers its events with
-    ``framework.observe`` here, and every one of those registrations names
-    an event this rule could read. Anything less and the missing event may
-    simply be somewhere charmlint cannot look.
+def _is_juju_entry(entry: models.Yaml) -> bool:
+    """Report whether *entry* is a `juju` feature expression.
 
-    Only the charm's own code counts, in both directions: a vendored
-    ``lib/charms/<someone else>/`` copy neither makes a repository a charm
-    nor answers for the charm's own upgrade. A charm that pulls in a
-    library observing ``upgrade-charm`` gets that library's concern
-    refreshed — its dashboards re-pushed, its scrape jobs re-sent — which
-    says nothing about the charm's own workload.
-
-    Informational: plenty of charms genuinely have nothing to do on an
-    upgrade, and Juju fires ``config-changed`` afterwards, so a holistic
-    charm may already reconcile. The finding is worth a look rather than a
-    fix — a charm that installs a snap, writes a systemd unit, or keeps
-    on-disk state, and never redoes any of it on upgrade, is the case this
-    is fishing for.
+    Both structures mean the same thing to Juju: the flat string form
+    (``juju >= 3.6``) and the mapping form (``{juju: ">= 3.6"}``). In
+    either form, a bare ``juju`` with nothing after it is not a version
+    constraint, so it does not count.
     """
-
-    category = "FEATURES"
-    number = 1
-    name = "no-upgrade-charm-observer"
-    description = "Charm does not observe the upgrade-charm event"
-    default_severity = models.Severity.INFO
-    reference_url = "https://canonical.com/juju/docs/juju/stable/reference/hook/#upgrade-charm"
-
-    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        is_charm = False
-        observes_anything = False
-        for module in context.charm_sources():
-            if _names_upgrade(module) or not _wiring_is_readable(module):
-                return []
-            is_charm = is_charm or _defines_charm_class(module)
-            observes_anything = observes_anything or bool(_ast.observers(module))
-        # A charm that registers nothing at all is wiring its events some
-        # way this rule cannot enumerate — a base class, a decorator, a
-        # component framework — so the absence of one event means nothing.
-        if not is_charm or not observes_anything:
-            return []
-        return [
-            self.diagnostic(
-                "Charm does not observe the upgrade-charm event — an upgraded unit "
-                "starts from whatever the previous revision left on disk, with no "
-                "chance to migrate it, refresh the workload, or update its peers",
-                fix_hint=(
-                    "Observe the event, e.g. "
-                    "`self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)`, "
-                    "or have a holistic handler reconcile the unit on it"
-                ),
-            )
-        ]
-
-
-# Every spelling of the event that a charm's source might carry: the ops
-# event attribute, the ops event class, and the hook name as a string.
-_UPGRADE_NAMES = frozenset({"upgrade_charm", "upgrade-charm", "UpgradeCharmEvent"})
-
-
-def _names_upgrade(module: models.Module) -> bool:
-    """Whether *module* names the upgrade-charm event, in any position.
-
-    The obvious form is ``framework.observe(self.on.upgrade_charm, ...)``,
-    but the corpus handles the upgrade in three more shapes that no observe
-    call of the charm's own would catch: handing ``self.on.upgrade_charm``
-    to a library that observes it on the charm's behalf (a
-    ``refresh_events`` list), passing ``ops.UpgradeCharmEvent`` to a helper
-    that does the observing, and branching on the hook name in ``__init__``
-    rather than observing anything. Naming the event at all therefore
-    counts as handling it — a charm that has thought about upgrades has
-    nothing to learn here, and the rule is about the ones that never
-    mention them.
-    """
-    for node in module.walk(ast.Attribute, ast.Name, ast.Constant):
-        if isinstance(node, ast.Attribute):
-            if node.attr in _UPGRADE_NAMES:
-                return True
-        elif isinstance(node, ast.Name):
-            if node.id in _UPGRADE_NAMES:
-                return True
-        elif isinstance(node.value, str) and node.value in _UPGRADE_NAMES:
-            return True
+    value = entry.value
+    if isinstance(value, str):
+        head, _, rest = value.strip().partition(" ")
+        return head.lower() == "juju" and bool(rest.strip())
+    if isinstance(value, dict):
+        return any(
+            isinstance(key, str)
+            and key.strip().lower() == "juju"
+            and isinstance(val, str)
+            and bool(val.strip())
+            for key, val in value.items()
+        )
     return False
 
 
-# Helpers that wire events for the charm rather than at the call site:
-# ``cosl.reconciler``'s ``observe_events(self, all_events, self._reconcile)``
-# and its kin, and the reconciler objects of ``charms.reconciler`` and
-# ``charmed_kubeflow_chisme``, which walk ``charm.on.events()`` and observe
-# the lot. Either way the registered events are named inside the helper.
-_OBSERVE_PREFIX = "observe"
-_RECONCILER_SUFFIX = "Reconciler"
+def _has_juju_constraint(assumes: models.Yaml) -> bool:
+    """Report whether *assumes* declares a Juju version anywhere inside it.
 
-
-def _wiring_is_readable(module: models.Module) -> bool:
-    """Whether every event *module* registers can be read at the call site.
-
-    False for an observe call whose event expression could not be decoded,
-    and for a call to an ``observe_*`` helper or a ``*Reconciler``, which
-    register a set of events named inside themselves rather than here.
-    Telling a charm it never handles upgrades on the strength of wiring the
-    rule failed to read is the false positive most worth designing against,
-    so any of those shapes silences the rule.
+    A charm may put the constraint inside an ``any-of`` / ``all-of``
+    group rather than at the top level. Either way the charm has thought
+    about the version, which is all this rule asks for.
     """
-    if any(not observer.resolved for observer in _ast.observers(module)):
-        return False
-    for call in module.walk(ast.Call):
-        name = _ast.dotted_name(call.func)
-        trailing = name.rpartition(".")[2] if name else ""
-        if trailing.startswith(_OBSERVE_PREFIX) and trailing != _OBSERVE_PREFIX:
-            return False
-        if trailing.endswith(_RECONCILER_SUFFIX):
-            return False
-    return True
-
-
-# The names a charm's own base class resolves to, whichever spelling the
-# source used: ``ops.CharmBase``, ``from ops import CharmBase``, or the
-# older ``from ops.charm import CharmBase``.
-_CHARM_BASES = frozenset({"ops.CharmBase", "ops.charm.CharmBase"})
-
-
-def _defines_charm_class(module: models.Module) -> bool:
-    """Whether *module* defines an ``ops.CharmBase`` subclass.
-
-    A visible subclass is what makes the rest of the rule sound: the class
-    the framework will instantiate is there to be read. A charm whose class
-    derives from a base installed as a pip dependency — ``paas_charm``,
-    ``ops_openstack``, ``ops_sunbeam`` — is left alone, because the observe
-    calls that base makes are not in the tree, and "this charm ignores
-    upgrades" would be a guess about code charmlint cannot see. That is
-    also why an ``ops.main(...)`` call is not taken as evidence on its own:
-    a ``main`` call whose class charmlint cannot read is exactly the case
-    being excluded.
-    """
-    imports = _ast.Imports.of(module)
-    return any(
-        imports.resolve(base) in _CHARM_BASES
-        for node in module.walk(ast.ClassDef)
-        for base in node.bases
-    )
+    for entry in assumes.elements or ():
+        if _is_juju_entry(entry):
+            return True
+        for key in _GROUP_KEYS:
+            if key in entry and _has_juju_constraint(entry.get(key)):
+                return True
+    return False
 
 
 class NoAssumesJujuVersion(Rule):
+    """Check that the charm declares the oldest Juju it supports.
+
+    ``assumes`` is how a charm tells a controller what it needs. With a
+    ``juju >= x.y`` entry, a controller too old to run the charm
+    refuses the deploy and says so; without one, the charm deploys and
+    then fails at whichever hook first reaches the feature it assumed,
+    which is a much longer walk back to the cause.
+
+    The constraint counts wherever it appears — nested inside an
+    ``any-of`` or ``all-of`` group as readily as at the top level — and
+    in either spelling Juju accepts, the flat ``juju >= 3.6`` and the
+    mapping ``{juju: ">= 3.6"}``. A bare ``juju`` with no version after
+    it constrains nothing and does not count.
+
+    Only charms whose metadata lives in ``charmcraft.yaml`` are
+    checked: one still declaring ``name`` in ``metadata.yaml`` predates
+    the unified file, and may predate ``assumes`` (Juju 2.9.23)
+    altogether. Bundles are skipped, having no ``assumes`` to declare.
+    """
+
     category = "FEATURES"
     number = 4
     name = "no-assumes-juju-version"
@@ -197,45 +114,506 @@ class NoAssumesJujuVersion(Rule):
         ]
 
 
-# `assumes` entries nest: a group is a single-key mapping whose value is
-# the list of nested entries. Both quantifiers are valid at any depth.
-_GROUP_KEYS = ("any-of", "all-of")
+# The two ways a charm reports a workload version, one per framework:
+# ``ops.Unit.set_workload_version`` and, for a reactive charm built on
+# charmhelpers, ``hookenv.application_version_set``. They set the same Juju
+# field, so either satisfies this rule — a reactive charm that already
+# reports its version is not missing anything, and flagging it because it
+# reports it through the other framework's API would be a false positive.
+#
+# Both are matched on the called name alone rather than on the receiver.
+# ``set_workload_version`` is reached as ``self.unit.…``, as
+# ``self.model.unit.…`` and through a local the charm bound earlier
+# (``unit = self.unit``); ``application_version_set`` is reached as
+# ``hookenv.…`` and, imported directly, as a bare name. This is the same
+# reasoning ``_ast.observers`` applies to ``framework.observe``: the names
+# are specific enough that a same-named method on an unrelated object is
+# not a realistic worry, and matching loosely errs towards silence.
+_VERSION_CALLS = frozenset({"set_workload_version", "application_version_set"})
+
+# Third-party helpers that drive the workload themselves and set its version
+# as part of doing so. They arrive as pip dependencies rather than as files in
+# the charm tree, so there is no call for the check above to find; importing
+# one is the evidence that the version does get set.
+#
+# The entries here are the COS worker module, whose ``Worker`` calls
+# ``unit.set_workload_version(...)`` on every reconcile, under both the
+# spelling it has now and the ``cosl`` one it shipped under before it moved
+# to its own distribution. Each is deliberately the module rather than the
+# class, so that both constructing a ``Worker`` and subclassing one count —
+# the COS worker charms do one each. ``coordinated_workers.coordinator`` is
+# *not* listed: ``Coordinator`` does not set a version, and the coordinator
+# charms are real findings.
+_WORKLOAD_VERSION_SETTERS = frozenset({
+    "coordinated_workers.worker",
+    "cosl.coordinated_workers.worker",
+})
+
+# Charm-name suffixes that say the charm has no workload of its own. By
+# Canonical's naming guidelines an integrator hands another charm the
+# details of an external service, a configurator writes a fragment of
+# another charm's configuration, and an interface repository carries a
+# library with a sample charm attached: in each case there is nothing
+# running whose version could be read. Of the 30 such charms in the hyrum
+# cache, none declares a non-empty ``containers:``, drives a Pebble layer,
+# or installs a snap or deb, so the suffix is taken as the charm saying so
+# in place of the ``file-ignore`` it would otherwise have to write.
+#
+# The name comes from the metadata rather than from the directory or the
+# repository: a charm need not sit at the root of a repository, need not
+# be in one at all, and a monorepo holds several under one repository name.
+_NO_WORKLOAD_SUFFIXES = ("-integrator", "-configurator", "-interface")
 
 
-def _has_juju_constraint(assumes: models.Yaml) -> bool:
-    """Report whether *assumes* declares a Juju version anywhere inside it.
+def _called_name(func: ast.expr) -> str | None:
+    """The bare name a call expression invokes, ignoring any receiver."""
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return None
 
-    A charm may put the constraint inside an ``any-of`` / ``all-of``
-    group rather than at the top level. Either way the charm has thought
-    about the version, which is all this rule asks for.
-    """
-    for entry in assumes.elements or ():
-        if _is_juju_entry(entry):
+
+def _sets_workload_version(module: models.Module) -> bool:
+    """Whether *module* reports a workload version, directly or by delegation."""
+    for call in module.walk(ast.Call):
+        if _called_name(call.func) in _VERSION_CALLS:
             return True
-        for key in _GROUP_KEYS:
-            if key in entry and _has_juju_constraint(entry.get(key)):
+    imports = _ast.Imports.of(module)
+    return any(imports.imports_module(name) for name in _WORKLOAD_VERSION_SETTERS)
+
+
+class NoSetWorkloadVersion(Rule):
+    """Flag a charm that never reports its workload's version.
+
+    A charm's workload is rarely the charm's own code: it is an OCI image,
+    a snap from a channel, a deb, or a set of manifests applied to a
+    cluster. Which version of it is actually running is therefore not
+    something the reader of ``juju status`` can infer. There is a column
+    for exactly that, and unless the charm calls
+    ``self.unit.set_workload_version(...)`` — normally once the workload
+    is up and can be asked — the column stays empty, and the only way to
+    find out is to get a shell on the unit.
+
+    Charms with no workload to version — integrators, configurators,
+    proxies, interface placeholders — are the real exception, and the
+    rule detects only the ones that say so in their name, through the
+    suffixes in :data:`_NO_WORKLOAD_SUFFIXES`. Nothing else in the
+    metadata declares "I have a workload" outside of ``containers:``, and
+    every code-side proxy measured against the corpus
+    (``operator_libs_linux``, snap, apt, systemd, ``subprocess``) fires at
+    the population's base rate, so it separates nothing. Rather than guess
+    at the rest, the rule asks such a charm to say so once::
+
+        # charmlint: file-ignore[FEATURES-005]
+
+    That leaves the charms whose name gives nothing away — the OpenStack
+    storage-backend subordinates, the dashboard and plugin subordinates,
+    the library repositories whose sample charm gets enumerated — to the
+    comment.
+
+    The call is looked for across the charm's own source (``src/`` and any
+    library the charm publishes), matched on the called name alone so that
+    every receiver spelling counts: ``self.unit``, ``self.model.unit``, and
+    a local the charm bound earlier all resolve. A reactive charm that
+    reports its version through charmhelpers' ``application_version_set``
+    satisfies the rule too: it is the same Juju field by the other
+    framework's name. Charms that delegate the
+    workload to a framework which sets the version for them are recognised
+    by the import, since the framework is a pip dependency with no source
+    in the tree.
+
+    Three routes are still not resolved, each of which would make this a
+    false positive: a ``getattr(self.unit, ...)`` lookup, a call made by a
+    *vendored* library on the charm's behalf, and any framework not in
+    :data:`_WORKLOAD_VERSION_SETTERS`. A charm with no reachable source of
+    its own is left alone entirely.
+    """
+
+    category = "FEATURES"
+    number = 5
+    name = "no-set-workload-version"
+    description = "Charm never calls set_workload_version()"
+    default_severity = models.Severity.INFO
+    reference_url = (
+        "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        name = context.metadata.get("name").value
+        if isinstance(name, str) and name.endswith(_NO_WORKLOAD_SUFFIXES):
+            return []
+        sources = list(context.charm_sources())
+        # No source to read is not evidence of a missing call.
+        if not sources:
+            return []
+        if any(_sets_workload_version(module) for module in sources):
+            return []
+        # ``containers:`` is the most specific thing to point at when
+        # the charm has one. For everything else an absent node carries the
+        # metadata file with no line, which is what a whole-charm finding
+        # wants — and what a ``file-ignore`` needs in order to reach it.
+        anchor = context.metadata.get("containers")
+        return [
+            self.diagnostic(
+                "Charm never calls `set_workload_version()` — the workload "
+                "version column in `juju status` stays empty",
+                path=anchor.source,
+                line=anchor.line,
+                fix_hint=(
+                    "Once the workload is running, ask it its version and call "
+                    "`self.unit.set_workload_version(version)`; if this charm has no "
+                    "workload to report a version for, silence the rule with "
+                    "`# charmlint: file-ignore[FEATURES-005]`"
+                ),
+            )
+        ]
+
+
+# Strings that report *no* version rather than a wrong one. A charm passes
+# one of these to clear the field on teardown, to reset it before a
+# reinstall, or as the fallback in its own version helper when the workload
+# cannot be asked — 21 of the 24 charms in the hyrum cache that pass a
+# placeholder also have a real dynamic call elsewhere, and the three that do
+# not are configuration charms with no workload, for which ``n/a`` is an
+# honest answer rather than a defect. None of that is what this rule is
+# about, so a placeholder is left alone.
+_VERSION_PLACEHOLDERS = frozenset({"", "n/a", "none", "unknown"})
+
+
+def _literal_names(module: models.Module) -> dict[str, str]:
+    """Names bound to a string literal and to nothing else, mapped to that literal.
+
+    A name assigned a literal in one branch and a real lookup in another is
+    not a hardcoded version, so a name is only treated as constant when
+    *every* assignment to it in the file is a string literal. The value is
+    carried along because it, not the name, is what decides whether the
+    version is a placeholder and what the diagnostic should quote.
+
+    A name assigned a literal more than once keeps the last one, which is
+    what the module ends up holding.
+    """
+    literal: dict[str, str] = {}
+    dynamic: set[str] = set()
+    for assign in module.walk(ast.Assign):
+        constant = isinstance(assign.value, ast.Constant) and isinstance(assign.value.value, str)
+        for target in assign.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if constant:
+                literal[target.id] = assign.value.value
+            else:
+                dynamic.add(target.id)
+    return {name: value for name, value in literal.items() if name not in dynamic}
+
+
+def _hardcoded_version(arg: ast.expr, literal_names: dict[str, str]) -> str | None:
+    """The hardcoded version *arg* passes, or ``None`` if it is computed.
+
+    The version is the string that reaches Juju, whether it was written at
+    the call or bound to a name first, so a name resolves to its value
+    before the placeholder test rather than being tested as a word.
+    """
+    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+        value = arg.value
+    elif isinstance(arg, ast.Name) and arg.id in literal_names:
+        value = literal_names[arg.id]
+    else:
+        return None
+    return None if value.strip().lower() in _VERSION_PLACEHOLDERS else value
+
+
+class HardcodedWorkloadVersion(Rule):
+    """Flag a workload version reported as a constant rather than read.
+
+    The point of the workload version is to say which version is *running*.
+    A charm that passes a literal is instead saying which version it was
+    written against, and the two part company the first time the image,
+    snap or package is bumped without the charm being touched. Nothing
+    fails when they do: ``juju status`` keeps reporting the stale number,
+    which is worse than the empty column FEATURES-005 is about, because it
+    looks like an answer.
+
+    The version should come from the workload: ``pebble exec`` or
+    ``subprocess`` asking the binary, a version file the image ships, or
+    an API the service exposes — whatever can be read at runtime rather
+    than written down.
+
+    A name counts as a constant only when every assignment to it in the
+    same file is a string literal, so a charm that seeds a variable with
+    a placeholder and then overwrites it with a real lookup is not
+    flagged. Neither is the ``self._version() or ""`` fallback idiom, nor
+    a placeholder passed on its own: see :data:`_VERSION_PLACEHOLDERS`.
+    A constant defined in another module is not followed, which is a
+    deliberate gap — it would add false-positive risk for no finding the
+    corpus can show.
+    """
+
+    category = "FEATURES"
+    number = 6
+    name = "hardcoded-workload-version"
+    description = "Workload version is a hardcoded constant, not read from the workload"
+    default_severity = models.Severity.WARNING
+    reference_url = (
+        "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for module in context.charm_sources():
+            literal_names = _literal_names(module)
+            for call in module.walk(ast.Call):
+                if _called_name(call.func) not in _VERSION_CALLS or not call.args:
+                    continue
+                version = _hardcoded_version(call.args[0], literal_names)
+                if version is None:
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Workload version is hardcoded as `{version}` — it will keep "
+                        "being reported after the workload is upgraded",
+                        path=module.path,
+                        line=call.lineno,
+                        fix_hint=(
+                            "Read the version from the running workload (ask the binary, "
+                            "read a version file the image ships, or query the service) "
+                            "rather than writing it into the charm"
+                        ),
+                    )
+                )
+        return diagnostics
+
+
+_CONFIG_CHANGED = "config_changed"
+
+
+class NoConfigChangedObserver(Rule):
+    """Flag a charm that declares config options but never observes ``config-changed``.
+
+    ``config-changed`` is the event Juju emits when an operator runs
+    ``juju config``. A charm that declares options and never handles it
+    picks the new values up at whatever event happens to fire next, which
+    may be much later or never. From the Juju user's perspective, the
+    setting was silently ignored.
+
+    Handling it does not have to mean observing it, and the rule stays
+    quiet wherever the charm might be dealing with configuration
+    somewhere charmlint cannot see:
+
+    * The charm's own source names ``<...>.on.config_changed`` anywhere:
+      observed under an alias, listed for a holistic reconciler, or handed
+      to a library as a refresh event.
+    * An observe call could not be read statically, such as an event held
+      in a variable or a helper that observes a list of events. It may be
+      observing ``config-changed``.
+    * No plain ``ops.CharmBase`` subclass was found in the charm's own
+      source. The charm is either not an ops charm, built on a framework
+      base class that observes on its behalf, or assembled somewhere the
+      scan does not reach.
+    * The charm reconciles unconditionally in ``__init__``, so it runs on
+      every event including this one, or hands a callback to a
+      collaborator that observes on its behalf.
+    * The charm's source wires up no observers at all, which means
+      something outside it does.
+    * The charm's source never reads its own configuration, so the
+      options belong to a library that reads (and observes) them.
+
+    Two kinds of charm should suppress the rule with a ``file-ignore``
+    comment in the file that declares their options: one whose options
+    are only read when an action runs, so a change rightly waits for the
+    next run, and one that applies its configuration outside ops
+    altogether, such as in the entry point before it calls ``ops.main``.
+    """
+
+    category = "FEATURES"
+    number = 7
+    name = "no-config-changed-observer"
+    description = "Charm declares config options but does not observe config-changed"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if not context.config_options:
+            return []
+        charm_classes = 0
+        observer_count = 0
+        reads_config = False
+        for module in context.charm_sources():
+            if _mentions_config_changed(module) or _has_opaque_observe(module):
+                return []
+            classes = _classes(module)
+            if classes.framework or classes.holistic:
+                return []
+            charm_classes += classes.plain
+            reads_config = reads_config or _reads_config(module)
+            for observer in _ast.observers(module):
+                observer_count += 1
+                if not observer.resolved or observer.event == _CONFIG_CHANGED:
+                    return []
+        if not charm_classes or not observer_count or not reads_config:
+            return []
+        return [
+            self.diagnostic(
+                "Charm declares config options but never handles 'config-changed', "
+                "so operator configuration changes are silently ignored",
+                path=context.config_options.source,
+                line=context.config_options.line,
+                fix_hint=(
+                    "Add `framework.observe(self.on.config_changed, self._on_config_changed)` "
+                    "in __init__ and a handler that reconciles the workload with the new "
+                    "configuration"
+                ),
+            )
+        ]
+
+
+def _mentions_config_changed(module: models.Module) -> bool:
+    """Whether *module* names the ``config-changed`` event at all.
+
+    Charms reach the event by more routes than a literal
+    ``framework.observe(self.on.config_changed, ...)``: through a local
+    alias for ``observe``, through a list of events fed to a holistic
+    reconciler, or by handing ``self.on.config_changed`` to a charm
+    library as its ``refresh_event``. All of them write
+    ``<...>.on.config_changed``.
+    """
+    return any(
+        node.attr == _CONFIG_CHANGED
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "on"
+        for node in module.walk(ast.Attribute)
+    )
+
+
+def _has_opaque_observe(module: models.Module) -> bool:
+    """Whether *module* registers observers through something unreadable.
+
+    ``observe_events(self, all_events, self._reconcile)``, a helper that
+    loops over a list of events, registers ``config-changed`` without
+    ever naming it. Any observe-shaped call that :func:`_ast.observers`
+    could not decode is treated as possibly being one of those.
+    """
+    decoded = {id(observer.call) for observer in _ast.observers(module)}
+    for call in module.walk(ast.Call):
+        name = _called_name(call.func)
+        if name is not None and name.startswith("observe") and id(call) not in decoded:
+            return True
+    return False
+
+
+@dataclasses.dataclass
+class _Classes:
+    """What one module's class definitions say about the charm."""
+
+    # Classes deriving straight from ``ops.CharmBase``: the ones whose
+    # observers are all in the charm's own source.
+    plain: int = 0
+    # A charm class built on a framework base, or on a mixin alongside
+    # ``ops.CharmBase``: it inherits observers charmlint cannot see.
+    framework: bool = False
+    # A charm class that reconciles unconditionally in ``__init__``, or
+    # hands a callback to a collaborator that will observe for it.
+    holistic: bool = False
+
+
+def _classes(module: models.Module) -> _Classes:
+    """Classify the charm classes *module* defines.
+
+    Bases are resolved rather than pattern-matched, because a base named
+    like ``ops.CharmBase`` may still observe on the charm's behalf
+    (``single_kernel_kafka``'s ``ConnectCharmBase``, for one).
+    """
+    imports = _ast.Imports.of(module)
+    entry_points = _main_arguments(module, imports)
+    result = _Classes()
+    for node in module.walk(ast.ClassDef):
+        bases = {name for name in (imports.resolve(base) for base in node.bases) if name}
+        ops_bases = bases & _ast.CHARM_BASES
+        if ops_bases and not bases - ops_bases:
+            result.plain += 1
+            result.holistic = (
+                result.holistic or _reconciles_in_init(node) or _delegates_to_collaborator(node)
+            )
+        elif ops_bases or node.name in entry_points:
+            # Either a mixin alongside ``ops.CharmBase``, or a charm class
+            # whose base is something charmlint cannot see into.
+            result.framework = True
+    return result
+
+
+def _main_arguments(module: models.Module, imports: _ast.Imports) -> set[str]:
+    """Return the names handed to ``ops.main(...)`` in *module*."""
+    names: set[str] = set()
+    for call in module.walk(ast.Call):
+        if _ast.call_target(call, imports) not in _ast.OPS_MAIN_TARGETS or not call.args:
+            continue
+        name = _ast.dotted_name(call.args[0])
+        if name is not None:
+            names.add(name)
+    return names
+
+
+def _reconciles_in_init(node: ast.ClassDef) -> bool:
+    """Whether *node*'s ``__init__`` does work rather than only wiring up.
+
+    A statement-level ``self._reconcile()`` in ``__init__`` runs on every
+    event the charm is dispatched for, ``config-changed`` included, so the
+    charm handles configuration changes without observing anything.
+
+    Only a bare call *statement* counts. Calls that build the charm's
+    collaborators are expressions inside an assignment, and reading a
+    property is not a call at all.
+    """
+    for function in node.body:
+        if not isinstance(function, ast.FunctionDef) or function.name != "__init__":
+            continue
+        for statement in function.body:
+            if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+                continue
+            if _is_self_attribute(statement.value.func):
                 return True
     return False
 
 
-def _is_juju_entry(entry: models.Yaml) -> bool:
-    """Report whether *entry* is a `juju` feature expression.
+def _is_self_attribute(node: ast.expr) -> bool:
+    """Whether *node* is ``self.<name>``, a method or property of the charm."""
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+    )
 
-    Both structures mean the same thing to Juju: the flat string form
-    (``juju >= 3.6``) and the mapping form (``{juju: ">= 3.6"}``). In
-    either form, a bare ``juju`` with nothing after it is not a version
-    constraint, so it does not count.
+
+def _delegates_to_collaborator(node: ast.ClassDef) -> bool:
+    """Whether *node*'s ``__init__`` hands one of its own methods to a helper.
+
+    ``Reconciler(self, self.reconcile)``, the ``ops.manifests`` pattern
+    the charmed-kubernetes charms are built on, passes the charm and a
+    callback to an object that then observes the charm's events itself.
+    Plenty of charm libraries take a bare ``self`` too, so only a call
+    passing both the charm and a ``self.<name>`` reference counts.
     """
-    value = entry.value
-    if isinstance(value, str):
-        head, _, rest = value.strip().partition(" ")
-        return head.lower() == "juju" and bool(rest.strip())
-    if isinstance(value, dict):
-        return any(
-            isinstance(key, str)
-            and key.strip().lower() == "juju"
-            and isinstance(val, str)
-            and bool(val.strip())
-            for key, val in value.items()
-        )
+    for function in node.body:
+        if not isinstance(function, ast.FunctionDef) or function.name != "__init__":
+            continue
+        for call in ast.walk(function):
+            if not isinstance(call, ast.Call):
+                continue
+            arguments = [*call.args, *(kw.value for kw in call.keywords)]
+            passes_self = any(isinstance(a, ast.Name) and a.id == "self" for a in arguments)
+            if passes_self and any(_is_self_attribute(a) for a in arguments):
+                return True
     return False
+
+
+def _reads_config(module: models.Module) -> bool:
+    """Whether *module* reads the charm's configuration itself.
+
+    ``self.config``, ``self.charm.config`` and ``charm.model.config`` are
+    all an attribute named ``config``. A charm that declares options but
+    never touches them in its own source has handed them to a library
+    (``cosl``'s ``Worker`` reads a worker's ``role-*`` options, and
+    observes ``config-changed`` to do it), and that library's own
+    observers are not visible here.
+    """
+    return any(node.attr == "config" for node in module.walk(ast.Attribute))

@@ -4,7 +4,7 @@ A new or changed rule is reviewed on its true-positive / false-positive rate ove
 
 ## The cache
 
-The default location for the cache is `~/.cache/hyrum/charms/<owner>/<repo>/…`, populated by hyrum. It is a working cache, not a curated corpus: it holds build trees, vendored copies, and the same charm mirrored under more than one owner.
+The default location for the cache is `~/.cache/hyrum/charms/<owner>/<repo>/…`, populated by [hyrum](https://github.com/canonical/hyrum). It is a working cache, not a curated corpus: it holds build trees, vendored copies, and the same charm mirrored under more than one owner.
 
 ## Enumerating charms
 
@@ -20,8 +20,7 @@ Monorepo layouts (`repo/charms/*`, `repo/charm/`, `repo/kubernetes/`, `repo/mach
 import pathlib, yaml
 
 ROOT = pathlib.Path.home() / ".cache/hyrum/charms"
-NOISE = (".tox", "/tests/", "/.template/", "cookiecutter",
-         "/node_modules/", "/.venv/", "/build/")
+NOISE = (".tox", "/tests/", "/.template/", "cookiecutter", "/node_modules/", "/.venv/", "/build/")
 
 
 def charm_dirs():
@@ -59,6 +58,7 @@ def _declared_name(d: pathlib.Path) -> str | None:
 
 ```python
 import sys
+
 sys.path.insert(0, "src")
 from charmlint._linter import lint
 

@@ -12,6 +12,19 @@ from ._base import Rule
 
 
 class DeprecatedSeries(Rule):
+    """Flag the deprecated ``series`` key in charm metadata.
+
+    ``series`` named the Ubuntu releases a charm supported, before
+    charmcraft moved that onto ``bases`` and then onto ``base`` plus
+    ``platforms``. A charm still carrying it is either building for a
+    shape charmcraft no longer supports, or carrying a key that no
+    longer does anything.
+
+    Presence is the whole test: an empty ``series:`` is flagged like
+    any other, because the key itself is the finding rather than what
+    it says.
+    """
+
     category = "CHARMCRAFT"
     number = 1
     name = "deprecated-series"
@@ -34,6 +47,19 @@ class DeprecatedSeries(Rule):
 
 
 class NamingConventions(Rule):
+    """Flag config option names written with underscores.
+
+    Charm config options are hyphenated by convention —
+    ``juju config app log-level=debug`` — and an underscored name
+    stands out at every point an operator types it. The name is part of
+    the charm's interface, so this is worth fixing early: renaming an
+    option later breaks everyone already setting it.
+
+    Config options only. Juju rejects an underscored action name
+    outright, so no charm has one to report, and underscored action
+    parameters are vanishingly rare in the wild.
+    """
+
     category = "CHARMCRAFT"
     number = 2
     name = "naming-conventions"
@@ -61,6 +87,25 @@ class NamingConventions(Rule):
 
 
 class Entrypoint(Rule):
+    """Check that a hand-written ``dispatch`` runs a real entrypoint.
+
+    charmcraft generates ``dispatch`` at pack time, so most charm repos
+    have none and the rule says nothing about them. A ``dispatch``
+    committed to the repo is the charm author's own, and a mistake in
+    it kills every hook: the entrypoint it names may not exist, may not
+    be a regular file, or — when dispatch runs it directly rather than
+    handing it to an interpreter — may not carry the executable bit.
+    An entrypoint passed to ``python3`` needs no such bit, and is not
+    reported for lacking one.
+
+    Anything the script does not spell out statically is left alone: a
+    command built from a shell variable, a path leading outside the
+    charm, or a ``dispatch`` whose last statement does not run a
+    ``.py`` file at all. A ``dispatch`` that cannot be read is an
+    environment problem rather than the charm's, and is passed over
+    too.
+    """
+
     category = "CHARMCRAFT"
     number = 3
     name = "dispatch-entrypoint-issues"
@@ -293,7 +338,7 @@ class OpsMainCall(Rule):
         if not imports.imports_module("ops"):
             return []
         for call in module.walk(ast.Call):
-            if _ast.call_target(call, imports) in _OPS_MAIN_TARGETS:
+            if _ast.call_target(call, imports) in _ast.OPS_MAIN_TARGETS:
                 return []
         return [
             self.diagnostic(
@@ -657,13 +702,6 @@ def _assumes_k8s(assumes: object) -> bool:
     return False
 
 
-# Every spelling of the ops entrypoint, canonicalised: ``ops.main`` is the
-# submodule and the function of the same name inside it, and both are
-# callable. ``_ast.Imports`` resolves the aliases, so ``main(MyCharm)``
-# after ``from ops import main`` lands on ``ops.main`` like the rest.
-_OPS_MAIN_TARGETS = frozenset({"ops.main", "ops.main.main"})
-
-
 # Top-level keys valid in charmcraft.yaml (modern and legacy forms). A
 # separate set is kept for metadata.yaml below, because the two files accept
 # different top-level keys.
@@ -672,96 +710,95 @@ _OPS_MAIN_TARGETS = frozenset({"ops.main", "ops.main.main"})
 # The modern keys mirror charmcraft's published schema/charmcraft.json, plus
 # legacy keys the schema has dropped. Hand-maintained for now; see #174 for
 # validating against that schema directly instead.
-_KNOWN_CHARMCRAFT_FIELDS: frozenset[str] = frozenset(
-    {
-        # Identity / metadata.
-        "name",
-        "type",
-        "title",
-        "summary",
-        "description",
-        # Build / platform.
-        "base",
-        "build-base",
-        "bases",
-        "platforms",
-        "parts",
-        "extensions",
-        "adopt-info",
-        "package-repositories",
-        # Relations.
-        "requires",
-        "provides",
-        "peers",
-        "extra-bindings",
-        # Config / actions.
-        "config",
-        "actions",
-        # Workload.
-        "containers",
-        "resources",
-        "storage",
-        "devices",
-        # Charm libraries and dependencies.
-        "charm-libs",
-        # Workload run-as user (Kubernetes charms).
-        "charm-user",
-        # Links block (Charmhub) — nested form, e.g. links.documentation.
-        "links",
-        # Legacy top-level contact (now links.contact).
-        "contact",
-        # Subordinate / assumes.
-        "subordinate",
-        "assumes",
-        "terms",
-        # Legacy (deprecated but still accepted).
-        "series",
-        "min-juju-version",
-        "charmhub",
-        # Analysis / linting config inside the file.
-        "analysis",
-    }
-)
+_KNOWN_CHARMCRAFT_FIELDS: frozenset[str] = frozenset({
+    # Identity / metadata.
+    "name",
+    "type",
+    "title",
+    "summary",
+    "description",
+    # Build / platform.
+    "base",
+    "build-base",
+    "bases",
+    "platforms",
+    "parts",
+    "extensions",
+    "adopt-info",
+    "package-repositories",
+    # Relations.
+    "requires",
+    "provides",
+    "peers",
+    "extra-bindings",
+    # Config / actions.
+    "config",
+    "actions",
+    # Workload.
+    "containers",
+    "resources",
+    "storage",
+    "devices",
+    # Charm libraries and dependencies.
+    "charm-libs",
+    # Workload run-as user (Kubernetes charms).
+    "charm-user",
+    # Links block (Charmhub) — nested form, e.g. links.documentation.
+    "links",
+    # Legacy top-level contact (now links.contact).
+    "contact",
+    # Subordinate / assumes.
+    "subordinate",
+    "assumes",
+    "terms",
+    # Legacy (deprecated but still accepted).
+    "series",
+    "min-juju-version",
+    "charmhub",
+    # Analysis / linting config inside the file.
+    "analysis",
+})
 
 # Keys that configure how the charm is *built*. These are meaningful only in
 # charmcraft.yaml, so they stay unknown in metadata.yaml.
-_BUILD_ONLY_FIELDS: frozenset[str] = frozenset(
-    {
-        "parts",
-        "base",
-        "build-base",
-        "extensions",
-        "adopt-info",
-        "package-repositories",
-        "analysis",
-        "charmhub",
-    }
-)
+_BUILD_ONLY_FIELDS: frozenset[str] = frozenset({
+    "parts",
+    "base",
+    "build-base",
+    # metadata.yaml has never accepted either of these; charmcraft
+    # ignores a `bases:` block it finds there, so it is text that does
+    # nothing rather than a build configuration.
+    "bases",
+    "platforms",
+    "extensions",
+    "adopt-info",
+    "package-repositories",
+    "analysis",
+    "charmhub",
+})
 
 # Keys valid in metadata.yaml but not charmcraft.yaml. metadata.yaml uses flat
 # top-level link fields instead of a nested links block, and
 # display-name/maintainers instead of title/links.contact.
-_METADATA_ONLY_FIELDS: frozenset[str] = frozenset(
-    {
-        "display-name",
-        # Top-level link fields (no nested links block).
-        "docs",
-        "issues",
-        "source",
-        "website",
-        # Both the list form and the singular string form are valid.
-        "maintainers",
-        "maintainer",
-        # Charmhub categorisation ('categories' predates 'tags').
-        "tags",
-        "categories",
-        # Kubernetes deployment block (type / service).
-        "deployment",
-        # Legacy (deprecated but still accepted).
-        "format",
-        "version",
-    }
-)
+_METADATA_ONLY_FIELDS: frozenset[str] = frozenset({
+    "display-name",
+    # Top-level link fields (no nested links block).
+    "docs",
+    "issues",
+    "source",
+    "website",
+    # Both the list form and the singular string form are valid.
+    "maintainers",
+    "maintainer",
+    # Charmhub categorisation ('categories' predates 'tags').
+    "tags",
+    "categories",
+    # Kubernetes deployment block (type / service).
+    "deployment",
+    # Legacy (deprecated but still accepted).
+    "format",
+    "version",
+})
 
 # Top-level keys valid in metadata.yaml (the separate legacy metadata file).
 # Everything that describes the charm itself is valid in either file — a charm
@@ -772,14 +809,12 @@ _KNOWN_METADATA_FIELDS: frozenset[str] = _METADATA_ONLY_FIELDS | (
 )
 
 # Keys recognised inside a ``resources.<name>`` block.
-_KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset(
-    {
-        "type",
-        "description",
-        "filename",
-        "upstream-source",
-    }
-)
+_KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset({
+    "type",
+    "description",
+    "filename",
+    "upstream-source",
+})
 
 
 # ``bases`` is only accepted for bases supported before 2024-01-01, so every
