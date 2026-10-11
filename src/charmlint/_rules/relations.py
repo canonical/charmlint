@@ -17,7 +17,12 @@ from ._base import Rule
 
 
 class UnorderedValueInDatabag(Rule):
-    """Flag an unordered collection written into a relation databag."""
+    """Flag an unordered collection written into a relation databag.
+
+    The interface design guidance asks for collections in a databag to be
+    written in a stable order for the same reason:
+    https://canonical.com/juju/docs/charmlibs/how-to/design-relation-interfaces/#collections
+    """
 
     category = "RELATIONS"
     number = 3
@@ -150,7 +155,12 @@ def _databag_aliases(module: models.Module) -> frozenset[str]:
 
 
 def _update_values(call: ast.Call, aliases: frozenset[str]) -> Iterator[ast.expr]:
-    """Yield the values a ``<databag>.update(...)`` call writes."""
+    """Yield the values a ``<databag>.update(...)`` call writes.
+
+    Only what is spelt out at the call: the values of a dict literal, and
+    keyword arguments. ``update(payload)`` with a mapping built elsewhere
+    is not followed.
+    """
     func = call.func
     if not isinstance(func, ast.Attribute) or func.attr != "update":
         return
@@ -173,11 +183,19 @@ def _is_databag_entry(node: ast.expr, aliases: frozenset[str]) -> bool:
 
 
 def _is_databag(node: ast.expr) -> bool:
-    """True for ``<relation>.data[<entity>]`` — one whole databag."""
+    """True for ``<relation>.data[<entity>]`` — one whole databag.
+
+    ops keys a relation's data by a unit or application object
+    (``self.app``, ``event.unit``), never by a literal, so
+    ``self.client.data["items"]`` is some other ``data`` mapping. That
+    matters beyond the one write: a local bound to it would otherwise be
+    taken for a databag alias across the whole module.
+    """
     return (
         isinstance(node, ast.Subscript)
         and isinstance(node.value, ast.Attribute)
         and node.value.attr == "data"
+        and not (isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str | int))
     )
 
 
@@ -192,7 +210,13 @@ def _reachable(expr: ast.expr, imports: _ast.Imports) -> Iterator[ast.expr]:
     Only the containers and wrappers that carry a value through unchanged
     are followed: a call charmlint cannot see the body of might sort what
     it was passed, so its arguments are not reached. A call that settles
-    an order ends the walk down that branch.
+    an order ends the walk down that branch. A comprehension is followed
+    into what it produces and what it iterates over, since iterating over
+    a set gives the set's order.
+
+    Names are not followed. A set bound to a local and written later
+    (``u = set(names)`` and then ``",".join(u)``) is not seen, although a
+    local bound to a databag is (:func:`_databag_aliases`).
     """
     yield expr
     if isinstance(expr, ast.Call):
@@ -219,6 +243,12 @@ def _reachable(expr: ast.expr, imports: _ast.Imports) -> Iterator[ast.expr]:
     elif isinstance(expr, ast.BinOp):
         yield from _reachable(expr.left, imports)
         yield from _reachable(expr.right, imports)
+    elif isinstance(expr, ast.ListComp | ast.GeneratorExp | ast.DictComp):
+        produced = [expr.key, expr.value] if isinstance(expr, ast.DictComp) else [expr.elt]
+        for part in produced:
+            yield from _reachable(part, imports)
+        for generator in expr.generators:
+            yield from _reachable(generator.iter, imports)
 
 
 def _unordered_source(expr: ast.expr, imports: _ast.Imports) -> str | None:

@@ -820,6 +820,10 @@ Relation data.
 
 Flag an unordered collection written into a relation databag.
 
+The interface design guidance asks for collections in a databag to be
+written in a stable order for the same reason:
+https://canonical.com/juju/docs/charmlibs/how-to/design-relation-interfaces/#collections
+
 Reference: <https://discourse.charmhub.io/t/your-charm-might-be-flapping-its-databags/20715>
 
 ## SECURITY
