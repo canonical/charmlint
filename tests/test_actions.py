@@ -42,6 +42,32 @@ class TestActionMissingObserver:
         report = lint(tmp_charm)
         assert "ACTIONS-001" not in {d.rule_id for d in report}
 
+    def test_charm_without_ops_not_flagged(self, tmp_charm: pathlib.Path):
+        # The same shell-dispatch charm with a Python helper the script
+        # calls: still no ops charm, so still nothing that could observe.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "actions": {"do-thing": {"description": "x"}}},
+        )
+        (tmp_charm / "dispatch").write_text("#!/bin/sh\nexec python3 ./src/helper.py\n")
+        write_charm_source(tmp_charm, "import json\n\ndef go():\n    pass\n", "helper.py")
+        report = lint(tmp_charm)
+        assert "ACTIONS-001" not in {d.rule_id for d in report}
+
+    def test_ops_in_an_owned_lib_counts(self, tmp_charm: pathlib.Path):
+        # The charm's own library imports ops, so the charm is an ops charm
+        # even though src/ never names it.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test-charm", "actions": {"do-thing": {"description": "x"}}},
+        )
+        write_charm_source(tmp_charm, "from charms.test_charm.v0 import base\n")
+        lib = tmp_charm / "lib" / "charms" / "test_charm" / "v0"
+        lib.mkdir(parents=True)
+        (lib / "base.py").write_text("import ops\n")
+        report = lint(tmp_charm)
+        assert "ACTIONS-001" in {d.rule_id for d in report}
+
     def test_action_with_observer_not_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,

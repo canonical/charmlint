@@ -13,9 +13,11 @@ class ActionMissingObserver(Rule):
     as a pip dependency, not vendored under ``src/`` or ``lib/``) will
     hit false positives — disable ACTIONS-001 in that case.
 
-    A charm with no Python sources at all is skipped: it has no ops
-    entrypoint, so its actions are handled somewhere this rule cannot
-    see.
+    A charm whose own sources never import ``ops`` is skipped: it has no
+    ops charm to observe from, so its actions are handled somewhere this
+    rule cannot see, such as a hand-written ``dispatch`` script. That
+    includes a charm with no Python at all, and one whose only Python is a
+    helper the script calls.
     """
 
     category = "ACTIONS"
@@ -28,12 +30,12 @@ class ActionMissingObserver(Rule):
         if not context.actions:
             return []
         sources = list(context.charm_sources())
-        # No Python at all means there is no ops charm to observe from: a
-        # charm whose dispatch is a hand-written script handles its actions
-        # in shell, and every declared action would be reported. "No sources
-        # found" and "sources found, nothing observed" are different
+        # Without ops there is nothing to observe from: a charm whose
+        # dispatch is a hand-written script handles its actions in shell,
+        # and every declared action would be reported. "Not an ops charm"
+        # and "an ops charm that observes nothing" are different
         # situations, and only the second is a finding.
-        if not sources:
+        if not any(_ast.Imports.of(module).imports_module("ops") for module in sources):
             return []
         observed = {
             observer.action
