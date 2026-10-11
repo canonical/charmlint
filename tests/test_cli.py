@@ -76,7 +76,9 @@ class TestCLI:
         # Warnings but no errors: exactly the case --strict changes.
         assert report.warning_count and not report.error_count
         assert main([str(tmp_charm)]) == 0
-        assert main([str(tmp_charm), "--strict"]) == 2
+        # Not 0, rather than exactly 2: #370 may change which non-zero code
+        # --strict uses.
+        assert main([str(tmp_charm), "--strict"]) != 0
 
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
@@ -90,7 +92,7 @@ class TestCLIOptions:
 
     @pytest.fixture
     def charm(self, tmp_charm: pathlib.Path) -> pathlib.Path:
-        # METADATA-001 is an error, and has a fix hint and a reference URL.
+        # METADATA-001 is an error, and has a reference URL.
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         return tmp_charm
 
@@ -124,13 +126,20 @@ class TestCLIOptions:
     def test_json_is_never_coloured(self, charm: pathlib.Path, capsys, monkeypatch):
         self._as_terminal(monkeypatch)
         main([str(charm), "--format", "json"])
-        json.loads(capsys.readouterr().out)
+        captured = capsys.readouterr().out
+        assert "\033[" not in captured
+        json.loads(captured)
 
-    def test_json_carries_hint_and_reference_url(self, charm: pathlib.Path, capsys):
-        main([str(charm), "--format", "json", "--select", "METADATA-001"])
+    def test_json_carries_hint_and_reference_url(self, tmp_charm: pathlib.Path, capsys):
+        # CHARMCRAFT-003 on a dispatch whose entrypoint is missing reports all
+        # three, and the hint is the field the JSON only includes when set.
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "dispatch").write_text("#!/bin/sh\nexec ./src/charm.py\n")
+        main([str(tmp_charm), "--format", "json", "--select", "CHARMCRAFT-003"])
         [diagnostic] = json.loads(capsys.readouterr().out)["diagnostics"]
+        assert diagnostic["fix_hint"]
         assert diagnostic["reference_url"].startswith("https://")
-        assert diagnostic["path"] == "charmcraft.yaml"
+        assert diagnostic["path"] == "dispatch"
 
     def test_explicit_config_is_used(self, charm: pathlib.Path, tmp_path: pathlib.Path, capsys):
         config = tmp_path / "elsewhere.toml"
@@ -169,7 +178,7 @@ class TestCLIOptions:
 
     def test_python_dash_m(self, charm: pathlib.Path):
         # The exit code has to survive cli_entry's sys.exit, not just main().
-        result = subprocess.run(
+        result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [sys.executable, "-m", "charmlint", str(charm)], capture_output=True, text=True
         )
         assert result.returncode == 1, result.stderr
