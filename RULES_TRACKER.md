@@ -11,7 +11,7 @@ sections below are ordered by expected value rather than by number.
 
 ## Where we are
 
-40 rules are registered, across 12 modules:
+41 rules are registered, across 13 modules:
 
 | Category | Landed |
 |---|---|
@@ -23,6 +23,7 @@ sections below are ordered by expected value rather than by number.
 | LIBRARY | 001 |
 | METADATA | 001–010 |
 | PEBBLE | 005 |
+| RELATIONS | 003 |
 | SECURITY | 001 |
 | STATUS | 001 |
 | STRUCTURE | 001, 002 |

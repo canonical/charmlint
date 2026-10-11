@@ -63,6 +63,7 @@ config file overrides it per rule.
 | [METADATA-009](#metadata-009-provides-missing-optional) | `provides-missing-optional` | Info | provides endpoint missing explicit `optional` field |
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
+| [RELATIONS-003](#relations-003-unordered-value-in-databag) | `unordered-value-in-databag` | Warning | Unordered collection written to a relation databag |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
@@ -808,6 +809,22 @@ f-string, or any other expression is left alone: the rule can't tell
 what it evaluates to, and the common cases are already strings.
 
 Reference: <https://ubuntu.com/docs/pebble/reference/layer-specification/>
+
+## RELATIONS
+
+Relation data.
+
+### RELATIONS-003 unordered-value-in-databag
+
+**Warning** — Unordered collection written to a relation databag
+
+Flag an unordered collection written into a relation databag.
+
+The interface design guidance asks for collections in a databag to be
+written in a stable order for the same reason:
+https://canonical.com/juju/docs/charmlibs/how-to/design-relation-interfaces/#collections
+
+Reference: <https://discourse.charmhub.io/t/your-charm-might-be-flapping-its-databags/20715>
 
 ## SECURITY
 
