@@ -883,6 +883,86 @@ class TestMissingPebbleChecks:
         )
         assert findings == []
 
+    def test_check_api_on_other_receiver_does_not_suppress(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_NO_CHECKS
+            + "\n        def _registered(self):\n"
+            + "            return self._registry.get_checks()\n",
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+
+    def test_check_api_on_unreadable_receiver_suppresses(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_NO_CHECKS
+            + "\n        def _checks(self):\n"
+            + "            return self.unit.get_container('workload').get_checks()\n",
+        )
+        assert findings == []
+
+    def test_services_only_mapping_from_elsewhere_not_flagged(self, tmp_charm: pathlib.Path):
+        """With nothing but ``services``, a value that can't be read isn't a layer."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _spec(self):
+                        return {"services": self._services()}
+            """,
+        )
+        assert findings == []
+
+    def test_kubernetes_service_spec_not_flagged(self, tmp_charm: pathlib.Path):
+        """A Kubernetes Service spec has ``services`` too, but no Pebble service keys."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _on_start(self, event):
+                        self.unit.get_container("workload").replan()
+
+                    def _service_patch(self):
+                        return {"services": {"web": {"port": 8080, "targetPort": 8080}}}
+            """,
+        )
+        assert findings == []
+
+    def test_services_only_layer_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return {"services": {"web": {"override": "replace", "command": "web"}}}
+            """,
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+
+    def test_yaml_layer_anchored_on_services_key(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            '''\
+                import ops
+
+                LAYER = """
+                summary: workload
+                services:
+                  workload:
+                    override: replace
+                    command: /bin/workload
+                """
+            ''',
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+        assert findings[0].line == 5
+
     def test_yaml_layer_checks_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_pebble(
             tmp_charm,
@@ -1293,3 +1373,22 @@ class TestUnhandledPebbleCheckFailure:
         ids = {d.rule_id for d in report}
         assert "FEATURES-002" in ids
         assert "FEATURES-003" not in ids
+
+    def test_checks_keyword_on_a_library_not_flagged(self, tmp_charm: pathlib.Path):
+        """A library's own ``checks=`` keyword isn't a Pebble layer."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def __init__(self, framework):
+                        super().__init__(framework)
+                        self.probes = HealthProbes(self, checks={"api": {"url": "/health"}})
+            """,
+        )
+        assert findings == []
+
+    def test_no_containers_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(tmp_charm, _LAYER_CHECKS, containers=False)
+        assert findings == []

@@ -499,7 +499,7 @@ whose plan comes from the rock, or from a helper library installed as
 a dependency, may well have checks this rule cannot see, so there is
 nothing to say about it.
 
-Reference: <https://documentation.ubuntu.com/pebble/reference/health-checks/>
+Reference: <https://ubuntu.com/docs/pebble/reference/health-checks/>
 
 ### FEATURES-003 unhandled-pebble-check-failure
 
@@ -511,7 +511,7 @@ The complement of `MissingPebbleChecks`: this one fires only
 where that one does not, on a charm that went to the trouble of
 defining checks and then left the failure unhandled.
 
-Reference: <https://documentation.ubuntu.com/ops/latest/reference/ops/#ops.PebbleCheckFailedEvent>
+Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.PebbleCheckFailedEvent>
 
 ### FEATURES-004 no-assumes-juju-version
 
