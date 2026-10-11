@@ -20,28 +20,27 @@ class TestLintConfig:
         assert config.min_severity is None
 
     def test_per_rule_severity_parsed(self):
-        config = LintConfig.from_dict(
-            {"per-rule-severity": {"SECURITY-001": "error", "STRUCTURE-002": "warning"}}
-        )
+        config = LintConfig.from_dict({
+            "per-rule-severity": {"SECURITY-001": "error", "STRUCTURE-002": "warning"}
+        })
         assert config.severity_overrides["SECURITY-001"] == "error"
         assert config.severity_overrides["STRUCTURE-002"] == "warning"
 
     def test_select_and_ignore(self):
-        config = LintConfig.from_dict(
-            {"select": ["SECURITY", "METADATA"], "ignore": ["CONFIG-003"]}
-        )
+        config = LintConfig.from_dict({
+            "select": ["SECURITY", "METADATA"],
+            "ignore": ["CONFIG-003"],
+        })
         assert config.select == ["SECURITY", "METADATA"]
         assert config.ignore == ["CONFIG-003"]
 
     def test_extend_select_and_extend_ignore(self):
-        config = LintConfig.from_dict(
-            {
-                "select": ["SECURITY"],
-                "extend-select": ["METADATA"],
-                "ignore": ["CONFIG-003"],
-                "extend-ignore": ["LIBRARY-001"],
-            }
-        )
+        config = LintConfig.from_dict({
+            "select": ["SECURITY"],
+            "extend-select": ["METADATA"],
+            "ignore": ["CONFIG-003"],
+            "extend-ignore": ["LIBRARY-001"],
+        })
         assert config.select == ["SECURITY", "METADATA"]
         assert config.ignore == ["CONFIG-003", "LIBRARY-001"]
 

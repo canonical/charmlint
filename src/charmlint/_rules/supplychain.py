@@ -1,4 +1,10 @@
-"""SUPPLYCHAIN rules — dependency and release hygiene."""
+"""SUPPLYCHAIN rules — dependency and release hygiene.
+
+A charm deploys more than its own source: everything it pulls in from
+elsewhere, at build time or at deploy time. These rules check that the
+charm records where each of those artefacts comes from and which
+versions it accepts.
+"""
 
 import dataclasses
 import functools
@@ -7,6 +13,7 @@ import re
 from typing import Any
 
 from .. import _models as models
+from .. import _yaml
 from ._base import Rule
 
 _PEP508_RE = re.compile(
@@ -345,6 +352,53 @@ def _find_ops_dep(context: models.CharmContext) -> _OpsDependency | None:
     return _find_ops_requirements(_requirements_files(context))
 
 
+class OciImageMissingUpstreamSource(Rule):
+    """Flag an ``oci-image`` resource with no ``upstream-source``."""
+
+    category = "SUPPLYCHAIN"
+    number = 1
+    name = "oci-image-missing-upstream-source"
+    description = "oci-image resource declared without an 'upstream-source'"
+    default_severity = models.Severity.INFO
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        candidates = [
+            (name, resource)
+            for name, resource in context.metadata.get("resources").items()
+            if resource.get("type").value == "oci-image" and not resource.get("upstream-source")
+        ]
+        if not candidates:
+            return []
+
+        # `upstream-source` names the image the resource is built from, so
+        # it has nothing to say about an image this repository builds
+        # itself: for those the build recipe is the record of provenance.
+        local = _locally_built_images(context.charm_dir)
+        diagnostics: list[models.Diagnostic] = []
+        for name, resource in candidates:
+            stem = _normalise_image_name(name)
+            for suffix in _IMAGE_SUFFIXES:
+                stem = stem.removesuffix(suffix)
+            if stem in local or _normalise_image_name(name) in local:
+                continue
+            diagnostics.append(
+                self.diagnostic(
+                    f"OCI image resource '{name}' has no 'upstream-source', so there is "
+                    "no record of which image it is built from",
+                    # A split-metadata charm can declare `resources` in
+                    # metadata.yaml, where the diagnostic — and any noqa
+                    # silencing it — then belongs.
+                    path=resource.source,
+                    line=resource.line,
+                    fix_hint=(
+                        f"Add 'upstream-source' under resources.{name}, naming the image "
+                        "the resource is built from (e.g. 'ghcr.io/canonical/foo:1.2.3')"
+                    ),
+                )
+            )
+        return diagnostics
+
+
 class OpsDependencyUnpinned(Rule):
     """Flag an ``ops`` dependency with no version specifier."""
 
@@ -393,3 +447,56 @@ class OpsDependencyExactlyPinned(Rule):
                 fix_hint="Replace the `==` pin with a range, e.g. `ops>=2.23,<4`",
             )
         ]
+
+
+_IMAGE_SUFFIXES = ("-image", "_image")
+
+
+def _normalise_image_name(name: object) -> str:
+    """Fold a rock, directory, or resource name to one comparable form."""
+    return str(name).replace("_", "-").lower()
+
+
+def _locally_built_images(charm_dir: pathlib.Path) -> set[str]:
+    """Return the names of images this repository builds for itself.
+
+    A rock or Dockerfile in the charm directory, or up to two levels
+    below it, names an image the charm's own CI builds and uploads. So
+    does one up to two levels below the repository root, since in a
+    monorepo the rock is often a sibling of the charm (``app/charm/``
+    beside ``app/rockcraft.yaml``) or sits at the top of the repository.
+    The candidate names are the rock's declared ``name`` and the
+    directory holding the build recipe, since the ``foo_rock/``,
+    ``rock/`` and ``foo_rocks/<component>/`` layouts are all common.
+    """
+    charm_dir = charm_dir.resolve()
+    names: set[str] = set()
+    for root in {charm_dir, _repo_root(charm_dir)}:
+        for depth in ("", "*/", "*/*/"):
+            for rockcraft in root.glob(f"{depth}rockcraft.yaml"):
+                try:
+                    declared = _yaml.load(rockcraft).get("name")
+                except _yaml.FileLoadError:
+                    declared = models.Yaml.absent(rockcraft.name)
+                if isinstance(declared.value, str):
+                    names.add(_normalise_image_name(declared.value))
+                names.add(
+                    _normalise_image_name(
+                        rockcraft.parent.name.removesuffix("_rock").removesuffix("-rock")
+                    )
+                )
+            for dockerfile in root.glob(f"{depth}Dockerfile"):
+                names.add(_normalise_image_name(dockerfile.parent.name))
+    return names
+
+
+def _repo_root(charm_dir: pathlib.Path) -> pathlib.Path:
+    """Return the root of the git repository holding the charm.
+
+    Falls back to the charm directory itself when it is not in a git
+    repository, so the search never wanders further than it would have.
+    """
+    for directory in (charm_dir, *charm_dir.parents):
+        if (directory / ".git").exists():
+            return directory
+    return charm_dir
