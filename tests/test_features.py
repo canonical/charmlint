@@ -794,3 +794,601 @@ class TestNoConfigChangedObserver:
             tmp_charm, _charm("framework.observe(self.on.start, self._handler)")
         )
         assert len(findings) == 1
+
+
+_PEBBLE_RULES = frozenset({"FEATURES-002", "FEATURES-003"})
+
+
+def _lint_pebble(charm_dir: pathlib.Path, source: str, *, containers: bool = True):
+    """Lint a charm whose src/charm.py is *source*, returning the Pebble findings."""
+    metadata: dict[str, Any] = {"name": "test"}
+    if containers:
+        metadata["containers"] = _CONTAINERS
+    write_charmcraft_yaml(charm_dir, metadata)
+    write_charm_source(charm_dir, textwrap.dedent(source))
+    report = lint(charm_dir)
+    # FEATURES-004 fires on every charm here — none of them declare
+    # `assumes` — so the Pebble rules are picked out by ID.
+    return [d for d in report if d.rule_id in _PEBBLE_RULES]
+
+
+_LAYER_NO_CHECKS = """\
+    import ops
+
+    class C(ops.CharmBase):
+        @property
+        def _pebble_layer(self):
+            return ops.pebble.Layer({
+                "summary": "workload",
+                "services": {
+                    "workload": {"override": "replace", "command": "/bin/workload"},
+                },
+            })
+"""
+
+_LAYER_CHECKS = """\
+    import ops
+
+    class C(ops.CharmBase):
+        @property
+        def _pebble_layer(self):
+            return ops.pebble.Layer({
+                "summary": "workload",
+                "services": {
+                    "workload": {"override": "replace", "command": "/bin/workload"},
+                },
+                "checks": {
+                    "up": {
+                        "override": "replace",
+                        "level": "alive",
+                        "http": {"url": "http://localhost:8080/health"},
+                    },
+                },
+            })
+"""
+
+
+class TestMissingPebbleChecks:
+    """FEATURES-002 — a charm with containers should define Pebble checks."""
+
+    def test_containers_without_checks_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(tmp_charm, _LAYER_NO_CHECKS)
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+        assert findings[0].severity == Severity.INFO
+        assert findings[0].path == "src/charm.py"
+        assert findings[0].line is not None
+
+    def test_checks_defined_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(tmp_charm, _LAYER_CHECKS)
+        assert "FEATURES-002" not in {d.rule_id for d in findings}
+
+    def test_no_containers_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(tmp_charm, _LAYER_NO_CHECKS, containers=False)
+        assert findings == []
+
+    def test_check_api_call_suppresses(self, tmp_charm: pathlib.Path):
+        """A charm driving checks at runtime has them, wherever they came from."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _healthy(self, container):
+                        return all(
+                            c.status == ops.pebble.CheckStatus.UP
+                            for c in container.get_checks().values()
+                        )
+            """,
+        )
+        assert findings == []
+
+    def test_check_api_on_other_receiver_does_not_suppress(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_NO_CHECKS
+            + "\n        def _registered(self):\n"
+            + "            return self._registry.get_checks()\n",
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+
+    def test_check_api_on_unreadable_receiver_suppresses(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_NO_CHECKS
+            + "\n        def _checks(self):\n"
+            + "            return self.unit.get_container('workload').get_checks()\n",
+        )
+        assert findings == []
+
+    def test_services_only_mapping_from_elsewhere_not_flagged(self, tmp_charm: pathlib.Path):
+        """With nothing but ``services``, a value that can't be read isn't a layer."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _spec(self):
+                        return {"services": self._services()}
+            """,
+        )
+        assert findings == []
+
+    def test_kubernetes_service_spec_not_flagged(self, tmp_charm: pathlib.Path):
+        """A Kubernetes Service spec has ``services`` too, but no Pebble service keys."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _on_start(self, event):
+                        self.unit.get_container("workload").replan()
+
+                    def _service_patch(self):
+                        return {"services": {"web": {"port": 8080, "targetPort": 8080}}}
+            """,
+        )
+        assert findings == []
+
+    def test_services_only_layer_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return {"services": {"web": {"override": "replace", "command": "web"}}}
+            """,
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+
+    def test_yaml_layer_anchored_on_services_key(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            '''\
+                import ops
+
+                LAYER = """
+                summary: workload
+                services:
+                  workload:
+                    override: replace
+                    command: /bin/workload
+                """
+            ''',
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+        assert findings[0].line == 5
+
+    def test_yaml_layer_checks_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            '''\
+                import ops
+
+                LAYER = """
+                summary: workload
+                services:
+                  workload:
+                    override: replace
+                    command: /bin/workload
+                checks:
+                  up:
+                    override: replace
+                    http:
+                      url: http://localhost:8080/health
+                """
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return ops.pebble.Layer(LAYER)
+            ''',
+        )
+        assert "FEATURES-002" not in {d.rule_id for d in findings}
+
+    def test_fstring_yaml_layer_checks_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            '''\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self, port):
+                        return ops.pebble.Layer(f"""
+                summary: workload
+                services:
+                  workload:
+                    override: replace
+                    command: /bin/workload
+                checks:
+                  up:
+                    override: replace
+                    http:
+                      url: http://localhost:{port}/health
+                """)
+            ''',
+        )
+        assert "FEATURES-002" not in {d.rule_id for d in findings}
+
+    def test_empty_checks_mapping_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return ops.pebble.Layer({
+                            "services": {"workload": {"command": "/bin/workload"}},
+                            "checks": {},
+                        })
+            """,
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+
+    def test_unrelated_checks_key_does_not_suppress(self, tmp_charm: pathlib.Path):
+        """A dict that merely has a ``checks`` key is not a Pebble layer."""
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_NO_CHECKS
+            + """\
+
+    def _report(self):
+        return [
+            {"checks": {"tls": True, "dns": False}},
+            {"checks": self._results()},
+        ]
+""",
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+
+    def test_observed_check_failed_suppresses(self, tmp_charm: pathlib.Path):
+        """A charm handling check failures has checks, wherever they are defined."""
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_NO_CHECKS
+            + """\
+
+    def __init__(self, framework):
+        super().__init__(framework)
+        self.framework.observe(
+            self.on.workload_pebble_check_failed, self._on_check_failed
+        )
+
+    def _on_check_failed(self, event):
+        pass
+""",
+        )
+        assert findings == []
+
+    def test_no_layer_in_charm_source_not_flagged(self, tmp_charm: pathlib.Path):
+        """A workload whose plan comes from the rock has checks we cannot see."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _reconcile(self, container):
+                        container.replan()
+            """,
+        )
+        assert findings == []
+
+    def test_layer_dict_keyword_form_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return ops.pebble.LayerDict(
+                            summary="workload",
+                            services={
+                                "workload": {
+                                    "override": "replace",
+                                    "command": "/bin/workload",
+                                },
+                            },
+                        )
+            """,
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-002"]
+
+    def test_checks_keyword_form_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return ops.pebble.LayerDict(
+                            services={
+                                "workload": {
+                                    "override": "replace",
+                                    "command": "/bin/workload",
+                                },
+                            },
+                            checks=self._checks(),
+                        )
+            """,
+        )
+        assert findings == []
+
+    def test_vendored_lib_checks_do_not_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "containers": _CONTAINERS})
+        write_charm_source(tmp_charm, textwrap.dedent(_LAYER_NO_CHECKS))
+        lib_dir = tmp_charm / "lib" / "charms" / "someone" / "v0"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "helper.py").write_text(
+            textwrap.dedent("""\
+                LAYER = {
+                    "services": {"workload": {"command": "/bin/workload"}},
+                    "checks": {"up": {"override": "replace", "tcp": {"port": 8080}}},
+                }
+            """)
+        )
+        report = lint(tmp_charm)
+        assert "FEATURES-002" in {d.rule_id for d in report}
+
+    def test_own_published_lib_checks_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "my-charm", "containers": _CONTAINERS})
+        write_charm_source(tmp_charm, textwrap.dedent(_LAYER_NO_CHECKS))
+        lib_dir = tmp_charm / "lib" / "charms" / "my_charm" / "v0"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "helper.py").write_text(
+            textwrap.dedent("""\
+                LAYER = {
+                    "services": {"workload": {"command": "/bin/workload"}},
+                    "checks": {"up": {"override": "replace", "tcp": {"port": 8080}}},
+                }
+            """)
+        )
+        report = lint(tmp_charm)
+        findings = [d for d in report if d.rule_id in _PEBBLE_RULES]
+        assert [d.rule_id for d in findings] == ["FEATURES-003"]
+        assert findings[0].path == "lib/charms/my_charm/v0/helper.py"
+
+
+class TestUnhandledPebbleCheckFailure:
+    """FEATURES-003 — a defined check needs something that responds to failure."""
+
+    def test_checks_without_handler_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(tmp_charm, _LAYER_CHECKS)
+        assert [d.rule_id for d in findings] == ["FEATURES-003"]
+        assert findings[0].severity == Severity.WARNING
+        assert findings[0].path == "src/charm.py"
+        assert findings[0].line is not None
+
+    def test_no_checks_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(tmp_charm, _LAYER_NO_CHECKS)
+        assert "FEATURES-003" not in {d.rule_id for d in findings}
+
+    def test_observer_suppresses(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_CHECKS
+            + """\
+
+    def __init__(self, framework):
+        super().__init__(framework)
+        self.framework.observe(
+            self.on.workload_pebble_check_failed, self._on_check_failed
+        )
+
+    def _on_check_failed(self, event):
+        self.unit.status = ops.BlockedStatus("workload unhealthy")
+""",
+        )
+        assert findings == []
+
+    def test_subscript_observer_suppresses(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_CHECKS
+            + """\
+
+    def __init__(self, framework):
+        super().__init__(framework)
+        self.framework.observe(
+            self.on["workload"].pebble_check_failed, self._on_check_failed
+        )
+
+    def _on_check_failed(self, event):
+        pass
+""",
+        )
+        assert findings == []
+
+    def test_unresolved_observer_suppresses(self, tmp_charm: pathlib.Path):
+        """An observe call the matchers cannot read might be the one wanted."""
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_CHECKS
+            + """\
+
+    def __init__(self, framework):
+        super().__init__(framework)
+        for name in self.meta.containers:
+            self.framework.observe(self.on[name].pebble_check_failed, self._failed)
+
+    def _failed(self, event):
+        pass
+""",
+        )
+        assert findings == []
+
+    def test_other_observers_do_not_suppress(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_CHECKS
+            + """\
+
+    def __init__(self, framework):
+        super().__init__(framework)
+        self.framework.observe(self.on.config_changed, self._reconcile)
+        self.framework.observe(self.on.workload_pebble_ready, self._reconcile)
+
+    def _reconcile(self, event):
+        pass
+""",
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-003"]
+
+    def test_on_check_failure_suppresses(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return ops.pebble.Layer({
+                            "services": {
+                                "workload": {
+                                    "override": "replace",
+                                    "command": "/bin/workload",
+                                    "on-check-failure": {"up": "restart"},
+                                },
+                            },
+                            "checks": {
+                                "up": {"override": "replace", "tcp": {"port": 8080}},
+                            },
+                        })
+            """,
+        )
+        assert findings == []
+
+    def test_yaml_on_check_failure_suppresses(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(
+            tmp_charm,
+            '''\
+                import ops
+
+                LAYER = """
+                services:
+                  workload:
+                    override: replace
+                    command: /bin/workload
+                    on-check-failure:
+                      up: restart
+                checks:
+                  up:
+                    override: replace
+                    tcp:
+                      port: 8080
+                """
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return ops.pebble.Layer(LAYER)
+            ''',
+        )
+        assert findings == []
+
+    def test_check_api_call_suppresses(self, tmp_charm: pathlib.Path):
+        """A charm reading its own checks is watching them."""
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_CHECKS
+            + """\
+
+    def _healthy(self, container):
+        return all(c.status == "up" for c in container.get_checks().values())
+""",
+        )
+        assert findings == []
+
+    def test_checks_handed_to_a_helper_suppresses(self, tmp_charm: pathlib.Path):
+        """A keyword naming Pebble checks hands them to something watching them."""
+        findings = _lint_pebble(
+            tmp_charm,
+            _LAYER_CHECKS
+            + """\
+
+    def _status(self, event):
+        StatusManager(
+            charm=self, block_if_pebble_checks_failing={"workload": ["up"]}
+        ).collect_status(event)
+""",
+        )
+        assert findings == []
+
+    def test_checks_without_layer_markers_flagged(self, tmp_charm: pathlib.Path):
+        """Checks added on their own are still checks."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _add(self, container):
+                        container.add_layer(
+                            "checks",
+                            {"checks": {"up": {"override": "replace", "level": "ready"}}},
+                            combine=True,
+                        )
+            """,
+        )
+        assert [d.rule_id for d in findings] == ["FEATURES-003"]
+
+    def test_vendored_lib_observer_does_not_suppress(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "containers": _CONTAINERS})
+        write_charm_source(tmp_charm, textwrap.dedent(_LAYER_CHECKS))
+        lib_dir = tmp_charm / "lib" / "charms" / "someone" / "v0"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "helper.py").write_text(
+            textwrap.dedent("""\
+                class Helper:
+                    def __init__(self, charm):
+                        charm.framework.observe(
+                            charm.on.workload_pebble_check_failed, self._failed
+                        )
+
+                    def _failed(self, event):
+                        pass
+            """)
+        )
+        report = lint(tmp_charm)
+        assert "FEATURES-003" in {d.rule_id for d in report}
+
+    def test_checks_in_tests_do_not_count(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "containers": _CONTAINERS})
+        write_charm_source(tmp_charm, textwrap.dedent(_LAYER_NO_CHECKS))
+        (tmp_charm / "tests" / "unit").mkdir(parents=True)
+        (tmp_charm / "tests" / "unit" / "test_charm.py").write_text(
+            textwrap.dedent("""\
+                LAYER = {
+                    "services": {"workload": {"command": "/bin/workload"}},
+                    "checks": {"up": {"override": "replace", "tcp": {"port": 8080}}},
+                }
+            """)
+        )
+        report = lint(tmp_charm)
+        ids = {d.rule_id for d in report}
+        assert "FEATURES-002" in ids
+        assert "FEATURES-003" not in ids
+
+    def test_checks_keyword_on_a_library_not_flagged(self, tmp_charm: pathlib.Path):
+        """A library's own ``checks=`` keyword isn't a Pebble layer."""
+        findings = _lint_pebble(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def __init__(self, framework):
+                        super().__init__(framework)
+                        self.probes = HealthProbes(self, checks={"api": {"url": "/health"}})
+            """,
+        )
+        assert findings == []
+
+    def test_no_containers_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_pebble(tmp_charm, _LAYER_CHECKS, containers=False)
+        assert findings == []

@@ -223,7 +223,7 @@ large fraction of the fleet by design. They need a decision on scope
 | No `assumes:` juju version | | #22 | All 7 FPs are placeholder charms — needs #206 |
 | No `config-changed` observer (FEATURES-007) | | #54 | 8 of 655 charms: 5 TP, 3 that should `file-ignore` (options read only by actions, or before `ops.main`) |
 | No `upgrade-charm` observer | | #23 | |
-| Pebble health check coverage | | #45 | |
+| Pebble health check coverage (FEATURES-002/003) | | #45 | |
 | Description must mention required relations | | #78 | |
 | No CI workflow / no dependency updates | | #52, #59 | Blocked on #212 |
 | No type annotations | | #140 | Fires on a large fraction of the fleet |

@@ -47,6 +47,8 @@ config file overrides it per rule.
 | [CORRECTNESS-008](#correctness-008-observe-target-mismatch) | `observe-target-mismatch` | Error | framework.observe() names an event or handler that cannot exist |
 | [CORRECTNESS-009](#correctness-009-container-name-mismatch) | `container-name-mismatch` | Error | get_container() names a container not declared in containers: |
 | [DOCUMENTATION-001](#documentation-001-no-readme) | `no-readme` | Warning | No README file found |
+| [FEATURES-002](#features-002-missing-pebble-checks) | `missing-pebble-checks` | Info | Pebble layer defines services but no health checks |
+| [FEATURES-003](#features-003-unhandled-pebble-check-failure) | `unhandled-pebble-check-failure` | Warning | Pebble check is defined but its failure is never handled |
 | [FEATURES-004](#features-004-no-assumes-juju-version) | `no-assumes-juju-version` | Info | No `assumes:` entry declaring a minimum Juju version |
 | [FEATURES-005](#features-005-no-set-workload-version) | `no-set-workload-version` | Info | Charm never calls set_workload_version() |
 | [FEATURES-006](#features-006-hardcoded-workload-version) | `hardcoded-workload-version` | Warning | Workload version is a hardcoded constant, not read from the workload |
@@ -485,6 +487,31 @@ renders it.
 ## FEATURES
 
 Expected features.
+
+### FEATURES-002 missing-pebble-checks
+
+**Info** — Pebble layer defines services but no health checks
+
+Detect a Pebble layer whose services have no health checks.
+
+Scoped to a layer the charm builds in its own source: a workload
+whose plan comes from the rock, or from a helper library installed as
+a dependency, may well have checks this rule cannot see, so there is
+nothing to say about it.
+
+Reference: <https://ubuntu.com/docs/pebble/reference/health-checks/>
+
+### FEATURES-003 unhandled-pebble-check-failure
+
+**Warning** — Pebble check is defined but its failure is never handled
+
+Detect Pebble checks that nothing responds to when they fail.
+
+The complement of `MissingPebbleChecks`: this one fires only
+where that one does not, on a charm that went to the trouble of
+defining checks and then left the failure unhandled.
+
+Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.PebbleCheckFailedEvent>
 
 ### FEATURES-004 no-assumes-juju-version
 

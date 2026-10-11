@@ -81,6 +81,29 @@ def load(path: pathlib.Path) -> models.Yaml:
     return root
 
 
+def parse(text: str, source: str, first_line: int = 1) -> models.Yaml:
+    """Parse a YAML document held in a string, such as a Pebble layer in a charm's source.
+
+    *first_line* is the line in *source* that the document's first line
+    sits on, so line numbers point into the file that holds the string
+    rather than into the string. Unlike :func:`load`, a string that is not
+    a YAML mapping is not an error: most strings in a charm's source are
+    not YAML at all, and the caller only wants the ones that are. Those
+    return an absent node.
+    """
+    loader = _SafeLoader(text)
+    try:
+        node = loader.get_single_node()
+        root = None if node is None else _build(node, loader, source, None, first_line - 1)
+    except (yaml.YAMLError, TypeError, RecursionError):
+        root = None
+    finally:
+        loader.dispose()
+    if root is None or not isinstance(root.value, dict):
+        return models.Yaml.absent(source)
+    return root
+
+
 def merge(primary: models.Yaml, fallback: models.Yaml) -> models.Yaml:
     """Merge two metadata mappings, *primary* winning on duplicate keys.
 
@@ -104,7 +127,9 @@ def merge(primary: models.Yaml, fallback: models.Yaml) -> models.Yaml:
     )
 
 
-def _build(node: yaml.Node, loader: Any, source: str, line: int | None) -> models.Yaml:
+def _build(
+    node: yaml.Node, loader: Any, source: str, line: int | None, offset: int = 0
+) -> models.Yaml:
     """Wrap a composed YAML node, recursing into mappings and sequences.
 
     *line* is the line to attribute the value to: for a mapping entry
@@ -116,9 +141,15 @@ def _build(node: yaml.Node, loader: Any, source: str, line: int | None) -> model
     A block sequence therefore gives each element a distinct line, and a
     flow sequence (``[a, b]``) gives every element the line they share —
     which is the line a ``# noqa`` for any of them would sit on anyway.
+
+    *offset* is added to every line, for a document that starts partway
+    through its source.
     """
     if isinstance(node, yaml.SequenceNode):
-        elements = [_build(item, loader, source, item.start_mark.line + 1) for item in node.value]
+        elements = [
+            _build(item, loader, source, item.start_mark.line + 1 + offset, offset)
+            for item in node.value
+        ]
         return models.Yaml(
             value=[element.value for element in elements],
             source=source,
@@ -133,7 +164,9 @@ def _build(node: yaml.Node, loader: Any, source: str, line: int | None) -> model
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=True)
         # Later duplicates win, as they do in PyYAML's own constructor.
-        children[key] = _build(value_node, loader, source, key_node.start_mark.line + 1)
+        children[key] = _build(
+            value_node, loader, source, key_node.start_mark.line + 1 + offset, offset
+        )
     return models.Yaml(
         value={key: child.value for key, child in children.items()},
         source=source,

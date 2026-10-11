@@ -129,6 +129,26 @@ class TestLoad:
         assert [e["plugin"].line for e in elements] == [3, 4]
 
 
+class TestParse:
+    """Parsing a YAML document held in a string."""
+
+    def test_lines_point_into_the_source(self):
+        node = _yaml.parse("\nservices:\n  web:\n    command: web\n", "src/charm.py", 10)
+        assert node.source == "src/charm.py"
+        assert node["services"].line == 11
+        assert node["services"]["web"]["command"].line == 13
+
+    def test_sequence_lines_are_offset(self):
+        node = _yaml.parse("parts:\n  - a\n  - b\n", "src/charm.py", 5)
+        assert [e.line for e in node["parts"].elements or []] == [6, 7]
+
+    @pytest.mark.parametrize("text", ["", "just a sentence", "- a\n- b\n", "key: [unclosed"])
+    def test_not_a_mapping_is_absent(self, text: str):
+        node = _yaml.parse(text, "src/charm.py")
+        assert not node.present
+        assert node.source == "src/charm.py"
+
+
 class TestMerge:
     """Merging charmcraft.yaml with a legacy metadata.yaml."""
 
