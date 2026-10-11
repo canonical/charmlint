@@ -50,7 +50,7 @@ workshop start dev
 workshop run dev charmlint
 ```
 
-Arguments go through to charmlint, and relative paths are relative to `~/charms`. If you mount a directory of charms, name the charm to lint. For example, with the hyrum cache (`~/.cache/hyrum/charms`) mounted, run `workshop run dev charmlint canonical/some-operator`.
+Arguments go through to charmlint, and it resolves relative paths against `~/charms` inside the workshop, not on your host. That includes `--config`, so to use a config file from your checkout rather than one in the mounted charms, give its path under `/project`, where the workshop mounts the project directory. If you mount a directory of charms, name the charm to lint. For example, with the hyrum cache (`~/.cache/hyrum/charms`) mounted, run `workshop run dev charmlint canonical/some-operator`.
 
 # Project status
 
