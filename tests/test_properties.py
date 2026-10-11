@@ -79,13 +79,11 @@ def _config_options_map() -> st.SearchStrategy[dict]:
     )
     return st.dictionaries(
         _name,
-        st.fixed_dictionaries(
-            {
-                "type": st.sampled_from(["string", "int", "boolean"]),
-                "description": _safe_text,
-                "default": option_value,
-            }
-        ),
+        st.fixed_dictionaries({
+            "type": st.sampled_from(["string", "int", "boolean"]),
+            "description": _safe_text,
+            "default": option_value,
+        }),
         max_size=3,
     )
 

@@ -1,8 +1,0 @@
-rules:
-  unpinned-uses:
-    config:
-      # SHA-pin everything by default; allow ref/tag pins only for first-party
-      # GitHub-owned actions.
-      policies:
-        "actions/*": ref-pin
-        "github/*": ref-pin
