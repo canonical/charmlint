@@ -235,9 +235,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.min_severity:
         config.min_severity = models.Severity(args.min_severity)
 
-    unknown = sorted(
-        {token for token in (*config.select, *config.ignore) if not _selectors.resolve(token)}
-    )
+    unknown = sorted({
+        token for token in (*config.select, *config.ignore) if not _selectors.resolve(token)
+    })
     if unknown:
         print(
             f"error: not a known rule ID, rule name or category: {', '.join(unknown)}",
