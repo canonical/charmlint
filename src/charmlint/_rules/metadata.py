@@ -53,9 +53,10 @@ def _metadata_file(context: models.CharmContext) -> str:
     is, so ``title`` or ``links`` written in charmcraft.yaml never reach
     the charm. ``context.metadata.source`` can't answer this, because the
     merged metadata takes its source from charmcraft.yaml whenever that
-    file exists.
+    file exists, and neither can the merged keys' own sources, because a
+    metadata.yaml key that charmcraft.yaml also sets is shadowed.
     """
-    if any(node.source == "metadata.yaml" for _, node in context.metadata.items()):
+    if (context.charm_dir / "metadata.yaml").is_file():
         return "metadata.yaml"
     return context.metadata.source
 
@@ -153,7 +154,7 @@ class MissingSummary(Rule):
             return []
         if _resolve(context.metadata, "summary"):
             return []
-        return [self.diagnostic(self.description, path=context.metadata.source)]
+        return [self.diagnostic(self.description, path=_metadata_file(context))]
 
 
 class MissingDescription(Rule):
@@ -180,7 +181,7 @@ class MissingDescription(Rule):
             return []
         if _resolve(context.metadata, "description"):
             return []
-        return [self.diagnostic(self.description, path=context.metadata.source)]
+        return [self.diagnostic(self.description, path=_metadata_file(context))]
 
 
 class MissingDocs(Rule):
