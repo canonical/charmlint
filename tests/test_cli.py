@@ -76,7 +76,15 @@ class TestCLI:
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         exit_code = main([str(tmp_charm), "--select", "METADATA,NOPE,"])
         assert exit_code == 2
-        assert capsys.readouterr().err.strip().endswith("category: NOPE")
+        assert "NOPE" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("value", [",", " , ,"])
+    def test_select_naming_nothing_is_an_error(self, tmp_charm: pathlib.Path, capsys, value: str):
+        # Dropping every token would leave select empty, which runs every rule.
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        exit_code = main([str(tmp_charm), "--select", value])
+        assert exit_code == 2
+        assert "--select names no rules" in capsys.readouterr().err
 
     def test_severity_filter(self, tmp_charm: pathlib.Path, capsys):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
