@@ -162,6 +162,21 @@ class TestMerge:
         assert _yaml.merge(absent, primary)["name"].value == "test"
 
 
+class TestOptionType:
+    """Reading the type a config option declares."""
+
+    def test_string_type(self, tmp_path: pathlib.Path):
+        option = _yaml.load(_write(tmp_path, "config.yaml", "type: int\n"))
+        assert _yaml.option_type(option) == "int"
+
+    @pytest.mark.parametrize(
+        "content", ["{}\n", "type: [int]\n", "type: {of: int}\n", "type: 1\n"]
+    )
+    def test_no_string_type(self, tmp_path: pathlib.Path, content: str):
+        option = _yaml.load(_write(tmp_path, "config.yaml", content))
+        assert _yaml.option_type(option) is None
+
+
 class TestYamlNode:
     """The lookup behaviour rules rely on."""
 

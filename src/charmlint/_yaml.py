@@ -104,6 +104,17 @@ def merge(primary: models.Yaml, fallback: models.Yaml) -> models.Yaml:
     )
 
 
+def option_type(option: models.Yaml) -> str | None:
+    """The type a config option declares, or ``None`` if it declares none.
+
+    A ``type`` that isn't a string names no type Juju knows, and a list
+    or mapping there is unhashable, so a rule testing membership of a
+    set of type names would raise rather than report.
+    """
+    declared = option.get("type").value
+    return declared if isinstance(declared, str) else None
+
+
 def _build(node: yaml.Node, loader: Any, source: str, line: int | None) -> models.Yaml:
     """Wrap a composed YAML node, recursing into mappings and sequences.
 
