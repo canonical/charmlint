@@ -1,174 +1,65 @@
 # charmlint
 
-A charm-aware, model-agnostic linter for [Juju](https://juju.is/) charms.
+[![CI](https://github.com/canonical/charmlint/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/canonical/charmlint/actions/workflows/ci.yaml)
+[![PyPI](https://img.shields.io/pypi/v/charmlint)](https://pypi.org/project/charmlint/)
 
-charmlint checks charm source code against Canonical's Juju charm best practices:
-observability (COS integration, ops-tracing), security (PEP 740 PyPI attestations),
-testing structure, metadata completeness, configuration quality, and more.
+A linter for [Juju](https://canonical.com/juju) charms.
 
-Extracted from [`tonyandrewmeyer/cantrip`](https://github.com/tonyandrewmeyer/cantrip),
-where charmlint grew as an internal component of the Cantrip AI charm builder.
-
-## Installation
-
-```bash
-uv sync --dev
-```
+charmlint checks charm source code against Canonical's charm best practices: observability, security, testing, metadata, configuration, and more. It's for charm authors and reviewers who want best-practice gaps caught before review rather than during it, locally or in CI. It isn't tied to any AI assistant or model: it works the same whether you run it yourself or from Claude Code, Copilot, Codex, or any other coding agent.
 
 ## Usage
 
-```bash
-uv run charmlint /path/to/charm
-uv run charmlint --format json /path/to/charm
-uv run charmlint --select COS,META /path/to/charm
-uv run charmlint --ignore ATT002 --strict /path/to/charm
-```
-
-Or install and run directly:
+charmlint requires Python 3.12 or later. Run it from PyPI with `uvx`, no install needed:
 
 ```bash
-uv run pip install -e .
-charmlint /path/to/charm
+uvx charmlint /path/to/charm
 ```
 
-## Running tests
+Or add it to a charm's dev dependencies and run it with `uv run`:
 
 ```bash
-uv run pytest tests/ -v
+uv add --dev charmlint
+uv run charmlint
 ```
 
-## Rule catalogue
+charmlint doesn't follow SemVer: a minor release can add or tighten rules, so an upgrade may turn a clean run into a failing one. If you set version bounds, see [docs/versioning.md](docs/versioning.md#pinning-charmlint) for how to pin.
 
-Rule IDs follow `CATEGORY-###` (for example `SECURITY-001`,
-`METADATA-003`). See [docs/id-scheme.md](docs/id-scheme.md) for the full
-category catalogue and naming rules.
+Common options:
 
-[docs/rules.md](docs/rules.md) documents every rule charmlint ships: its ID, name, default severity, and what it checks for. It is generated from the rules themselves by `make docs`.
+```bash
+uvx charmlint --format json .
+uvx charmlint --select SECURITY,METADATA-001 .
+uvx charmlint --ignore no-readme --strict .
+```
+
+`charmlint --help` lists the rest. Errors cause charmlint to exit with code 1. With `--strict`, warnings cause charmlint to exit with code 2.
 
 ## Configuration
 
-Configure under `[tool.charmlint]` in `pyproject.toml`, or in a standalone
-`charmlint.toml` / `.charmlint.toml`. Discovery walks up from the charm
-directory, in the manner of ruff.
+Configure under `[tool.charmlint]` in `pyproject.toml`:
 
 ```toml
 [tool.charmlint]
-severity = "warning"  # minimum severity to report
 select = ["SECURITY", "METADATA"]
 ignore = ["METADATA-002"]
-
-[tool.charmlint.per-rule-severity]
-"SECURITY-001" = "error"
 ```
 
-Everywhere a rule is named — `select`, `ignore`, the keys of
-`per-rule-severity`, and `--select` / `--ignore` on the command line — it
-can be spelled three ways:
+You can also use a standalone `charmlint.toml` or `.charmlint.toml` file, with the same keys at the top level (no `[tool.charmlint]` header).
 
-| Spelling | Example | Means |
-|---|---|---|
-| Rule ID | `SECURITY-001` | that one rule |
-| Rule name | `secret-in-plain-config` | that one rule |
-| Category | `SECURITY` | every rule in the category |
+Individual findings can be suppressed inline with `# charmlint: ignore[SECURITY-001]`. See [docs/configuration.md](docs/configuration.md) for all settings and suppression directives.
 
-Names are the wordier spelling, in the manner of ruff: `ignore =
-["secret-in-plain-config"]` says what has been turned off without a trip
-to the rule catalogue. Both spellings resolve to the same rule, so a
-config can mix them.
+## Documentation
 
-A spelling that names nothing charmlint knows about is an error rather
-than a rule that silently never fires, so a typo is caught at startup.
-Only rules that exist in the running charmlint count as known: a
-category with no rules yet, and a well-formed ID for a rule that has not
-landed (`OBSERVABILITY-005`), are both rejected.
+- [docs/rules.md](docs/rules.md) — every rule and what it checks for
+- [docs/id-scheme.md](docs/id-scheme.md) — rule IDs and the category catalogue
+- [docs/configuration.md](docs/configuration.md) — configuration and inline suppression
+- [docs/versioning.md](docs/versioning.md) — versioning and compatibility policy
+- [SECURITY.md](SECURITY.md) — reporting vulnerabilities
 
-Case is significant. Rule IDs and categories are upper-case, rule names
-lower-case; `security-001` names nothing.
+## Community and support
 
-When `select` and `ignore` disagree, the more specific spelling wins:
-`select = ["secret-in-plain-config"]` with `ignore = ["SECURITY"]` runs
-that one rule and no other security rule.
+Questions and discussion are welcome on [Matrix](https://matrix.to/#/#charmhub-charmdev:ubuntu.com) and [Discourse](https://discourse.charmhub.io/). If you find a bug or have a feature request, please open a [GitHub issue](https://github.com/canonical/charmlint/issues). Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## Suppressing findings inline
+## Contributing
 
-Individual findings can be silenced from within a charm's YAML and Python
-files, with ruff-style suppression comments. Codes inside a directive are
-the same three spellings as `select` and `ignore` accept — rule ID, rule
-name, or category.
-
-`# charmlint: ignore[...]` suppresses the listed rules on one line. At the
-end of a line it covers that line; on a line of its own it covers the next
-line that is not blank or a comment, so a directive can sit above the
-thing it excuses:
-
-```yaml
-config:
-  options:
-    admin-password:  # charmlint: ignore[SECURITY-001]
-      type: string
-    # charmlint: ignore[secret-in-plain-config]  # set by the operator
-    api-token:
-      type: string
-```
-
-A directive on its own line must start that line: free text belongs
-after it, not before, or the directive is read as trailing the comment
-line itself.
-
-`# charmlint: file-ignore[...]`, wherever it appears, suppresses the
-listed rules across the whole file:
-
-```python
-# charmlint: file-ignore[CORRECTNESS-001]
-```
-
-Findings that anchor to a whole file rather than a line — a missing
-metadata field, say — can only be silenced by a file-level directive.
-
-### Suppressing everything
-
-The code list is optional on both verbs. `# charmlint: ignore` suppresses
-every finding on the line it governs, and `# charmlint: file-ignore`
-every finding in the file:
-
-```yaml
-# charmlint: file-ignore
-config:
-  options:
-    admin-password:  # charmlint: ignore
-      type: string
-```
-
-Scope is decided by the verb and by where the directive is written, and
-by nothing else: no directive silences a whole file from the end of a
-line of config. To silence a file, write `file-ignore` on a line of its
-own.
-
-### The bare `# noqa` form
-
-In YAML, charmlint also honours the bare form it has always accepted: an
-inline `# noqa` suppresses every finding on that line, and `# noqa:
-SECURITY-001, METADATA-002` suppresses the listed rules.
-
-```yaml
-config:
-  options:
-    admin-password:  # noqa
-      type: string
-```
-
-It is not honoured in Python files: there, `# noqa` is ruff's, and
-charmlint neither consumes ruff's directives nor asks a charm to write
-one that ruff would then report as unused. Python files take the
-`# charmlint:` forms only.
-
-## Versioning
-
-charmlint follows a ruff-style versioning scheme: the minor version carries
-breaking changes (such as new or sharpened rules being enabled by default)
-and the patch version carries bug fixes. See
-[docs/versioning.md](docs/versioning.md) for the full policy.
-
-## License
-
-Apache 2.0 — see [LICENSE](LICENSE).
+Improvements to the rules, the code, and the documentation are all welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers development setup, tests, and pull requests. Contributors need to sign the [Canonical contributor licence agreement](https://ubuntu.com/legal/contributors).

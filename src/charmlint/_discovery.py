@@ -26,18 +26,16 @@ import pathlib
 # Directory names never descended into. Dotted directories (``.git``,
 # ``.tox``, ``.venv``) are skipped separately, as is anything ending in
 # ``.egg-info``.
-_SKIP_DIRS = frozenset(
-    {
-        "build",
-        "dist",
-        "docs",
-        "node_modules",
-        "test",
-        "tests",
-        "venv",
-        "__pycache__",
-    }
-)
+_SKIP_DIRS = frozenset({
+    "build",
+    "dist",
+    "docs",
+    "node_modules",
+    "test",
+    "tests",
+    "venv",
+    "__pycache__",
+})
 
 # How far below the given path to look. ``charms/storage/cinder-volume-ceph``
 # in sunbeam-charms is a real charm three levels down, and nothing in the
