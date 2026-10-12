@@ -4,7 +4,7 @@ import ast
 from collections.abc import Iterator
 from typing import Any
 
-from .. import _ast
+from .. import _ast, _yaml
 from .. import _models as models
 from ._base import Rule
 
@@ -59,7 +59,7 @@ class ConfigMissingDefault(Rule):
             for name, option in context.config_options.items()
             if isinstance(option.value, dict)
             and "default" not in option
-            and option.get("type").value not in _NO_SENSIBLE_DEFAULT_TYPES
+            and _yaml.option_type(option) not in _NO_SENSIBLE_DEFAULT_TYPES
         ]
 
 
@@ -202,13 +202,13 @@ class ConfigOptionUndeclared(Rule):
 class ConfigDefaultTypeMismatch(Rule):
     """A config option's default must match the type it declares.
 
-    Juju hands the charm the default as written, so a ``type: int``
-    option defaulting to ``"8080"`` gives the charm a string the first
-    time anyone reads it, and an arithmetic ``TypeError`` somewhere that
-    has nothing to do with config. YAML 1.1 makes this commoner than it
-    sounds: an unquoted ``yes``, ``no``, ``on`` or ``off`` is a boolean,
-    so a ``type: string`` option defaulting to ``no`` never sees a
-    string at all.
+    Juju hands the charm the default as written, not coerced to the
+    declared type. A ``type: int`` option defaulting to ``"8080"``
+    gives the charm a string, and arithmetic on it raises a
+    ``TypeError`` in the charm's own code, far from the config. YAML
+    1.1 makes this commoner than it sounds: an unquoted ``yes``,
+    ``no``, ``on`` or ``off`` is a boolean, so a ``type: string``
+    option defaulting to ``no`` never sees a string at all.
     """
 
     category = "CONFIG"
@@ -221,11 +221,16 @@ class ConfigDefaultTypeMismatch(Rule):
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
         for name, option in context.config_options.items():
-            declared = option.get("type").value
+            declared = _yaml.option_type(option)
             default = option.get("default")
             # An option with no type is CONFIG-001's finding, and an
             # explicit `default: null` declares no value to check.
-            if declared not in _DEFAULT_TYPES or not default.present or default.value is None:
+            if (
+                declared is None
+                or declared not in _DEFAULT_TYPES
+                or not default.present
+                or default.value is None
+            ):
                 continue
             if isinstance(default.value, _DEFAULT_TYPES[declared]) and not _is_stray_bool(
                 declared, default.value
@@ -238,7 +243,7 @@ class ConfigDefaultTypeMismatch(Rule):
                     path=default.source,
                     line=default.line,
                     fix_hint=(
-                        f"Write the default as {declared}, or change the option's type "
+                        f"Make the default a '{declared}' value, or change the option's type "
                         f"to match the default"
                     ),
                 )
@@ -248,8 +253,9 @@ class ConfigDefaultTypeMismatch(Rule):
 
 # The Python types PyYAML constructs for a well-formed default of each
 # declared type. An ``int`` is accepted for a ``float`` option because
-# YAML has no way to write ``1`` as a float and Juju coerces it.
-_DEFAULT_TYPES: dict[Any, type | tuple[type, ...]] = {
+# it isn't a defect: ``1`` reaches the charm as written and behaves as
+# ``1.0``, and Charmcraft and Juju both accept an integer default.
+_DEFAULT_TYPES: dict[str, type | tuple[type, ...]] = {
     "string": str,
     "int": int,
     "float": (int, float),

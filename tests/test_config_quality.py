@@ -1,5 +1,6 @@
 """Tests for config quality rules."""
 
+import datetime
 import pathlib
 from typing import Any
 
@@ -162,6 +163,15 @@ class TestConfigRulesTogether:
         _write_options(tmp_charm, {"foo": {}})
         ids = {d.rule_id for d in lint(tmp_charm)}
         assert {"CONFIG-001", "CONFIG-002", "CONFIG-003"} <= ids
+
+    @pytest.mark.parametrize("option_type", [["string"], {"of": "string"}])
+    def test_unhashable_type_does_not_crash(self, tmp_charm: pathlib.Path, option_type: Any):
+        # The name reaches SECURITY-001's type check too, and with no
+        # default CONFIG-002 has to look at the type as well.
+        _write_options(tmp_charm, {"db-password": {"type": option_type, "description": "x"}})
+        ids = {d.rule_id for d in lint(tmp_charm)}
+        assert {"CONFIG-002", "SECURITY-001"} <= ids
+        assert "CONFIG-007" not in ids
 
 
 class TestConfigNoqa:
@@ -339,6 +349,7 @@ class TestConfigDefaultTypeMismatch:
             ("boolean", 1, "an integer"),
             ("string", 8080, "an integer"),
             ("string", True, "a boolean"),
+            ("string", datetime.date(2026, 10, 10), "a date"),
             ("secret", 1, "an integer"),
         ],
     )
@@ -359,8 +370,7 @@ class TestConfigDefaultTypeMismatch:
         [
             ("int", 8080),
             ("float", 0.5),
-            # YAML has no way to write an integral float, so an int is
-            # the only way to spell a float option's default of 1.
+            # A `float` option with an integer default doesn't cause any problems.
             ("float", 1),
             ("boolean", True),
             ("boolean", False),

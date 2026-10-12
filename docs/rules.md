@@ -347,13 +347,13 @@ Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuratio
 
 A config option's default must match the type it declares.
 
-Juju hands the charm the default as written, so a `type: int`
-option defaulting to `"8080"` gives the charm a string the first
-time anyone reads it, and an arithmetic `TypeError` somewhere that
-has nothing to do with config. YAML 1.1 makes this commoner than it
-sounds: an unquoted `yes`, `no`, `on` or `off` is a boolean,
-so a `type: string` option defaulting to `no` never sees a
-string at all.
+Juju hands the charm the default as written, not coerced to the
+declared type. A `type: int` option defaulting to `"8080"`
+gives the charm a string, and arithmetic on it raises a
+`TypeError` in the charm's own code, far from the config. YAML
+1.1 makes this commoner than it sounds: an unquoted `yes`,
+`no`, `on` or `off` is a boolean, so a `type: string`
+option defaulting to `no` never sees a string at all.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
