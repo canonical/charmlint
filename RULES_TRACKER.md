@@ -11,13 +11,13 @@ sections below are ordered by expected value rather than by number.
 
 ## Where we are
 
-40 rules are registered, across 12 modules:
+41 rules are registered, across 12 modules:
 
 | Category | Landed |
 |---|---|
 | ACTIONS | 001, 002, 003, 004 |
 | CHARMCRAFT | 001–009 |
-| CONFIG | 001, 002, 003, 006 |
+| CONFIG | 001, 002, 003, 006, 007 |
 | CORRECTNESS | 001, 002, 003, 004 |
 | DOCUMENTATION | 001 |
 | LIBRARY | 001 |
@@ -173,8 +173,8 @@ declares or documents is wrong.
 | Relation endpoint declared in metadata but never used in code | #227 | |
 | Library under `lib/charms` that nothing imports | #228 | |
 | Tests disabled by a module-level skip or xfail | #231 | |
-| Numeric config option with no minimum or maximum | #222 | 13 charms proposed it |
-| Config description enumerates values it doesn't constrain | #223 | 12 charms proposed it |
+| Numeric config option with no minimum or maximum | #222 | **blocked**: no such key — see the issue |
+| Config description enumerates values it doesn't constrain | #223 | **blocked**: no such key — see the issue |
 | Terraform module endpoints drift from `charmcraft.yaml` | #235 | 97 of 136 charms ship a module, nothing checks it |
 | Relation data aggregated with plain assignment in a loop over relations | #156 | |
 | `MaintenanceStatus` with an exit path that never restores status | #157 | |
