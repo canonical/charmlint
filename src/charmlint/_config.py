@@ -89,9 +89,14 @@ def _str_list(value: Any) -> list[str]:
 
 # The keys a charmlint table may hold. Anything else is a typo (``selct``,
 # ``per_rule_severity``) that would otherwise be silently ignored.
-_KEYS = frozenset(
-    {"severity", "select", "extend-select", "ignore", "extend-ignore", "per-rule-severity"}
-)
+_KEYS = frozenset({
+    "severity",
+    "select",
+    "extend-select",
+    "ignore",
+    "extend-ignore",
+    "per-rule-severity",
+})
 _LIST_KEYS = ("select", "extend-select", "ignore", "extend-ignore")
 _SEVERITIES = ", ".join(severity.value for severity in models.Severity)
 
@@ -99,10 +104,11 @@ _SEVERITIES = ", ".join(severity.value for severity in models.Severity)
 def _check_shape(data: dict[str, Any], path: pathlib.Path) -> None:
     """Reject a charmlint table that ``LintConfig.from_dict`` would misread.
 
-    ``from_dict`` is lenient by design, skipping what it can't use, so this
-    runs first: an unknown key, a ``select = "SECURITY"`` that is not a list,
-    or a severity that names no severity would otherwise each be dropped
-    without a word, and a dropped ``select`` means every rule runs.
+    This has to see the raw table: ``from_dict`` skips what it can't use,
+    so once it has run, an unknown key, a ``select = "SECURITY"`` that is
+    not a list, or a severity that names no severity is indistinguishable
+    from one that was never set, and a dropped ``select`` means every rule
+    runs.
     """
     unknown = sorted(str(key) for key in data if key not in _KEYS)
     if unknown:
@@ -112,7 +118,7 @@ def _check_shape(data: dict[str, Any], path: pathlib.Path) -> None:
     for key in _LIST_KEYS:
         value = data.get(key, [])
         if not isinstance(value, list) or not all(isinstance(token, str) for token in value):
-            raise ConfigError(path, f"{key} must be a list of strings")
+            raise ConfigError(path, f"{key} must be a list of strings, not {value!r}")
     if "severity" in data and not _is_severity(data["severity"]):
         raise ConfigError(path, f"severity must be one of {_SEVERITIES}, not {data['severity']!r}")
     overrides = data.get("per-rule-severity", {})
