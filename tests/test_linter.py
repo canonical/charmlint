@@ -201,6 +201,27 @@ class TestLintFiltering:
         assert "No charmcraft.yaml" not in diag.message
         assert "Could not load charmcraft.yaml" in diag.message
 
+    def test_yaml_merge_keys_are_linted_not_fatal(self, tmp_path: pathlib.Path):
+        # A ``<<`` merge key used to fail the whole file with a FATAL, so
+        # no rule ran at all. ``restore`` sets ``additionalProperties`` only
+        # through the merge, so ACTIONS-002 staying quiet for it shows the
+        # merged-in keys are what the rules see.
+        charm_dir = tmp_path / "merge"
+        charm_dir.mkdir()
+        (charm_dir / "charmcraft.yaml").write_text(
+            "name: test\n"
+            "actions:\n"
+            "  backup: &act\n"
+            "    description: Back up.\n"
+            "    additionalProperties: false\n"
+            "  restore:\n"
+            "    <<: *act\n"
+            "    description: Restore.\n"
+        )
+        diagnostics = list(lint(charm_dir))
+        assert "FATAL" not in {d.rule_id for d in diagnostics}
+        assert {d.rule_id for d in diagnostics if "'restore'" in d.message} == {"ACTIONS-001"}
+
 
 class TestLintMultiCharm:
     """Linting a repository that holds several charms.

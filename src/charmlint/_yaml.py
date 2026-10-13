@@ -127,6 +127,12 @@ def _build(node: yaml.Node, loader: Any, source: str, line: int | None) -> model
     A block sequence therefore gives each element a distinct line, and a
     flow sequence (``[a, b]``) gives every element the line they share —
     which is the line a ``# noqa`` for any of them would sit on anyway.
+
+    A key merged in with ``<<`` is attributed to where it is written,
+    under the anchor, not to the mapping that merges it. Every mapping
+    merging one anchor therefore reports that key on the same line, and
+    a single ``# noqa`` there suppresses the finding for all of them:
+    there is only one place to fix it.
     """
     if isinstance(node, yaml.SequenceNode):
         elements = [_build(item, loader, source, item.start_mark.line + 1) for item in node.value]

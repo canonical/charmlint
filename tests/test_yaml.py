@@ -64,6 +64,8 @@ class TestLoad:
             ("just a string\n", "top-level YAML value is not a mapping"),
             ("? [a, b]\n: c\n", "invalid mapping key"),
             ("links: &a\n  - *a\n", "recursive node"),
+            ("base: &s 1\nb:\n  <<: *s\n", "expected a mapping or list of mappings for merging"),
+            ("a: &a {x: 1}\nb:\n  <<: [*a, 3]\n", "expected a mapping for merging"),
         ],
     )
     def test_broken_file_raises(self, tmp_path: pathlib.Path, content: str, reason: str):
