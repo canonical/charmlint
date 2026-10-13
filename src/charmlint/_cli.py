@@ -32,16 +32,10 @@ def _styled(text: str, style: str, *, use_colour: bool) -> str:
     return text
 
 
-def _format_diagnostic_colour(
-    d: models.Diagnostic, charm_dir: pathlib.Path, *, use_colour: bool
-) -> str:
+def _format_diagnostic_colour(d: models.Diagnostic, *, use_colour: bool) -> str:
     """Format a diagnostic with ANSI colours."""
     # Location (dim).
     location = d.path or ""
-    if charm_dir and d.path:
-        diag_path = pathlib.Path(d.path)
-        if diag_path.is_relative_to(charm_dir):
-            location = str(diag_path.relative_to(charm_dir))
     if d.line is not None:
         location = f"{location}:{d.line}"
 
@@ -257,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         any_diag = False
         for diagnostic in report:
-            print(_format_diagnostic_colour(diagnostic, charm_dir, use_colour=use_colour))
+            print(_format_diagnostic_colour(diagnostic, use_colour=use_colour))
             any_diag = True
         if not args.quiet:
             summary = _format_summary_colour(

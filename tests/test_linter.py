@@ -201,6 +201,29 @@ class TestLintFiltering:
         assert "No charmcraft.yaml" not in diag.message
         assert "Could not load charmcraft.yaml" in diag.message
 
+    def test_every_diagnostic_path_is_charm_relative(self, tmp_charm: pathlib.Path):
+        # The text formatter used to relativise absolute paths, which hid
+        # rules that built them from filesystem paths; JSON output and
+        # multi-charm prefixing got them unchanged. Pin it for every rule.
+        make_full_charm(tmp_charm)
+        write_charm_source(
+            tmp_charm,
+            "def a(self, event):\n    event.defer()\n    self.more()\n\n"
+            "def b(self, event):\n    event.defer()\n    raise RuntimeError\n",
+            filename="handlers.py",
+        )
+        lib_dir = tmp_charm / "lib" / "charms" / "hydra" / "v0"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "oauth.py").write_text('"""stub"""\n')
+        diagnostics = list(lint(tmp_charm))
+        # The rules that used to get this wrong must be among those checked.
+        assert {"CORRECTNESS-001", "CORRECTNESS-002", "LIBRARY-001"} <= {
+            d.rule_id for d in diagnostics
+        }
+        for diagnostic in diagnostics:
+            if diagnostic.path is not None:
+                assert not pathlib.PurePosixPath(diagnostic.path).is_absolute(), diagnostic
+
 
 class TestLintMultiCharm:
     """Linting a repository that holds several charms.

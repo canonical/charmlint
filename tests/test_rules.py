@@ -457,13 +457,13 @@ class TestLibraryRules:
         expected_pkg: str,
     ):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        lib_path = _vendor_lib(tmp_charm, owner, version, lib)
+        _vendor_lib(tmp_charm, owner, version, lib)
         report = lint(tmp_charm)
         lib001 = [d for d in report if d.rule_id == "LIBRARY-001"]
         assert len(lib001) == 1
         assert expected_pkg in lib001[0].message
         assert lib001[0].severity == Severity.WARNING
-        assert lib001[0].path == lib_path.relative_to(tmp_charm).as_posix()
+        assert lib001[0].path == f"lib/charms/{owner}/{version}/{lib}.py"
         assert lib001[0].fix_hint is not None
         assert f"uv add {expected_pkg}" in lib001[0].fix_hint
 
