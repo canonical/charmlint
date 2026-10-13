@@ -6,7 +6,7 @@ import pathlib
 import pytest
 
 from charmlint._config import LintConfig
-from charmlint._linter import build_context, lint
+from charmlint._linter import _no_metadata, build_context, lint
 from charmlint._models import Severity
 from tests.conftest import (
     make_full_charm,
@@ -193,6 +193,15 @@ class TestLintFiltering:
         (charm_dir / "metadata.yaml").write_text("{}\n")
         [diag] = list(lint(charm_dir))
         assert "charmcraft.yaml and metadata.yaml are empty" in diag.message
+        assert diag.path is None
+
+    def test_metadata_gone_since_discovery_is_reported_missing(self, tmp_path: pathlib.Path):
+        # ``lint()`` reports a directory with no metadata files itself, before
+        # it gets here, so this is the files vanishing after discovery.
+        diag = _no_metadata(tmp_path)
+        assert diag.rule_id == "FATAL"
+        assert diag.path is None
+        assert "No charmcraft.yaml or metadata.yaml found" in diag.message
 
     def test_select_unknown_category_returns_no_diagnostics(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})

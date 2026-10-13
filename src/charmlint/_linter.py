@@ -268,23 +268,26 @@ def _no_metadata(charm_dir: pathlib.Path) -> models.Diagnostic:
     """The fatal diagnostic for a charm directory with no metadata to lint.
 
     Discovery only hands over a directory holding one of the metadata files,
-    so usually they are there but empty (or only comments) — which is worth
-    saying, rather than claiming the files are missing.
+    so they are there but empty (or only comments) — which is worth saying,
+    rather than claiming the files are missing.
     """
-    present = [
-        name for name in ("charmcraft.yaml", "metadata.yaml") if (charm_dir / name).is_file()
-    ]
+    present = [name for name in _discovery._METADATA_FILES if (charm_dir / name).is_file()]
+    path = None
     if not present:
+        # Only reachable if the files vanish between discovery and loading.
         message = "No charmcraft.yaml or metadata.yaml found — is this a charm directory?"
     elif len(present) == 1:
         message = f"{present[0]} is empty — there is no charm metadata to lint"
+        path = present[0]
     else:
+        # Both files are named in the message, so anchoring to one of them
+        # would only repeat it.
         message = f"{' and '.join(present)} are empty — there is no charm metadata to lint"
     return models.Diagnostic(
         rule_id="FATAL",
         severity=models.Severity.ERROR,
         message=message,
-        path=present[0] if present else None,
+        path=path,
     )
 
 
