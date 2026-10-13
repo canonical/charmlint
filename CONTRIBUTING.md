@@ -2,17 +2,61 @@ We welcome contributions to this project!
 
 Before working on changes, please consider [opening an issue](https://github.com/canonical/charmlint/issues) explaining your use case. If you would like to chat with us about your use cases or proposed implementation, you can reach us on [Matrix](https://matrix.to/#/#charmhub-charmdev:ubuntu.com) or [Discourse](https://discourse.charmhub.io/).
 
-<!--
-For detailed dev-environment setup, build, and test instructions, link here to
-the substantive doc if one exists (HACKING.md, docs/contributing.md, etc.).
-Most Charm Tech repos keep this section inline rather than redirecting.
--->
+All contributors must sign the [Canonical contributor licence agreement](https://ubuntu.com/legal/contributors), which grants Canonical permission to use the contributions. You retain copyright ownership of your contributions (no copyright assignment).
+
+# Development
+
+Set up a dev environment and run the tests with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync
+uv run pytest
+```
+
+Tests that need the network (the reference-URL checks) are deselected by default; run them with `uv run pytest -m network`.
+
+Lint, format, and type-check:
+
+```bash
+uv run ruff check
+uv run ruff format --check
+uv run ty check
+```
+
+`pre-commit` runs the same checks (config in `.pre-commit-config.yaml`).
+
+A new or changed rule needs measurements over the charm corpus before review - see [docs/corpus.md](docs/corpus.md).
+
+[docs/rules.md](docs/rules.md) is generated from the rule registry (CI fails if it's stale). After adding or changing a rule, regenerate it with `make docs`. Don't edit the page by hand; improve the rule docstrings instead.
+
+# Develop in a workshop
+
+[Workshop](https://ubuntu.com/workshop) definitions live in `.workshop/`. The `dev` workshop is a container with `uv`, `make`, and charmlint's development dependencies, so you don't need to install any of them on the host:
+
+```bash
+sudo snap install workshop --classic  # If you don't have it already.
+workshop launch dev
+workshop run dev lint
+```
+
+The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+
+The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a read-only mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
+
+```bash
+workshop stop dev
+workshop remount dev/tools:charms ~/code/my-charm
+workshop start dev
+workshop run dev charmlint
+```
+
+Arguments go through to charmlint, and it resolves relative paths against `~/charms` inside the workshop, not on your host. That includes `--config`, so to use a config file from your checkout rather than one in the mounted charms, give its path under `/project`, where the workshop mounts the project directory. If you mount a directory of charms, name the charm to lint. For example, with the hyrum cache (`~/.cache/hyrum/charms`) mounted, run `workshop run dev charmlint canonical/some-operator`.
 
 # Project status
 
 charmlint is early work, and the implementation is subject to change (and probably will change). Please don't treat anything under `src/` as settled, or build on it expecting the internals to stay where they are.
 
-What we're trying to get right at the moment is the set of rules. That's where the care goes: what each rule is for, what it does and doesn't match, and the tests that pin that behaviour down. The tests themselves might change shape later - we'd like them to be less Python-specific, since charmlint is meant to be model-agnostic - so it's not worth over-investing in the current fixtures.
+What we're trying to get right at the moment is the set of rules. That's where the care goes: what each rule is for, what it does and doesn't match, and the tests that pin that behaviour down. The tests themselves might change shape later - we'd like them to be less Python-specific, since charmlint is meant to work with any AI model or coding agent, not just one - so it's not worth over-investing in the current fixtures.
 
 The code is almost entirely agent-generated, and that's likely to continue for a while yet.
 
@@ -23,10 +67,27 @@ Review still matters, but the weight isn't spread evenly.
 Most of the attention belongs on the rule itself:
 
 * Is this a good thing to have a rule about at all? A rule that's noisy, or that encodes a personal preference rather than a practice we'd defend, costs more than it's worth.
+* Does it need to know about charms? charmlint complements general-purpose tools like ruff and pyright rather than replacing them - if a generic Python linter or type checker could catch it, it belongs there instead.
 * What does it match, and (more importantly) what does it not match? A false positive is worse than a gap.
 * Do the tests actually capture that? A test that only exercises the case the rule was written for isn't telling us much.
 
 The implementation gets a lighter pass. We're more lenient about "agent-isms" here than in the other Charm Tech repos: if the code is more verbose or more defensive than a person would have written it, and it's correct and readable, that's ok. That's not a license to let quality slide - we still want code we'd be happy to maintain, and unnecessary comments (especially ones referring to history) should still go. But if you find yourself choosing, spend the time on the rule rather than on the style of the code implementing it.
+
+# Rules
+
+We take rule and engine work in order of value. Roughly, the value of a rule is the number of charms that have the defect, times how bad the defect is, divided by the risk of false positives. Two kinds of work jump the queue:
+
+* False positives in rules that already ship. A false positive is worse than a gap, and a rule that's already in the default `select` is costing trust today.
+* Engine work that several queued rules are blocked on - anything that would otherwise be re-implemented in each rule, or retrofitted into every rule written before it.
+
+A rule that prescribes a feature rather than finding a defect, or that would fire on a large fraction of charms by design, needs a decision on scope (in its issue) before it's worth writing.
+
+For a rule PR:
+
+* One rule (or one group of rules that share a factory) per PR. Helpers that several rules share land in their own PR first.
+* Rule IDs are `CATEGORY-###`, as described in [docs/id-scheme.md](docs/id-scheme.md). A number in an older issue's title (`CORR008`, say) isn't reserved: the ID is assigned when the rule is written.
+* Include the rule's tests, the `_rules/__init__.py` import if it adds a module, and the regenerated `docs/rules.md`.
+* Put the corpus measurements in the PR description, counted as [docs/corpus.md](docs/corpus.md) describes. If the false-positive rate isn't close to zero, tighten the rule and measure again.
 
 # AI
 
@@ -64,22 +125,11 @@ If you need to bring in the latest changes from `main` after the review has star
 
 # Releasing
 
-<!--
-Most Charm Tech repos that produce a release artefact include a section
-describing how to cut one. The shape depends on what the repo produces:
+charmlint is published to [PyPI](https://pypi.org/project/charmlint/) by `.github/workflows/publish.yaml`, with Trusted Publishing, whenever a `v*` tag is pushed.
 
-- PyPI package (uv build → Trusted Publishing): tag → GitHub Release →
-  release workflow publishes via pypa/gh-action-pypi-publish (OIDC).
-- snap (snapcraft / launchpad build recipe): document the release channel
-  promotion flow (edge → beta → candidate → stable).
-- Go binary (goreleaser): document `git tag vX.Y.Z && git push --tags`
-  and which workflow goreleaser runs from.
-- Charm on Charmhub (charmcraft): document the track/channel and the
-  upload-resource / promote-charm flow.
-- Library shipped via canonical/charmlibs: document the version-bump and
-  publish-library flow.
+1. Work out the new version from [docs/versioning.md](docs/versioning.md): a minor bump if anything since the last release adds a rule or changes what a rule reports, and a patch bump otherwise.
+2. Open a PR that bumps the version (`uv version --bump minor` or `--bump patch` updates both `pyproject.toml` and `uv.lock`), titled like `chore: bump version to 0.3.0`, and merge it.
+3. Create a GitHub release on the merge commit, with a new `vX.Y.Z` tag that matches the version and a short summary of what changed. Creating the release pushes the tag, which starts the publish workflow.
+4. Check that the publish run succeeds. It stops before building if the tag doesn't match the version in `pyproject.toml`. If that happens, don't move the tag (the tag ruleset won't let you anyway) - bump the patch version and release again.
 
-Replace this comment with the actual procedure. Repos that don't produce a
-discrete release artefact (demos, tutorials, specs, registries) can drop the
-whole section.
--->
+To try the workflow out without releasing anything, run it manually from the Actions tab. A manual run publishes a `.devN` build to TestPyPI instead.

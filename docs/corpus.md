@@ -20,8 +20,7 @@ Monorepo layouts (`repo/charms/*`, `repo/charm/`, `repo/kubernetes/`, `repo/mach
 import pathlib, yaml
 
 ROOT = pathlib.Path.home() / ".cache/hyrum/charms"
-NOISE = (".tox", "/tests/", "/.template/", "cookiecutter",
-         "/node_modules/", "/.venv/", "/build/")
+NOISE = (".tox", "/tests/", "/.template/", "cookiecutter", "/node_modules/", "/.venv/", "/build/")
 
 
 def charm_dirs():
@@ -59,6 +58,7 @@ def _declared_name(d: pathlib.Path) -> str | None:
 
 ```python
 import sys
+
 sys.path.insert(0, "src")
 from charmlint._linter import lint
 

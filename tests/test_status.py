@@ -305,9 +305,11 @@ class TestBlockedStatusInNonRepeatingHandler:
         )
         assert not [d for d in lint(tmp_charm) if d.rule_id == RULE]
 
-    def test_syntax_error_ignored(self, tmp_charm: pathlib.Path):
-        found = _lint_source(tmp_charm, "def broken(:\n")
-        assert not found
+    def test_syntax_error_is_fatal(self, tmp_charm: pathlib.Path):
+        """A source that does not parse is reported by the core, not skipped here."""
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "def broken(:\n")
+        assert [d.rule_id for d in lint(tmp_charm)] == ["FATAL"]
 
     def test_diagnostic_metadata(self, tmp_charm: pathlib.Path):
         found = _lint_source(
