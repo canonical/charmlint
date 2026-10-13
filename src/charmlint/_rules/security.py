@@ -3,6 +3,7 @@
 import re
 
 from .. import _models as models
+from .. import _yaml
 from ._base import Rule
 
 # Match a secret-like keyword only when it is the terminal
@@ -38,7 +39,7 @@ class SecretInPlainConfig(Rule):
                 fix_hint="Use the Juju secrets API for sensitive data",
             )
             for name, option in context.config_options.items()
-            if option.get("type").value not in _NON_SECRET_TYPES
+            if _yaml.option_type(option) not in _NON_SECRET_TYPES
             and isinstance(name, str)
             and _SECRET_KEYWORD_RE.search(name)
         ]

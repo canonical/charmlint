@@ -21,6 +21,7 @@ with the rule that needs it.
 import ast
 import dataclasses
 import pathlib
+import warnings
 from collections.abc import Iterator, Sequence
 
 from . import _models as models
@@ -77,11 +78,17 @@ def parse(
     see it.
     """
     relative = pathlib.PurePosixPath(file.relative_to(charm_dir).as_posix())
+    with warnings.catch_warnings():
+        # Compiling the charm's code can warn about it (an invalid escape
+        # sequence, say). That is for ruff to report, not for charmlint to
+        # print to stderr in the middle of its own output.
+        warnings.simplefilter("ignore")
+        tree = ast.parse(text, filename=str(file))
     return models.Module(
         path=str(relative),
         file=file,
         text=text,
-        tree=ast.parse(text, filename=str(file)),
+        tree=tree,
         scope=_scope_of(relative, charm_name),
     )
 
@@ -168,6 +175,12 @@ class Imports:
     def imports_module(self, name: str) -> bool:
         """Whether *name* — or a submodule of it — is imported anywhere."""
         return any(mod == name or mod.startswith(f"{name}.") for mod in self.modules)
+
+
+# The canonical names :meth:`Imports.resolve` gives ops' charm base class and
+# its entry point. ``ops.main`` is both the submodule and the callable inside it.
+CHARM_BASES = frozenset({"ops.CharmBase", "ops.charm.CharmBase"})
+OPS_MAIN_TARGETS = frozenset({"ops.main", "ops.main.main"})
 
 
 # --- Calls -----------------------------------------------------------------
