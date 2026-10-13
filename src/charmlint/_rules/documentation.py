@@ -22,6 +22,21 @@ class NoReadme(Rule):
     name = "no-readme"
     description = "No README file found"
     default_severity = models.Severity.WARNING
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
+    fix = {
+        "README.md": """
+            # Web Frontend
+
+            A Juju charm that deploys the web frontend.
+        """,
+    }
 
     _extensions = frozenset({".md", ".txt", ".rst"})
 

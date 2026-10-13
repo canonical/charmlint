@@ -90,6 +90,50 @@ Charms whose observe calls live in an external base class (installed
 as a pip dependency, not vendored under `src/` or `lib/`) will
 hit false positives — disable ACTIONS-001 in that case.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+actions:
+  rotate-logs:
+    description: Rotate the workload's log files.
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.config_changed, self._on_config_changed)
+
+    def _on_config_changed(self, event: ops.ConfigChangedEvent): ...
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.config_changed, self._on_config_changed)
+        framework.observe(self.on.rotate_logs_action, self._on_rotate_logs)
+
+    def _on_config_changed(self, event: ops.ConfigChangedEvent): ...
+
+    def _on_rotate_logs(self, event: ops.ActionEvent): ...
+```
+
 ### ACTIONS-002 action-missing-additional-properties
 
 **Warning** — Action does not explicitly set 'additionalProperties'
@@ -105,6 +149,37 @@ particular one.
 Actions declared without a body (`do-thing:` with no mapping) are
 flagged too: they have no `additionalProperties` either.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+actions:
+  rotate-logs:
+    description: Rotate the workload's log files.
+    params:
+      keep:
+        type: integer
+        description: How many rotated files to keep.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+actions:
+  rotate-logs:
+    description: Rotate the workload's log files.
+    params:
+      keep:
+        type: integer
+        description: How many rotated files to keep.
+    additionalProperties: false
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions>
 
 ### ACTIONS-003 action-missing-description
@@ -117,6 +192,29 @@ Every declared action should document what it does.
 one, operators have to read the charm source to find out what running
 the action will do.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+actions:
+  rotate-logs:
+    additionalProperties: false
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+actions:
+  rotate-logs:
+    description: Rotate the workload's log files.
+    additionalProperties: false
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions>
 
 ### ACTIONS-004 action-param-missing-description
@@ -127,6 +225,37 @@ Every action parameter should document what it controls.
 
 Parameter descriptions are surfaced by `juju actions --schema`, so a
 parameter without one leaves operators guessing at accepted values.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+actions:
+  rotate-logs:
+    description: Rotate the workload's log files.
+    params:
+      keep:
+        type: integer
+    additionalProperties: false
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+actions:
+  rotate-logs:
+    description: Rotate the workload's log files.
+    params:
+      keep:
+        type: integer
+        description: How many rotated files to keep.
+    additionalProperties: false
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-actions>
 
@@ -150,6 +279,26 @@ Presence is the whole test: an empty `series:` is flagged like
 any other, because the key itself is the finding rather than what
 it says.
 
+Example:
+
+`metadata.yaml`
+
+```yaml
+name: web-frontend
+summary: Serves the web frontend.
+series:
+  - jammy
+```
+
+Fix:
+
+`metadata.yaml`
+
+```yaml
+name: web-frontend
+summary: Serves the web frontend.
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms>
 
 ### CHARMCRAFT-002 naming-conventions
@@ -167,6 +316,34 @@ option later breaks everyone already setting it.
 Config options only. Juju rejects an underscored action name
 outright, so no charm has one to report, and underscored action
 parameters are vanishingly rare in the wild.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    log_level:
+      type: string
+      default: info
+      description: Workload log level.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    log-level:
+      type: string
+      default: info
+      description: Workload log level.
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config>
 
@@ -192,6 +369,44 @@ charm, or a `dispatch` whose last statement does not run a
 environment problem rather than the charm's, and is passed over
 too.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+```
+
+`dispatch`
+
+```
+#!/bin/sh
+JUJU_DISPATCH_PATH="${JUJU_DISPATCH_PATH:-$0}" PYTHONPATH=lib:venv exec python3 ./src/main.py
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    pass
+
+
+if __name__ == "__main__":
+    ops.main(WebFrontendCharm)
+```
+
+Fix:
+
+`dispatch`
+
+```
+#!/bin/sh
+JUJU_DISPATCH_PATH="${JUJU_DISPATCH_PATH:-$0}" PYTHONPATH=lib:venv exec python3 ./src/charm.py
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/dispatch-file/>
 
 ### CHARMCRAFT-004 unknown-top-level-field
@@ -205,6 +420,26 @@ go silently unnoticed. Only top-level keys are checked; user-defined
 sub-keys inside `config.options`, `actions`, `requires`, etc. are
 left alone because their names are charm-specific.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+sumary: Serves the web frontend.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+summary: Serves the web frontend.
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/>
 
 ### CHARMCRAFT-005 unknown-resource-field
@@ -212,6 +447,30 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ch
 **Warning** — Unrecognised field inside a resource definition (possible typo)
 
 Flag unrecognised keys inside resource definitions.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+resources:
+  frontend-image:
+    type: oci-image
+    descripton: OCI image for the frontend container.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+resources:
+  frontend-image:
+    type: oci-image
+    description: OCI image for the frontend container.
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-resources>
 
@@ -231,6 +490,50 @@ Charms whose entrypoint is not a collected Python file (a shell
 wrapper, or a console script installed as a dependency) are skipped
 rather than flagged — there is no charm source here to judge.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._on_start)
+
+    def _on_start(self, event: ops.StartEvent):
+        self.unit.status = ops.ActiveStatus()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._on_start)
+
+    def _on_start(self, event: ops.StartEvent):
+        self.unit.status = ops.ActiveStatus()
+
+
+if __name__ == "__main__":
+    ops.main(WebFrontendCharm)
+```
+
 Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops-main-entrypoint/>
 
 ### CHARMCRAFT-007 legacy-bases
@@ -246,6 +549,34 @@ accepted for bases supported before 2024-01-01, so a charm that names
 24.04 or later there will not pack at all, while one still on 22.04
 builds fine and has only migration ahead of it. Reported as a warning
 in the first case and info in the second.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+bases:
+  - build-on:
+      - name: ubuntu
+        channel: "22.04"
+    run-on:
+      - name: ubuntu
+        channel: "22.04"
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+base: ubuntu@22.04
+platforms:
+  amd64:
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms>
 
@@ -264,6 +595,29 @@ The advisory findings are limited to Kubernetes charms, because the
 key has no effect on a machine charm. An invalid *value* is reported
 wherever it appears: it is a malformed key rather than a question of
 privilege.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+containers:
+  frontend:
+    resource: frontend-image
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+charm-user: non-root
+containers:
+  frontend:
+    resource: frontend-image
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-charm-user>
 
@@ -294,6 +648,30 @@ A container written as anything other than a mapping is skipped, the
 same as elsewhere in this module: a malformed section is not a
 privilege finding.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+containers:
+  frontend:
+    resource: frontend-image
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+containers:
+  frontend:
+    resource: frontend-image
+    uid: 584792
+    gid: 584792
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers>
 
 ## CONFIG
@@ -306,6 +684,33 @@ Config quality.
 
 Config options should declare an explicit type.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      default: 8080
+      description: Port the web server listens on.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
+
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
 ### CONFIG-002 config-missing-default
@@ -314,6 +719,33 @@ Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuratio
 
 Config options should provide a default value where one makes sense.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      description: Port the web server listens on.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
+
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
 ### CONFIG-003 config-missing-description
@@ -321,6 +753,33 @@ Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuratio
 **Warning** — Config option is missing a description
 
 Config options should be documented with a description.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
@@ -339,6 +798,44 @@ Only literal keys in the charm's own `src/` are considered. A library
 reads the config of whichever charm uses it, so its keys are not this
 charm's to declare, and a computed key cannot be resolved statically.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _listen_port(self) -> int:
+        return int(self.config["prot"])
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _listen_port(self) -> int:
+        return int(self.config["port"])
+```
+
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
 ### CONFIG-007 config-default-type-mismatch
@@ -354,6 +851,34 @@ gives the charm a string, and arithmetic on it raises a
 1.1 makes this commoner than it sounds: an unquoted `yes`,
 `no`, `on` or `off` is a boolean, so a `type: string`
 option defaulting to `no` never sees a string at all.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: "8080"
+      description: Port the web server listens on.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
@@ -372,6 +897,33 @@ The other config rules still check options written one level too high,
 so their findings are about the options themselves rather than about
 where they are.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  port:
+    type: int
+    default: 8080
+    description: Port the web server listens on.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config>
 
 ## CORRECTNESS
@@ -384,6 +936,44 @@ Correctness.
 
 Flag `event.defer()` not immediately followed by `return`.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _on_pebble_ready(self, event: ops.PebbleReadyEvent):
+        if not self._database_ready():
+            event.defer()
+        self._replan()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _on_pebble_ready(self, event: ops.PebbleReadyEvent):
+        if not self._database_ready():
+            event.defer()
+            return
+        self._replan()
+```
+
 ### CORRECTNESS-002 defer-before-raise
 
 **Warning** — event.defer() immediately followed by raise
@@ -394,6 +984,45 @@ An uncaught exception during a hook aborts the framework commit, so
 the `defer()` never persists — the event will not be re-emitted.
 Either raise without deferring (if the failure should propagate) or
 defer and return (if the event should be retried).
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _on_config_changed(self, event: ops.ConfigChangedEvent):
+        if not self._container.can_connect():
+            event.defer()
+            raise RuntimeError("workload container not ready")
+        self._replan()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _on_config_changed(self, event: ops.ConfigChangedEvent):
+        if not self._container.can_connect():
+            event.defer()
+            return
+        self._replan()
+```
 
 ### CORRECTNESS-003 exec-result-not-consumed
 
@@ -406,6 +1035,41 @@ never captures its exit code, and can stall the container if stdout or
 stderr fills the pipe buffer. The result must either be assigned (so the
 caller can `.wait()` / `.wait_output()` later) or chained directly,
 e.g. `container.exec(...).wait_output()`.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _migrate(self):
+        container = self.unit.get_container("frontend")
+        container.exec(["frontend", "migrate"])
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _migrate(self):
+        container = self.unit.get_container("frontend")
+        container.exec(["frontend", "migrate"]).wait_output()
+```
 
 ### CORRECTNESS-004 non-deferrable-event-deferred
 
@@ -421,6 +1085,51 @@ plain local name (the handler's event argument) counts — deferring a
 A handler observing both a deferrable and a non-deferrable event is
 still flagged: the `defer()` raises whenever the non-deferrable
 event is the one being dispatched.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.stop, self._on_stop)
+
+    def _on_stop(self, event: ops.StopEvent):
+        if not self._drained():
+            event.defer()
+            return
+        self._shutdown()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.stop, self._on_stop)
+
+    def _on_stop(self, event: ops.StopEvent):
+        self._drain()
+        self._shutdown()
+```
 
 Reference: <https://canonical.com/juju/docs/ops/latest/explanation/defer-guidance/#not-possible-actions-shutting-down-framework-generated-events-secrets>
 
@@ -451,6 +1160,50 @@ raises at runtime — the arguments are evaluated left to right — but
 a rename refactor that missed both wants both listed, so that one
 pass over the findings fixes the call rather than two.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+requires:
+  database:
+    interface: postgresql_client
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.db_relation_changed, self._on_database_changed)
+
+    def _on_database_changed(self, event: ops.RelationChangedEvent):
+        self._replan()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.database_relation_changed, self._on_database_changed)
+
+    def _on_database_changed(self, event: ops.RelationChangedEvent):
+        self._replan()
+```
+
 Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Framework.observe>
 
 ### CORRECTNESS-009 container-name-mismatch
@@ -478,6 +1231,47 @@ injected by the extension, and a charm whose metadata is generated
 charmlint never sees. Reporting those means reporting a charm we
 failed to understand.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+containers:
+  nginx:
+    resource: nginx-image
+resources:
+  nginx-image:
+    type: oci-image
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _replan(self):
+        container = self.unit.get_container("web-frontend")
+        container.replan()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _replan(self):
+        container = self.unit.get_container("nginx")
+        container.replan()
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers>
 
 ## DOCUMENTATION
@@ -498,6 +1292,27 @@ the rule, in any case combination, and it has to sit at the charm
 root: a README one directory down documents that directory, not the
 charm. An extensionless `README` is reported, since nothing
 renders it.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
+
+Fix:
+
+`README.md`
+
+```
+# Web Frontend
+
+A Juju charm that deploys the web frontend.
+```
 
 ## FEATURES
 
@@ -525,6 +1340,30 @@ Only charms whose metadata lives in `charmcraft.yaml` are
 checked: one still declaring `name` in `metadata.yaml` predates
 the unified file, and may predate `assumes` (Juju 2.9.23)
 altogether. Bundles are skipped, having no `assumes` to declare.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+assumes:
+  - juju >= 3.6
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-assumes>
 
@@ -577,6 +1416,45 @@ false positive: a `getattr(self.unit, ...)` lookup, a call made by a
 `_WORKLOAD_VERSION_SETTERS`. A charm with no reachable source of
 its own is left alone entirely.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _on_start(self, event: ops.StartEvent):
+        self.unit.status = ops.ActiveStatus()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _on_start(self, event: ops.StartEvent):
+        container = self.unit.get_container("nginx")
+        # nginx -v reports "nginx version: nginx/1.27.0" on stderr.
+        _, banner = container.exec(["nginx", "-v"]).wait_output()
+        self.unit.set_workload_version(banner.strip().rpartition("/")[2])
+        self.unit.status = ops.ActiveStatus()
+```
+
 Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version>
 
 ### FEATURES-006 hardcoded-workload-version
@@ -606,6 +1484,44 @@ a placeholder passed on its own: see `_VERSION_PLACEHOLDERS`.
 A constant defined in another module is not followed, which is a
 deliberate gap — it would add false-positive risk for no finding the
 corpus can show.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _on_start(self, event: ops.StartEvent):
+        self.unit.set_workload_version("1.27.0")
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _on_start(self, event: ops.StartEvent):
+        container = self.unit.get_container("nginx")
+        # nginx -v reports "nginx version: nginx/1.27.0" on stderr.
+        _, banner = container.exec(["nginx", "-v"]).wait_output()
+        self.unit.set_workload_version(banner.strip().rpartition("/")[2])
+```
 
 Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version>
 
@@ -649,6 +1565,53 @@ are only read when an action runs, so a change rightly waits for the
 next run, and one that applies its configuration outside ops
 altogether, such as in the entry point before it calls `ops.main`.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._on_start)
+
+    def _on_start(self, event: ops.StartEvent):
+        self.unit.set_ports(int(self.config["port"]))
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._reconcile)
+        framework.observe(self.on.config_changed, self._reconcile)
+
+    def _reconcile(self, event: ops.EventBase):
+        self.unit.set_ports(int(self.config["port"]))
+```
+
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
 ## LIBRARY
@@ -660,6 +1623,38 @@ Library management.
 **Warning** — Deprecated Charmhub library has PyPI replacement
 
 Detect vendored fetch-libs copies that have PyPI replacements.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+```
+
+`requirements.txt`
+
+```
+ops
+```
+
+`lib/charms/hydra/v0/oauth.py`
+
+```python
+LIBAPI = 0
+LIBPATCH = 9
+```
+
+Fix:
+
+`requirements.txt`
+
+```
+ops
+charmlibs-interfaces-oauth
+```
+
+Delete `lib/charms/hydra/v0/oauth.py`.
 
 Reference: <https://canonical.com/juju/docs/charmlibs/>
 
@@ -683,6 +1678,31 @@ names nothing. Bundles are skipped, here and in the rest of this
 family: these are charm-metadata fields, and a bundle declares none
 of them.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+assumes:
+  - juju >= 3.6
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+assumes:
+  - juju >= 3.6
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-name>
 
 ### METADATA-002 missing-display-name
@@ -701,6 +1721,27 @@ metadata.yaml, and only the spelling belonging to the file the
 charm uses counts: writing `display-name` in charmcraft.yaml is a
 misplacement rather than a title.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+summary: Serves the web frontend.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-title>
 
 ### METADATA-003 missing-summary
@@ -713,6 +1754,27 @@ The summary is the one-line description that identifies the charm
 in `juju info`, in `charmhub` search results, and anywhere else
 charms are listed rather than read about. charmcraft requires it to
 pack.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-summary>
 
@@ -730,6 +1792,31 @@ Only presence is checked. Whether the description is worth reading
 is not something a linter can tell, so a one-word description
 satisfies this rule.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+description: |
+  Deploys the web frontend, serving the site's static assets
+  and proxying API requests to the backend.
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-description>
 
 ### METADATA-005 missing-docs
@@ -745,6 +1832,33 @@ deploys perfectly well without it.
 The key is `links.documentation` in charmcraft.yaml and `docs`
 at the top level in metadata.yaml, and only the spelling belonging
 to the file the charm uses counts.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+links:
+  issues: https://github.com/example/web-frontend-operator/issues
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+links:
+  documentation: https://example.com/web-frontend/docs
+  issues: https://github.com/example/web-frontend-operator/issues
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links>
 
@@ -762,6 +1876,33 @@ The key is `links.issues` in charmcraft.yaml and `issues` at
 the top level in metadata.yaml, and only the spelling belonging to
 the file the charm uses counts.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+links:
+  source: https://github.com/example/web-frontend-operator
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+links:
+  issues: https://github.com/example/web-frontend-operator/issues
+  source: https://github.com/example/web-frontend-operator
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-issues>
 
 ### METADATA-007 missing-source
@@ -778,6 +1919,33 @@ The key is `links.source` in charmcraft.yaml and `source` at
 the top level in metadata.yaml, and only the spelling belonging to
 the file the charm uses counts.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+links:
+  issues: https://github.com/example/web-frontend-operator/issues
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+links:
+  issues: https://github.com/example/web-frontend-operator/issues
+  source: https://github.com/example/web-frontend-operator
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links-source>
 
 ### METADATA-008 requires-missing-optional
@@ -786,6 +1954,35 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ch
 
 Flag `requires` endpoints that don't explicitly declare `optional`.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+requires:
+  database:
+    interface: postgresql_client
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+requires:
+  database:
+    interface: postgresql_client
+    optional: false
+```
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#endpoint-role-endpoint-name-optional>
 
 ### METADATA-009 provides-missing-optional
@@ -793,6 +1990,35 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ch
 **Info** — provides endpoint missing explicit `optional` field
 
 Flag `provides` endpoints that don't explicitly declare `optional`.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+provides:
+  metrics-endpoint:
+    interface: prometheus_scrape
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+provides:
+  metrics-endpoint:
+    interface: prometheus_scrape
+    optional: true
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#endpoint-role-endpoint-name-optional>
 
@@ -807,6 +2033,32 @@ search, so a `website` field pointing back at it renders a link from
 the page to itself. Sub-pages (`/<charm>/docs`, `/<charm>/configure`)
 are left alone: those carry content the top-level page does not, so
 they are a deliberate destination rather than a circular link.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+links:
+  website: https://charmhub.io/web-frontend
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+links:
+  website: https://example.com/web-frontend
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links>
 
@@ -824,6 +2076,56 @@ Only constant values are flagged. A value built by `str(...)`, an
 f-string, or any other expression is left alone: the rule can't tell
 what it evaluates to, and the common cases are already strings.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _pebble_layer(self) -> ops.pebble.LayerDict:
+        return {
+            "services": {
+                "web": {
+                    "override": "replace",
+                    "command": "/usr/bin/web-server",
+                    "startup": "enabled",
+                    "environment": {"DEBUG": False},
+                },
+            },
+        }
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def _pebble_layer(self) -> ops.pebble.LayerDict:
+        return {
+            "services": {
+                "web": {
+                    "override": "replace",
+                    "command": "/usr/bin/web-server",
+                    "startup": "enabled",
+                    "environment": {"DEBUG": "false"},
+                },
+            },
+        }
+```
+
 Reference: <https://ubuntu.com/docs/pebble/reference/layer-specification/>
 
 ## SECURITY
@@ -835,6 +2137,34 @@ Security.
 **Error** — Secret-like config option found — use Juju secrets instead
 
 Detect config options that look like secrets but aren't using Juju secrets.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    database-password:
+      type: string
+      description: Password for the database user.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    database-credentials:
+      type: secret
+      description: >-
+        Juju secret holding the database username and password,
+        granted to this application.
+```
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-secrets/>
 
@@ -854,6 +2184,54 @@ and at `config-changed` or `update-status` as well; those recover
 on the next event, so they are left alone. The same applies when an
 observe call's event expression can't be resolved statically — an
 unknown event is assumed to be a recovering one.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+```
+
+`src/charm.py`
+
+```python
+import subprocess
+
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.install, self._on_install)
+
+    def _on_install(self, event: ops.InstallEvent):
+        try:
+            subprocess.run(["apt-get", "install", "-y", "nginx"], check=True)
+        except subprocess.CalledProcessError:
+            self.unit.status = ops.BlockedStatus("failed to install nginx")
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import subprocess
+
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.install, self._on_install)
+
+    def _on_install(self, event: ops.InstallEvent):
+        # If this fails, the hook fails and Juju retries it.
+        subprocess.run(["apt-get", "install", "-y", "nginx"], check=True)
+```
 
 Reference: <https://canonical.com/juju/docs/juju-cli/latest/reference/hook/#install>
 
@@ -877,6 +2255,27 @@ recognised. An empty file is not a licence either. Shipping *both*
 spellings is reported in its own right: two files invite the two
 drifting apart, and leave a reader guessing which one governs.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
+
+Fix:
+
+`LICENSE`
+
+```
+Apache License
+Version 2.0, January 2004
+...
+```
+
 ### STRUCTURE-002 no-icon
 
 **Info** — No icon.svg found
@@ -891,6 +2290,27 @@ The file has to be at the charm root, named exactly `icon.svg`,
 and non-empty — a zero-byte placeholder is reported as though it
 were missing. Nothing inside the SVG is examined: dimensions and
 viewBox are charmcraft's business, not this rule's.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+title: Web Frontend
+summary: Serves the web frontend.
+```
+
+Fix:
+
+`icon.svg`
+
+```
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+  <circle cx="50" cy="50" r="50" fill="#e95420"/>
+</svg>
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/icon-svg-file/>
 
@@ -911,6 +2331,46 @@ any library the charm publishes, but not a vendored copy of someone
 else's library, and not the tests. A charm with no functions has
 nothing to annotate and is not reported.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._on_start)
+
+    def _on_start(self, event):
+        self.unit.status = ops.ActiveStatus()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._on_start)
+
+    def _on_start(self, event: ops.StartEvent):
+        self.unit.status = ops.ActiveStatus()
+```
+
 ## SUPPLYCHAIN
 
 Supply chain / maintainability.
@@ -921,17 +2381,94 @@ Supply chain / maintainability.
 
 Flag an `oci-image` resource with no `upstream-source`.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+containers:
+  web:
+    resource: web-image
+resources:
+  web-image:
+    type: oci-image
+    description: OCI image for the web server.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+containers:
+  web:
+    resource: web-image
+resources:
+  web-image:
+    type: oci-image
+    description: OCI image for the web server.
+    upstream-source: ghcr.io/canonical/web-server:1.4.2
+```
+
 ### SUPPLYCHAIN-005 ops-dependency-unpinned
 
 **Warning** — ops dependency has no version specifier
 
 Flag an `ops` dependency with no version specifier.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+```
+
+`requirements.txt`
+
+```
+ops
+```
+
+Fix:
+
+`requirements.txt`
+
+```
+ops>=2.23,<4
+```
+
 ### SUPPLYCHAIN-006 ops-dependency-exactly-pinned
 
 **Info** — ops dependency pinned with `==`
 
 Flag an `ops` dependency pinned with `==`.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+```
+
+`requirements.txt`
+
+```
+ops==2.23.1
+```
+
+Fix:
+
+`requirements.txt`
+
+```
+ops>=2.23,<4
+```
 
 ## TESTING
 
@@ -942,6 +2479,55 @@ Testing quality.
 **Warning** — No unit tests found in tests/unit/ or unit_tests/
 
 Check for the presence of unit tests.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+containers:
+  frontend:
+    resource: frontend-image
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.frontend_pebble_ready, self._on_pebble_ready)
+
+    def _on_pebble_ready(self, event: ops.PebbleReadyEvent):
+        self.unit.status = ops.ActiveStatus()
+
+
+if __name__ == "__main__":
+    ops.main(WebFrontendCharm)
+```
+
+Fix:
+
+`tests/unit/test_charm.py`
+
+```python
+import ops.testing
+
+from charm import WebFrontendCharm
+
+
+def test_pebble_ready_starts_service():
+    ctx = ops.testing.Context(WebFrontendCharm)
+    container = ops.testing.Container("frontend", can_connect=True)
+    state_in = ops.testing.State(containers={container})
+    state_out = ctx.run(ctx.on.pebble_ready(container), state_in)
+    assert state_out.unit_status == ops.ActiveStatus()
+```
 
 ### TESTING-003 uses-harness
 
@@ -959,5 +2545,48 @@ vendored library's own tests are its author's problem.
 One finding per test module, anchored at the first mention, rather
 than one per `Harness(...)` call: a suite that uses Harness uses it
 everywhere, and the migration is per-file work.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+type: charm
+```
+
+`tests/unit/test_charm.py`
+
+```python
+from ops.testing import Harness
+
+from charm import WebFrontendCharm
+
+
+def test_pebble_ready_starts_service():
+    harness = Harness(WebFrontendCharm)
+    harness.begin_with_initial_hooks()
+    harness.container_pebble_ready("frontend")
+    assert harness.model.unit.status.name == "active"
+```
+
+Fix:
+
+`tests/unit/test_charm.py`
+
+```python
+import ops
+from ops import testing
+
+from charm import WebFrontendCharm
+
+
+def test_pebble_ready_starts_service():
+    ctx = testing.Context(WebFrontendCharm)
+    container = testing.Container("frontend", can_connect=True)
+    state_in = testing.State(containers={container})
+    state_out = ctx.run(ctx.on.pebble_ready(container), state_in)
+    assert state_out.unit_status == ops.ActiveStatus()
+```
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/migrate/migrate-unit-tests-from-harness/>

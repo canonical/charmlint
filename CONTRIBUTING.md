@@ -87,6 +87,7 @@ For a rule PR:
 * One rule (or one group of rules that share a factory) per PR. Helpers that several rules share land in their own PR first.
 * Rule IDs are `CATEGORY-###`, as described in [docs/id-scheme.md](docs/id-scheme.md). A number in an older issue's title (`CORR008`, say) isn't reserved: the ID is assigned when the rule is written.
 * Include the rule's tests, the `_rules/__init__.py` import if it adds a module, and the regenerated `docs/rules.md`.
+* Give the rule an `example` and a `fix` (see the `Rule` docstring). They appear on the rule's reference entry, and the test suite checks that the rule reports the example once and that the fix silences it without introducing other findings.
 * Put the corpus measurements in the PR description, counted as [docs/corpus.md](docs/corpus.md) describes. If the false-positive rate isn't close to zero, tighten the rule and measure again.
 
 # AI

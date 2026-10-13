@@ -84,6 +84,24 @@ class NoAssumesJujuVersion(Rule):
     description = "No `assumes:` entry declaring a minimum Juju version"
     default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-assumes"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+            assumes:
+              - juju >= 3.6
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         # A bundle has no `assumes`; the key is charm metadata only.
@@ -238,6 +256,36 @@ class NoSetWorkloadVersion(Rule):
     reference_url = (
         "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version"
     )
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _on_start(self, event: ops.StartEvent):
+                    self.unit.status = ops.ActiveStatus()
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _on_start(self, event: ops.StartEvent):
+                    container = self.unit.get_container("nginx")
+                    # nginx -v reports "nginx version: nginx/1.27.0" on stderr.
+                    _, banner = container.exec(["nginx", "-v"]).wait_output()
+                    self.unit.set_workload_version(banner.strip().rpartition("/")[2])
+                    self.unit.status = ops.ActiveStatus()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         name = context.metadata.get("name").value
@@ -357,6 +405,35 @@ class HardcodedWorkloadVersion(Rule):
     reference_url = (
         "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Unit.set_workload_version"
     )
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+            title: Web Frontend
+            summary: Serves the web frontend.
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _on_start(self, event: ops.StartEvent):
+                    self.unit.set_workload_version("1.27.0")
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def _on_start(self, event: ops.StartEvent):
+                    container = self.unit.get_container("nginx")
+                    # nginx -v reports "nginx version: nginx/1.27.0" on stderr.
+                    _, banner = container.exec(["nginx", "-v"]).wait_output()
+                    self.unit.set_workload_version(banner.strip().rpartition("/")[2])
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -431,6 +508,44 @@ class NoConfigChangedObserver(Rule):
     description = "Charm declares config options but does not observe config-changed"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event: ops.StartEvent):
+                    self.unit.set_ports(int(self.config["port"]))
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._reconcile)
+                    framework.observe(self.on.config_changed, self._reconcile)
+
+                def _reconcile(self, event: ops.EventBase):
+                    self.unit.set_ports(int(self.config["port"]))
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if not context.config_options:

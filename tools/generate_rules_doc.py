@@ -68,6 +68,10 @@ _SEVERITY_LABELS = {
     Severity.INFO: "Info",
 }
 
+# Code-block language for an example file, by suffix. Anything else
+# (README.md, requirements.txt) is shown as plain text.
+_LANGUAGES = {".py": "python", ".yaml": "yaml", ".yml": "yaml", ".toml": "toml"}
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate docs/rules.md from the rule registry.")
@@ -185,6 +189,8 @@ def entry(rule: Rule) -> str:
     body = explanation(rule)
     if body:
         lines.extend([body, ""])
+    if rule.example and rule.fix:
+        lines.extend(["Example:", "", files(rule.example), "Fix:", "", files(rule.fix)])
     if rule.reference_url:
         lines.extend([f"Reference: <{rule.reference_url}>", ""])
     return "\n".join(lines)
@@ -203,6 +209,22 @@ def explanation(rule: Rule) -> str:
     if not docstring or not docstring.strip():
         return ""
     return markdown(inspect.cleandoc(docstring))
+
+
+def files(contents: dict[str, str] | dict[str, str | None]) -> str:
+    """Return each file in *contents* as a code block under its path.
+
+    A file mapped to ``None`` is one the fix deletes, which is said rather
+    than shown.
+    """
+    blocks = []
+    for path, text in contents.items():
+        if text is None:
+            blocks.append(f"Delete `{path}`.\n")
+            continue
+        language = _LANGUAGES.get(pathlib.PurePosixPath(path).suffix, "")
+        blocks.append(f"`{path}`\n\n```{language}\n{text.rstrip()}\n```\n")
+    return "\n".join(blocks)
 
 
 def category_scopes(path: pathlib.Path) -> dict[str, str]:

@@ -360,6 +360,31 @@ class OciImageMissingUpstreamSource(Rule):
     name = "oci-image-missing-upstream-source"
     description = "oci-image resource declared without an 'upstream-source'"
     default_severity = models.Severity.INFO
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            containers:
+              web:
+                resource: web-image
+            resources:
+              web-image:
+                type: oci-image
+                description: OCI image for the web server.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            containers:
+              web:
+                resource: web-image
+            resources:
+              web-image:
+                type: oci-image
+                description: OCI image for the web server.
+                upstream-source: ghcr.io/canonical/web-server:1.4.2
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         candidates = [
@@ -407,6 +432,20 @@ class OpsDependencyUnpinned(Rule):
     name = "ops-dependency-unpinned"
     description = "ops dependency has no version specifier"
     default_severity = models.Severity.WARNING
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "requirements.txt": """
+            ops
+        """,
+    }
+    fix = {
+        "requirements.txt": """
+            ops>=2.23,<4
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         dep = _find_ops_dep(context)
@@ -432,6 +471,20 @@ class OpsDependencyExactlyPinned(Rule):
     name = "ops-dependency-exactly-pinned"
     description = "ops dependency pinned with `==`"
     default_severity = models.Severity.INFO
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            type: charm
+        """,
+        "requirements.txt": """
+            ops==2.23.1
+        """,
+    }
+    fix = {
+        "requirements.txt": """
+            ops>=2.23,<4
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         dep = _find_ops_dep(context)
