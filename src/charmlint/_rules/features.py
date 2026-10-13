@@ -508,6 +508,44 @@ class NoConfigChangedObserver(Rule):
     description = "Charm declares config options but does not observe config-changed"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event: ops.StartEvent):
+                    self.unit.set_ports(int(self.config["port"]))
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._reconcile)
+                    framework.observe(self.on.config_changed, self._reconcile)
+
+                def _reconcile(self, event: ops.EventBase):
+                    self.unit.set_ports(int(self.config["port"]))
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if not context.config_options:

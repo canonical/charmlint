@@ -360,6 +360,31 @@ class OciImageMissingUpstreamSource(Rule):
     name = "oci-image-missing-upstream-source"
     description = "oci-image resource declared without an 'upstream-source'"
     default_severity = models.Severity.INFO
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            containers:
+              web:
+                resource: web-image
+            resources:
+              web-image:
+                type: oci-image
+                description: OCI image for the web server.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            containers:
+              web:
+                resource: web-image
+            resources:
+              web-image:
+                type: oci-image
+                description: OCI image for the web server.
+                upstream-source: ghcr.io/canonical/web-server:1.4.2
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         candidates = [

@@ -309,6 +309,28 @@ class ConfigDefaultTypeMismatch(Rule):
     description = "Config option's default value contradicts its declared type"
     default_severity = models.Severity.ERROR
     reference_url = _CONFIG_REFERENCE_URL
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: "8080"
+                  description: Port the web server listens on.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
@@ -396,6 +418,27 @@ class ConfigOptionsNotNested(Rule):
     description = "Config options are not under an `options` key"
     default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              port:
+                type: int
+                default: 8080
+                description: Port the web server listens on.
+        """,
+    }
+    fix = {
+        "charmcraft.yaml": """
+            name: web-frontend
+            config:
+              options:
+                port:
+                  type: int
+                  default: 8080
+                  description: Port the web server listens on.
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         section = context.config_section

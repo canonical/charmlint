@@ -852,6 +852,34 @@ gives the charm a string, and arithmetic on it raises a
 `no`, `on` or `off` is a boolean, so a `type: string`
 option defaulting to `no` never sees a string at all.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: "8080"
+      description: Port the web server listens on.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
+
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
 ### CONFIG-008 config-options-not-nested
@@ -868,6 +896,33 @@ charm, and it is `juju deploy` that refuses it, with `invalid config: empty conf
 The other config rules still check options written one level too high,
 so their findings are about the options themselves rather than about
 where they are.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  port:
+    type: int
+    default: 8080
+    description: Port the web server listens on.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-config>
 
@@ -1509,6 +1564,53 @@ comment in the file that declares their options: one whose options
 are only read when an action runs, so a change rightly waits for the
 next run, and one that applies its configuration outside ops
 altogether, such as in the entry point before it calls `ops.main`.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+config:
+  options:
+    port:
+      type: int
+      default: 8080
+      description: Port the web server listens on.
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._on_start)
+
+    def _on_start(self, event: ops.StartEvent):
+        self.unit.set_ports(int(self.config["port"]))
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._reconcile)
+        framework.observe(self.on.config_changed, self._reconcile)
+
+    def _reconcile(self, event: ops.EventBase):
+        self.unit.set_ports(int(self.config["port"]))
+```
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
@@ -2229,6 +2331,46 @@ any library the charm publishes, but not a vendored copy of someone
 else's library, and not the tests. A charm with no functions has
 nothing to annotate and is not reported.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._on_start)
+
+    def _on_start(self, event):
+        self.unit.status = ops.ActiveStatus()
+```
+
+Fix:
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.start, self._on_start)
+
+    def _on_start(self, event: ops.StartEvent):
+        self.unit.status = ops.ActiveStatus()
+```
+
 ## SUPPLYCHAIN
 
 Supply chain / maintainability.
@@ -2238,6 +2380,37 @@ Supply chain / maintainability.
 **Info** — oci-image resource declared without an 'upstream-source'
 
 Flag an `oci-image` resource with no `upstream-source`.
+
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+containers:
+  web:
+    resource: web-image
+resources:
+  web-image:
+    type: oci-image
+    description: OCI image for the web server.
+```
+
+Fix:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+containers:
+  web:
+    resource: web-image
+resources:
+  web-image:
+    type: oci-image
+    description: OCI image for the web server.
+    upstream-source: ghcr.io/canonical/web-server:1.4.2
+```
 
 ### SUPPLYCHAIN-005 ops-dependency-unpinned
 

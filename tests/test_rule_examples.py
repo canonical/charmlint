@@ -14,13 +14,7 @@ _EXAMPLE_RULES = [rule for rule in get_all_rules().values() if rule.example]
 # Rules that don't have an example and fix yet. A new rule is expected to
 # come with one; adding its ID here instead is a deliberate, visible choice
 # for review, and the entry goes again when the example is written.
-_AWAITING_EXAMPLE = frozenset({
-    "CONFIG-007",
-    "CONFIG-008",
-    "FEATURES-007",
-    "STRUCTURE-003",
-    "SUPPLYCHAIN-001",
-})
+_AWAITING_EXAMPLE: frozenset[str] = frozenset()
 
 
 def test_every_rule_has_an_example():

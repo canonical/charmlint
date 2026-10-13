@@ -122,6 +122,37 @@ class NoTypeAnnotations(Rule):
     name = "no-type-annotations"
     description = "No type annotations found in charm source"
     default_severity = models.Severity.INFO
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event):
+                    self.unit.status = ops.ActiveStatus()
+        """,
+    }
+    fix = {
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event: ops.StartEvent):
+                    self.unit.status = ops.ActiveStatus()
+        """,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         sources = list(context.charm_sources())
