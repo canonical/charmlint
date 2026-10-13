@@ -19,6 +19,25 @@ class NoUnitTests(Rule):
         "charmcraft.yaml": """
             name: web-frontend
             type: charm
+            containers:
+              frontend:
+                resource: frontend-image
+        """,
+        "src/charm.py": """
+            import ops
+
+
+            class WebFrontendCharm(ops.CharmBase):
+                def __init__(self, framework: ops.Framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.frontend_pebble_ready, self._on_pebble_ready)
+
+                def _on_pebble_ready(self, event: ops.PebbleReadyEvent):
+                    self.unit.status = ops.ActiveStatus()
+
+
+            if __name__ == "__main__":
+                ops.main(WebFrontendCharm)
         """,
     }
     fix = {

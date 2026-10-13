@@ -61,7 +61,8 @@ class Rule(abc.ABC):
     ``example`` and ``fix`` are optional, and go together: each maps a
     path inside a charm to that file's contents, ``example`` being a charm
     the rule reports and ``fix`` the same charm after the finding has been
-    addressed. ``fix`` lists only the files that change. Contents may be
+    addressed. ``fix`` lists only the files that change, and maps a path
+    to ``None`` when the fix is deleting that file. Contents may be
     indented to sit with the class body; the indentation is removed on
     registration. The reference page shows both, and the test suite lints
     both, so an example cannot drift away from what the rule does.
@@ -72,7 +73,7 @@ class Rule(abc.ABC):
     default_severity: models.Severity
     reference_url: str | None = None
     example: dict[str, str] | None = None
-    fix: dict[str, str] | None = None
+    fix: dict[str, str | None] | None = None
 
     @property
     @abc.abstractmethod
@@ -152,13 +153,17 @@ def _validate_name(class_name: str, name: object) -> None:
         raise ValueError(f"{class_name}.name must not be a category name, got {name!r}")
 
 
-def _dedent_files(files: dict[str, str]) -> dict[str, str]:
+def _dedent_files[T: (str, str | None)](files: dict[str, T]) -> dict[str, T]:
     """Return *files* with each file's contents dedented.
 
     A leading newline is dropped too, so the contents can start on the line
-    after an opening triple quote.
+    after an opening triple quote. A ``None`` (a file the fix deletes) is
+    left as it is.
     """
-    return {path: textwrap.dedent(text).removeprefix("\n") for path, text in files.items()}
+    return {
+        path: text if text is None else textwrap.dedent(text).removeprefix("\n")
+        for path, text in files.items()
+    }
 
 
 def get_all_rules() -> dict[str, Rule]:

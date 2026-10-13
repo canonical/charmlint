@@ -66,6 +66,25 @@ class FetchLibsHasPyPI(Rule):
     description = "Deprecated Charmhub library has PyPI replacement"
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/charmlibs/"
+    example = {
+        "charmcraft.yaml": """
+            name: web-frontend
+        """,
+        "requirements.txt": """
+            ops
+        """,
+        "lib/charms/hydra/v0/oauth.py": """
+            LIBAPI = 0
+            LIBPATCH = 9
+        """,
+    }
+    fix = {
+        "requirements.txt": """
+            ops
+            charmlibs-interfaces-oauth
+        """,
+        "lib/charms/hydra/v0/oauth.py": None,
+    }
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         # `charmcraft fetch-lib` writes to `lib/charms/<owner>/vN/<lib>.py`.

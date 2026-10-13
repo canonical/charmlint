@@ -161,8 +161,10 @@ class Entrypoint(Rule):
         "src/charm.py": """
             import ops
 
+
             class WebFrontendCharm(ops.CharmBase):
                 pass
+
 
             if __name__ == "__main__":
                 ops.main(WebFrontendCharm)
@@ -426,6 +428,7 @@ class OpsMainCall(Rule):
         "src/charm.py": """
             import ops
 
+
             class WebFrontendCharm(ops.CharmBase):
                 def __init__(self, framework: ops.Framework):
                     super().__init__(framework)
@@ -439,6 +442,7 @@ class OpsMainCall(Rule):
         "src/charm.py": """
             import ops
 
+
             class WebFrontendCharm(ops.CharmBase):
                 def __init__(self, framework: ops.Framework):
                     super().__init__(framework)
@@ -446,6 +450,7 @@ class OpsMainCall(Rule):
 
                 def _on_start(self, event: ops.StartEvent):
                     self.unit.status = ops.ActiveStatus()
+
 
             if __name__ == "__main__":
                 ops.main(WebFrontendCharm)

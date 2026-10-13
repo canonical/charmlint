@@ -35,8 +35,7 @@ class ActionMissingObserver(Rule):
                     super().__init__(framework)
                     framework.observe(self.on.config_changed, self._on_config_changed)
 
-                def _on_config_changed(self, event: ops.ConfigChangedEvent):
-                    ...
+                def _on_config_changed(self, event: ops.ConfigChangedEvent): ...
         """,
     }
     fix = {
@@ -50,11 +49,9 @@ class ActionMissingObserver(Rule):
                     framework.observe(self.on.config_changed, self._on_config_changed)
                     framework.observe(self.on.rotate_logs_action, self._on_rotate_logs)
 
-                def _on_config_changed(self, event: ops.ConfigChangedEvent):
-                    ...
+                def _on_config_changed(self, event: ops.ConfigChangedEvent): ...
 
-                def _on_rotate_logs(self, event: ops.ActionEvent):
-                    ...
+                def _on_rotate_logs(self, event: ops.ActionEvent): ...
         """,
     }
 

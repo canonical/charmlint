@@ -76,6 +76,8 @@ class MissingName(Rule):
             type: charm
             title: Web Frontend
             summary: Serves the web frontend.
+            assumes:
+              - juju >= 3.6
         """,
     }
     fix = {
@@ -84,6 +86,8 @@ class MissingName(Rule):
             type: charm
             title: Web Frontend
             summary: Serves the web frontend.
+            assumes:
+              - juju >= 3.6
         """,
     }
 

@@ -104,7 +104,7 @@ class PebbleEnvNonString(Rule):
                                 "override": "replace",
                                 "command": "/usr/bin/web-server",
                                 "startup": "enabled",
-                                "environment": {"PORT": 8080, "DEBUG": False},
+                                "environment": {"DEBUG": False},
                             },
                         },
                     }
@@ -123,7 +123,7 @@ class PebbleEnvNonString(Rule):
                                 "override": "replace",
                                 "command": "/usr/bin/web-server",
                                 "startup": "enabled",
-                                "environment": {"PORT": "8080", "DEBUG": "false"},
+                                "environment": {"DEBUG": "false"},
                             },
                         },
                     }

@@ -1522,6 +1522,38 @@ Library management.
 
 Detect vendored fetch-libs copies that have PyPI replacements.
 
+Example:
+
+`charmcraft.yaml`
+
+```yaml
+name: web-frontend
+```
+
+`requirements.txt`
+
+```
+ops
+```
+
+`lib/charms/hydra/v0/oauth.py`
+
+```python
+LIBAPI = 0
+LIBPATCH = 9
+```
+
+Fix:
+
+`requirements.txt`
+
+```
+ops
+charmlibs-interfaces-oauth
+```
+
+Delete `lib/charms/hydra/v0/oauth.py`.
+
 Reference: <https://canonical.com/juju/docs/charmlibs/>
 
 ## METADATA
@@ -1552,6 +1584,8 @@ Example:
 type: charm
 title: Web Frontend
 summary: Serves the web frontend.
+assumes:
+  - juju >= 3.6
 ```
 
 Fix:
@@ -1563,6 +1597,8 @@ name: web-frontend
 type: charm
 title: Web Frontend
 summary: Serves the web frontend.
+assumes:
+  - juju >= 3.6
 ```
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-name>
@@ -1960,7 +1996,7 @@ class WebFrontendCharm(ops.CharmBase):
                     "override": "replace",
                     "command": "/usr/bin/web-server",
                     "startup": "enabled",
-                    "environment": {"PORT": 8080, "DEBUG": False},
+                    "environment": {"DEBUG": False},
                 },
             },
         }
@@ -1982,7 +2018,7 @@ class WebFrontendCharm(ops.CharmBase):
                     "override": "replace",
                     "command": "/usr/bin/web-server",
                     "startup": "enabled",
-                    "environment": {"PORT": "8080", "DEBUG": "false"},
+                    "environment": {"DEBUG": "false"},
                 },
             },
         }
@@ -2278,6 +2314,28 @@ Example:
 ```yaml
 name: web-frontend
 type: charm
+containers:
+  frontend:
+    resource: frontend-image
+```
+
+`src/charm.py`
+
+```python
+import ops
+
+
+class WebFrontendCharm(ops.CharmBase):
+    def __init__(self, framework: ops.Framework):
+        super().__init__(framework)
+        framework.observe(self.on.frontend_pebble_ready, self._on_pebble_ready)
+
+    def _on_pebble_ready(self, event: ops.PebbleReadyEvent):
+        self.unit.status = ops.ActiveStatus()
+
+
+if __name__ == "__main__":
+    ops.main(WebFrontendCharm)
 ```
 
 Fix:

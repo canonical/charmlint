@@ -211,10 +211,17 @@ def explanation(rule: Rule) -> str:
     return markdown(inspect.cleandoc(docstring))
 
 
-def files(contents: dict[str, str]) -> str:
-    """Return each file in *contents* as a code block under its path."""
+def files(contents: dict[str, str] | dict[str, str | None]) -> str:
+    """Return each file in *contents* as a code block under its path.
+
+    A file mapped to ``None`` is one the fix deletes, which is said rather
+    than shown.
+    """
     blocks = []
     for path, text in contents.items():
+        if text is None:
+            blocks.append(f"Delete `{path}`.\n")
+            continue
         language = _LANGUAGES.get(pathlib.PurePosixPath(path).suffix, "")
         blocks.append(f"`{path}`\n\n```{language}\n{text.rstrip()}\n```\n")
     return "\n".join(blocks)
