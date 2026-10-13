@@ -95,7 +95,7 @@ class FetchLibsHasPyPI(Rule):
                                 f"Vendored charm library {owner}.{version_dir.name}.{lib} "
                                 f"has a PyPI replacement: {pypi_name}"
                             ),
-                            path=str(lib_file),
+                            path=lib_file.relative_to(context.charm_dir).as_posix(),
                             fix_hint=(
                                 f"delete this file and add '{pypi_name}' to your "
                                 f"dependencies (for example: uv add {pypi_name})"

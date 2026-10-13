@@ -22,6 +22,7 @@ class TestDeferWithoutReturn:
         hits = [d for d in list(report) if d.rule_id == "CORRECTNESS-001"]
         assert len(hits) == 1
         assert hits[0].severity == Severity.WARNING
+        assert (hits[0].path, hits[0].line) == ("src/charm.py", 2)
 
     def test_defer_then_return_not_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
@@ -121,6 +122,7 @@ class TestDeferBeforeRaise:
         hits = [d for d in list(report) if d.rule_id == "CORRECTNESS-002"]
         assert len(hits) == 1
         assert hits[0].severity == Severity.WARNING
+        assert (hits[0].path, hits[0].line) == ("src/charm.py", 2)
 
     def test_defer_then_raise_in_if_flagged(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x"})
