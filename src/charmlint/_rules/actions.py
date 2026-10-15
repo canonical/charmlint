@@ -31,7 +31,10 @@ class ActionMissingObserver(Rule):
         }
         diagnostics: list[models.Diagnostic] = []
         for action_name in context.actions:
-            if action_name in observed:
+            # An unquoted ``on:`` or ``null:`` loads as a bool or None.
+            # charmcraft won't pack that, and there is no observer name
+            # to suggest for it.
+            if not isinstance(action_name, str) or action_name in observed:
                 continue
             handler = "_on_" + action_name.replace("-", "_")
             diagnostics.append(
