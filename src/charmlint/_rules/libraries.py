@@ -12,7 +12,8 @@ from ._base import Rule
 #    `rollingops`. We match on the `<lib>` module name regardless of the
 #    owning charm. If a same-named lib under an unrelated owner ever
 #    triggers a false positive, add an explicit exclusion rather than
-#    re-scoping by owner.
+#    re-scoping by owner. The one owner this rule skips is the charm's
+#    own, whose libraries are its source rather than a vendored copy.
 # 2. `lib/charms/<owner>/vN/<lib>.py` — a shared interface library.
 #    The `<owner>` charm varies by lib (tls-certificates-interface,
 #    hydra-operator, traefik-k8s, …), so we match on the `<lib>`
@@ -75,12 +76,25 @@ class FetchLibsHasPyPI(Rule):
         charms_root = context.charm_dir / "lib" / "charms"
         if not charms_root.is_dir():
             return []
+        # The charm publishes its own library under its own name, so that
+        # directory is the charm's source, not a vendored copy: telling it
+        # to delete the file and depend on the package built from it is
+        # never right. The name is only known at lint time, so no exclusion
+        # list can cover this.
+        #
+        # The whole directory is skipped, not just the libraries the charm
+        # publishes. Anything else in it would have to be someone else's
+        # library copied in by hand, since fetch-lib writes under the
+        # publishing charm's name, never the fetching one's.
+        own = context.library_owner
 
         diagnostics: list[models.Diagnostic] = []
         for owner_dir in sorted(charms_root.iterdir()):
             if not owner_dir.is_dir():
                 continue
             owner = owner_dir.name
+            if owner == own:
+                continue
             for version_dir in sorted(owner_dir.iterdir()):
                 if not (version_dir.is_dir() and version_dir.name.startswith("v")):
                     continue
