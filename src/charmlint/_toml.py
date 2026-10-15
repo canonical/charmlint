@@ -10,9 +10,11 @@ Unlike the YAML loader this returns plain dictionaries rather than
 provenance-carrying nodes. ``tomllib`` discards positions, so there is
 no line number to carry; giving a rule a :class:`~charmlint._models.Yaml`
 whose ``line`` was always ``None`` would promise provenance the parser
-cannot supply. A rule reporting on ``pyproject.toml`` anchors to the
-file. Wiring up real line numbers would mean a positions-preserving
-TOML parser, which is a bigger change than any current rule justifies.
+cannot supply. A rule that needs a line looks for its entry in the text
+(the ``ops`` pinning rules do, for the common layouts), and otherwise
+anchors to the file. Real line numbers everywhere would mean a
+positions-preserving TOML parser, which is a bigger change than any
+current rule justifies.
 """
 
 import pathlib

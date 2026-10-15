@@ -1,4 +1,4 @@
-"""Ruff-style suppression comments, applied to a charm's YAML and Python files.
+"""Ruff-style suppression comments in a charm's YAML, Python, TOML and requirements files.
 
 charmlint borrows ruff's directive syntax, but only where ruff's shape
 is a design rather than an inheritance: ruff carries ``# noqa`` for
@@ -38,11 +38,11 @@ everything else anchors to the file, so it can still be silenced with a
 file-level directive.
 
 Like every comment-based linter directive, this is a line scan rather
-than a full YAML or Python parse: a ``#`` is treated as starting a
-comment only when it is at the start of the line or preceded by
-whitespace, matching YAML's own comment rule. A ``#`` embedded inside a
-quoted string can still be misread, exactly as ruff's own tokeniser has
-edge cases.
+than a full parse: a ``#`` is treated as starting a comment only when
+it is at the start of the line or preceded by whitespace, matching
+YAML's own comment rule. A ``#`` embedded inside a quoted string, or
+inside a TOML multi-line string, can still be misread, exactly as
+ruff's own tokeniser has edge cases.
 """
 
 import dataclasses

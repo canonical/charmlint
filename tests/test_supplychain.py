@@ -2,6 +2,8 @@
 
 import pathlib
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from charmlint._rules import supplychain as _supplychain
@@ -616,6 +618,66 @@ class TestOpsDependencyParsing:
         dep = _supplychain._parse_pep508("ops", "requirements.txt", "requirements.txt")
         assert dep is not None
         assert dep.where == ""
+
+
+class TestPyprojectLines:
+    """Finding the line an ``ops`` dependency is on, without a TOML positions parser."""
+
+    @pytest.mark.parametrize(
+        ("text", "line"),
+        [
+            # A multi-line array under [project].
+            ('[project]\nname = "x"\ndependencies = [\n    "pyyaml",\n    "ops>=2.23",\n]\n', 5),
+            # The same array on one line.
+            ("[project]\ndependencies = ['ops>=2.23']\n", 2),
+            # A later table with the same string doesn't count.
+            (
+                '[dependency-groups]\nlint = ["ops>=2.23"]\n'
+                '[project]\ndependencies = ["ops>=2.23"]\n',
+                4,
+            ),
+            # A dotted key, which the lookup doesn't follow: the file, then.
+            ('project.dependencies = ["ops>=2.23"]\n', None),
+        ],
+    )
+    def test_project_dependencies(self, text: str, line: int | None):
+        assert _supplychain._toml_line(text, "project", "dependencies", "ops>=2.23") == line
+
+    def test_optional_dependencies_and_groups(self):
+        text = (
+            "[project.optional-dependencies]\n"
+            'docs = ["sphinx"]\n'
+            'charm = ["ops>=2"]\n'
+            "[dependency-groups]\n"
+            "unit = [\n"
+            '  "ops[testing]",\n'
+            '  "ops>=2",\n'
+            "]\n"
+        )
+        line = _supplychain._toml_line
+        assert line(text, "project.optional-dependencies", "charm", "ops>=2") == 3
+        assert line(text, "dependency-groups", "unit", "ops>=2") == 7
+
+    def test_poetry_key(self):
+        text = (
+            "[tool.poetry.dependencies]\n"
+            'python = "^3.12"\n'
+            'ops = "^2.23"\n'
+            "[tool.poetry.group.unit.dependencies]\n"
+            'ops = { version = "^2", extras = ["testing"] }\n'
+        )
+        line = _supplychain._toml_line
+        assert line(text, "tool.poetry.dependencies", "ops") == 3
+        assert line(text, "tool.poetry.group.unit.dependencies", "ops") == 5
+
+    def test_finding_carries_the_line(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "x"})
+        (tmp_charm / "pyproject.toml").write_text(
+            '[project]\nname = "x"\ndependencies = [\n    "ops",\n]\n'
+        )
+        [diag] = [d for d in lint(tmp_charm) if d.rule_id == "SUPPLYCHAIN-005"]
+        assert diag.path == "pyproject.toml"
+        assert diag.line == 4
 
 
 class TestSectionInMessages:
