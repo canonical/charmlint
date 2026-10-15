@@ -150,6 +150,94 @@ class TestMetadataRules:
         ):
             assert rid not in ids, f"{rid} should not fire for legacy metadata.yaml fields"
 
+    _SPLIT_CHARMCRAFT = {"type": "charm", "bases": [{"name": "ubuntu", "channel": "22.04"}]}
+    _SPLIT_RULES = ("METADATA-002", "METADATA-005", "METADATA-006", "METADATA-007")
+
+    def test_split_charm_legacy_fields_in_metadata_yaml_satisfy_meta(
+        self, tmp_charm: pathlib.Path
+    ):
+        # charmcraft.yaml has the build config; metadata.yaml has the metadata,
+        # spelt the metadata.yaml way, which is what charmcraft packs.
+        write_charmcraft_yaml(tmp_charm, self._SPLIT_CHARMCRAFT)
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: test-charm\n"
+            "display-name: Test Charm\n"
+            "summary: x\n"
+            "description: x\n"
+            "docs: https://example.com/docs\n"
+            "issues: https://example.com/issues\n"
+            "source: https://example.com/source\n"
+        )
+        ids = {d.rule_id for d in lint(tmp_charm)}
+        assert not ids & set(self._SPLIT_RULES)
+
+    def test_split_charm_is_told_about_metadata_yaml(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, self._SPLIT_CHARMCRAFT)
+        (tmp_charm / "metadata.yaml").write_text("name: test-charm\nsummary: x\ndescription: x\n")
+        found = {d.rule_id: d for d in lint(tmp_charm) if d.rule_id in self._SPLIT_RULES}
+        assert set(found) == set(self._SPLIT_RULES)
+        assert {d.path for d in found.values()} == {"metadata.yaml"}
+        assert "'display-name'" in found["METADATA-002"].message
+        assert "'docs'" in found["METADATA-005"].message
+
+    def test_split_charm_modern_fields_in_charmcraft_yaml_do_not_satisfy_meta(
+        self, tmp_charm: pathlib.Path
+    ):
+        # charmcraft copies a split charm's metadata.yaml as it is, so a title
+        # or links written in charmcraft.yaml never reach the packed charm.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                **self._SPLIT_CHARMCRAFT,
+                "title": "Test Charm",
+                "links": {
+                    "documentation": "https://example.com/docs",
+                    "issues": "https://example.com/issues",
+                    "source": "https://example.com/source",
+                },
+            },
+        )
+        (tmp_charm / "metadata.yaml").write_text("name: test-charm\nsummary: x\ndescription: x\n")
+        ids = {d.rule_id for d in lint(tmp_charm)}
+        assert set(self._SPLIT_RULES) <= ids
+
+    def test_split_charm_with_shadowed_metadata_yaml_is_still_split(self, tmp_charm: pathlib.Path):
+        # Every key metadata.yaml sets, charmcraft.yaml sets too, so none of
+        # metadata.yaml's keys survive the merge. charmcraft still packs
+        # metadata.yaml as it is, so it is still the file that counts.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                **self._SPLIT_CHARMCRAFT,
+                "name": "test-charm",
+                "summary": "x",
+                "description": "x",
+                "title": "Test Charm",
+                "links": {
+                    "documentation": "https://example.com/docs",
+                    "issues": "https://example.com/issues",
+                    "source": "https://example.com/source",
+                },
+                "requires": {"db": {"interface": "pgsql"}},
+            },
+        )
+        (tmp_charm / "metadata.yaml").write_text("requires:\n  db:\n    interface: pgsql\n")
+        found = {d.rule_id: d for d in lint(tmp_charm) if d.rule_id in self._SPLIT_RULES}
+        assert set(found) == set(self._SPLIT_RULES)
+        assert {d.path for d in found.values()} == {"metadata.yaml"}
+
+    def test_split_charm_missing_summary_and_description_point_at_metadata_yaml(
+        self, tmp_charm: pathlib.Path
+    ):
+        write_charmcraft_yaml(tmp_charm, self._SPLIT_CHARMCRAFT)
+        (tmp_charm / "metadata.yaml").write_text("name: test-charm\n")
+        found = {
+            d.rule_id: d.path
+            for d in lint(tmp_charm)
+            if d.rule_id in ("METADATA-003", "METADATA-004")
+        }
+        assert found == {"METADATA-003": "metadata.yaml", "METADATA-004": "metadata.yaml"}
+
     def test_modern_charmcraft_title_and_links_satisfy_meta(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,
