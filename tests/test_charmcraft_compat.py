@@ -2,9 +2,11 @@
 
 import pathlib
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import CharmContext, Diagnostic, LintReport, Severity
-from charmlint._rules.charmcraft_compat import Entrypoint
+from charmlint._rules.charmcraft_compat import Entrypoint, _shell_code
 from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 
@@ -243,6 +245,78 @@ class TestEntrypoint:
     def test_dispatch_without_exec(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         (tmp_charm / "dispatch").write_text("#!/bin/sh\necho nothing to do\n")
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_exec_in_a_comment_is_not_the_entrypoint(self, tmp_charm: pathlib.Path):
+        # A hand-written dispatch that explains itself in prose: the word
+        # "exec" in a comment is not a command, and the following line is
+        # not its argument.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "dispatch").write_text(
+            "#!/bin/sh\n"
+            "# the spec size is not bound by exec\n"
+            "# argument-size limits.\n"
+            "set -eu\n"
+            "echo nothing to do\n"
+        )
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_trailing_comment_does_not_hide_the_entrypoint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "exec ./src/charm.py  # run the charm")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "src/charm.py" in diags[0].message
+
+    def test_hash_inside_a_word_is_not_a_comment(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, 'echo "a # b"\nexec ./src/charm.py')
+        write_entrypoint(tmp_charm)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_exec_in_a_quoted_string_is_not_the_entrypoint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, 'echo "exec ./old/charm.py is deprecated"\nexec ./src/charm.py')
+        write_entrypoint(tmp_charm)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_exec_in_a_multiline_string_is_not_the_entrypoint(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "echo '\nexec ./old/charm.py\n'\nexec ./src/charm.py")
+        write_entrypoint(tmp_charm)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_quoted_entrypoint_keeps_its_name(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, 'exec "./src/charm.py"')
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "'src/charm.py'" in diags[0].message
+
+    def test_exec_inside_a_word_is_not_an_exec(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "FOO=exec ./old/charm.py --check\nexec ./src/charm.py")
+        write_entrypoint(tmp_charm)
+        report = lint(tmp_charm)
+        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+
+    def test_exec_with_a_line_continuation(self, tmp_charm: pathlib.Path):
+        # The shell joins the lines, so the command is on the next one.
+        # Before, the backslash itself was taken for the entrypoint.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_dispatch(tmp_charm, "exec \\\n    ./src/charm.py")
+        report = lint(tmp_charm)
+        diags = [d for d in list(report) if d.rule_id == "CHARMCRAFT-003"]
+        assert len(diags) == 1
+        assert "'src/charm.py'" in diags[0].message
+        write_entrypoint(tmp_charm)
         report = lint(tmp_charm)
         assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
 
@@ -1282,3 +1356,32 @@ class TestContainerRunsAsRoot:
             "name: test\ncontainers:\n  w:  # noqa: CHARMCRAFT-009\n    resource: img\n"
         )
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
+
+
+class TestShellCode:
+    """The comment and quote handling CHARMCRAFT-003 reads dispatch through."""
+
+    @pytest.mark.parametrize(
+        ("text", "code"),
+        [
+            ("exec ./x.py  # run it", "exec ./x.py  "),
+            ("# exec here\nexec ./x.py", "\nexec ./x.py"),
+            ("exec ./x.py --tag=a#b", "exec ./x.py --tag=a#b"),
+            ('echo "a # b"', 'echo "a # b"'),
+            ("echo 'a # b'", "echo 'a # b'"),
+            ("echo \\# not a comment", "echo \\# not a comment"),
+            ('echo "\n# still quoted\n"', 'echo "\n# still quoted\n"'),
+            ('echo "it\'s" # gone', 'echo "it\'s" '),
+            ("echo 'a\\' # gone", "echo 'a\\' "),
+            ("exec \\\n  ./x.py", "exec     ./x.py"),
+            ("# a comment \\\nexec ./x.py", "\nexec ./x.py"),
+        ],
+    )
+    def test_comments(self, text: str, code: str):
+        assert _shell_code(text)[0] == code
+
+    def test_quotes_blanked(self):
+        code, bare = _shell_code("echo \"exec x\" 'y' z  # c")
+        assert code == "echo \"exec x\" 'y' z  "
+        assert bare == "echo              z  "
+        assert len(code) == len(bare)
