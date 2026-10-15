@@ -121,6 +121,15 @@ class _VersionAction(argparse.Action):
         parser.exit()
 
 
+def _tokens(value: str) -> list[str]:
+    """Split a comma-separated ``--select``/``--ignore`` value.
+
+    Empty tokens, from a trailing or doubled comma, name nothing and are
+    dropped rather than reported as an unknown rule.
+    """
+    return [token for token in (part.strip() for part in value.split(",")) if token]
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="charmlint",
@@ -229,9 +238,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Loaded config from {config.source_path}", file=sys.stderr)
 
     if args.select:
-        config.select = [s.strip() for s in args.select.split(",")]
+        config.select = _tokens(args.select)
+        # An empty select means no restriction, so a --select that names
+        # nothing would otherwise quietly run every rule.
+        if not config.select:
+            print(f"error: --select names no rules: {args.select!r}", file=sys.stderr)
+            return 2
     if args.ignore:
-        config.ignore.extend(s.strip() for s in args.ignore.split(","))
+        config.ignore.extend(_tokens(args.ignore))
     if args.min_severity:
         config.min_severity = models.Severity(args.min_severity)
 
