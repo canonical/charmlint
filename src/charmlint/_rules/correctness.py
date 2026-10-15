@@ -369,8 +369,21 @@ def _base_names(node: ast.ClassDef, imports: _ast.Imports) -> list[str | None]:
     return [imports.resolve(base) for base in node.bases]
 
 
-def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
-    """Return the event names the charm's own code defines, and whether that is all.
+@dataclasses.dataclass(frozen=True)
+class _CustomEvents:
+    """What the charm tree adds to ``self.on``."""
+
+    # The event names the charm's own code defines.
+    names: frozenset[str]
+    # The ``CharmEvents`` subclasses found, which is what a class's
+    # ``on = MyCharmEvents()`` is resolved against.
+    sources: frozenset[str]
+    # False when some event names could not be read statically.
+    complete: bool
+
+
+def _custom_events(context: models.CharmContext) -> _CustomEvents:
+    """Return the custom events the charm's own code defines.
 
     Two ways a charm adds an event to ``self.on``: an ``EventSource`` on
     a ``CharmEvents`` subclass, or a ``define_event`` call. Both are
@@ -378,7 +391,7 @@ def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
     event a library defines is as real as one the charm defines, and
     over-collecting here only ever makes the rule quieter.
 
-    The flag is ``False`` when a ``define_event`` call was found whose
+    ``complete`` is ``False`` when a ``define_event`` call was found whose
     name could not be read statically (``f"{alias}_database_created"``,
     the data-platform libraries' idiom). The charm then has events this
     rule cannot name, so no event name can be called impossible —
@@ -387,6 +400,7 @@ def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
     Handler names are unaffected, so that half of the rule still runs.
     """
     found: set[str] = set()
+    sources: set[str] = set()
     complete = True
     for module in context.modules():
         imports = _ast.Imports.of(module)
@@ -395,6 +409,7 @@ def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
                 base for base in _base_names(node, imports) if base
             ):
                 continue
+            sources.add(node.name)
             found.update(_event_sources(node, imports))
         for call in module.walk(ast.Call):
             if not (isinstance(call.func, ast.Attribute) and call.func.attr == "define_event"):
@@ -404,17 +419,23 @@ def _custom_event_names(context: models.CharmContext) -> tuple[set[str], bool]:
                 complete = False
             else:
                 found.add(name)
-    return found, complete
+    return _CustomEvents(names=frozenset(found), sources=frozenset(sources), complete=complete)
 
 
 def _event_sources(node: ast.ClassDef, imports: _ast.Imports) -> Iterator[str]:
-    """Yield the ``x = EventSource(...)`` attribute names declared in *node*."""
+    """Yield the ``x = EventSource(...)`` attribute names declared in *node*.
+
+    An annotated ``x: EventSource = EventSource(...)`` counts too.
+    """
     for statement in node.body:
-        if not isinstance(statement, ast.Assign) or not isinstance(statement.value, ast.Call):
+        if not isinstance(statement, ast.AnnAssign | ast.Assign):
+            continue
+        if not isinstance(statement.value, ast.Call):
             continue
         if imports.resolve(statement.value.func) not in _EVENT_SOURCE:
             continue
-        for target in statement.targets:
+        targets = [statement.target] if isinstance(statement, ast.AnnAssign) else statement.targets
+        for target in targets:
             if isinstance(target, ast.Name):
                 yield target.id
 
@@ -462,7 +483,7 @@ class _CharmClass:
     events_known: bool
 
 
-def _charm_classes(module: models.Module, custom_events: set[str]) -> Iterator[_CharmClass]:
+def _charm_classes(module: models.Module, event_sources: frozenset[str]) -> Iterator[_CharmClass]:
     """Yield each class in *module* whose ``self.on`` is the charm's own.
 
     Only a class whose bases are *all* ``ops.CharmBase`` qualifies. A charm
@@ -480,7 +501,7 @@ def _charm_classes(module: models.Module, custom_events: set[str]) -> Iterator[_
             node=node,
             attributes=frozenset(_attribute_names(node)),
             attributes_known=not _has_dynamic_attributes(node),
-            events_known=_events_are_known(node, custom_events),
+            events_known=_events_are_known(node, event_sources),
         )
 
 
@@ -534,7 +555,7 @@ def _has_dynamic_attributes(node: ast.ClassDef) -> bool:
     return False
 
 
-def _events_are_known(node: ast.ClassDef, custom_events: set[str]) -> bool:
+def _events_are_known(node: ast.ClassDef, event_sources: frozenset[str]) -> bool:
     """Whether *node*'s ``on`` is an event source this rule can enumerate.
 
     A charm that declares its own ``on = MyCharmEvents()`` is understood
@@ -553,7 +574,7 @@ def _events_are_known(node: ast.ClassDef, custom_events: set[str]) -> bool:
         if not isinstance(value, ast.Call):
             return False
         name = _ast.dotted_name(value.func)
-        if name is None or name.rsplit(".", 1)[-1] not in custom_events:
+        if name is None or name.rsplit(".", 1)[-1] not in event_sources:
             return False
     return True
 
@@ -593,17 +614,17 @@ class ObserveTargetMismatch(Rule):
     )
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        custom_events, complete = _custom_event_names(context)
-        known_events = self._known_events(context, custom_events) if complete else None
+        custom = _custom_events(context)
+        known_events = self._known_events(context, custom.names) if custom.complete else None
         diagnostics: list[models.Diagnostic] = []
         for module in context.charm_sources():
             observers = _ast.observers(module)
-            for charm in _charm_classes(module, custom_events):
+            for charm in _charm_classes(module, custom.sources):
                 diagnostics.extend(self._check_class(charm, observers, module, known_events))
         return diagnostics
 
     def _known_events(
-        self, context: models.CharmContext, custom_events: set[str]
+        self, context: models.CharmContext, custom_events: frozenset[str]
     ) -> set[str] | None:
         """Return every event the charm can have, or ``None`` if unknowable.
 
