@@ -168,14 +168,34 @@ _CHECK_MARKERS = frozenset({"http", "tcp", "exec"})
 
 
 def _check_levels(module: models.Module) -> list[ast.expr]:
-    """Return the ``level`` of every dict literal or keyword call shaped like a Pebble check."""
+    """Return the ``level`` of every dict literal or keyword call shaped like a Pebble check.
+
+    As with services, a check is often built a step at a time, with the
+    kind added later or arriving through ``**``, so a dict nested under a
+    ``checks`` mapping counts as a check even without ``http``, ``tcp`` or
+    ``exec``. So does a dict on its own that carries one of those, or that
+    has both ``override`` and ``level``, which only a check does.
+    """
     levels: list[ast.expr] = []
+    seen: set[int] = set()
+
+    def add(check: ast.expr) -> None:
+        if not isinstance(check, ast.Dict) or id(check) in seen:
+            return
+        seen.add(id(check))
+        level = _ast.dict_get(check, "level")
+        if level is not None:
+            levels.append(level)
+
     for node in module.walk(ast.Dict, ast.Call):
         if isinstance(node, ast.Dict):
-            if _CHECK_MARKERS & _ast.dict_keys(node):
-                level = _ast.dict_get(node, "level")
-                if level is not None:
-                    levels.append(level)
+            checks = _ast.dict_get(node, "checks")
+            if isinstance(checks, ast.Dict):
+                for check in checks.values:
+                    add(check)
+            keys = _ast.dict_keys(node)
+            if _CHECK_MARKERS & keys or {"override", "level"} <= keys:
+                add(node)
             continue
         keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg is not None}
         if _CHECK_MARKERS & keywords.keys() and "level" in keywords:

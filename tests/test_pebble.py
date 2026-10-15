@@ -415,6 +415,45 @@ class TestPebbleCheckLevelAlive:
         )
         assert findings == []
 
+    def test_check_kind_unpacked_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        return ops.pebble.Layer({
+                            "checks": {
+                                "up": {"override": "replace", "level": "alive", **self._probe()},
+                            },
+                        })
+            """,
+        )
+        assert len(findings) == 1
+
+    def test_check_kind_added_later_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _layer(self):
+                        check = {"override": "replace", "level": "alive"}
+                        check["http"] = {"url": "http://localhost/"}
+                        return ops.pebble.Layer({"checks": {"up": check}})
+            """,
+        )
+        assert len(findings) == 1
+
+    def test_check_under_checks_with_kind_reported_once(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer('"level": "alive",\n"tcp": {"port": 8080},'),
+        )
+        assert len(findings) == 1
+
     def test_level_outside_a_check_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_check_level(
             tmp_charm,
