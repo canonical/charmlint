@@ -30,7 +30,7 @@ class ActionMissingObserver(Rule):
             if observer.action is not None
         }
         diagnostics: list[models.Diagnostic] = []
-        for action_name in context.actions:
+        for action_name, action in context.actions.items():
             if action_name in observed:
                 continue
             handler = "_on_" + action_name.replace("-", "_")
@@ -38,6 +38,8 @@ class ActionMissingObserver(Rule):
                 self.diagnostic(
                     f"Action '{action_name}' has no observer "
                     f"(expected `framework.observe(self.on['{action_name}'].action, ...)`)",
+                    path=action.source,
+                    line=action.line,
                     fix_hint=(
                         f"Add `framework.observe(self.on['{action_name}'].action, "
                         f"self.{handler})` in __init__ and a matching handler"
@@ -69,13 +71,15 @@ class ActionMissingAdditionalProperties(Rule):
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
-        for action_name, body in context.actions.items():
-            if "additionalProperties" in body:
+        for action_name, action in context.actions.items():
+            if "additionalProperties" in action:
                 continue
             diagnostics.append(
                 self.diagnostic(
                     f"Action '{action_name}' does not set 'additionalProperties' — "
                     f"Juju 3 and Juju 4 default it differently",
+                    path=action.source,
+                    line=action.line,
                     fix_hint=(
                         f"Add `additionalProperties: false` to '{action_name}' "
                         f"(or `true` if unknown parameters are intended)"

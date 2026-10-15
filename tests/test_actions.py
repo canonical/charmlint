@@ -3,6 +3,8 @@
 import pathlib
 import textwrap
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from tests.conftest import write_charm_source, write_charmcraft_yaml
@@ -270,6 +272,44 @@ class TestActionMissingAdditionalProperties:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         report = lint(tmp_charm)
         assert "ACTIONS-002" not in {d.rule_id for d in report}
+
+
+@pytest.mark.parametrize("rule_id", ["ACTIONS-001", "ACTIONS-002"])
+class TestActionFindingsAreAnchored:
+    """ACTIONS-001/002 point at the action, so a directive there silences them."""
+
+    _CHARM = "import ops\n\nclass C(ops.CharmBase):\n    pass\n"
+
+    def test_anchored_to_the_action_line(self, tmp_charm: pathlib.Path, rule_id: str):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nactions:\n  do-thing:\n    description: x\n"
+        )
+        write_charm_source(tmp_charm, self._CHARM)
+        [found] = [d for d in lint(tmp_charm) if d.rule_id == rule_id]
+        assert (found.path, found.line) == ("charmcraft.yaml", 3)
+
+    def test_anchored_to_legacy_actions_yaml(self, tmp_charm: pathlib.Path, rule_id: str):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        (tmp_charm / "actions.yaml").write_text(
+            "other:\n  description: x\ndo-thing:\n  description: x\n"
+        )
+        write_charm_source(tmp_charm, self._CHARM)
+        found = {
+            d.line for d in lint(tmp_charm) if d.rule_id == rule_id and d.path == "actions.yaml"
+        }
+        assert found == {1, 3}
+
+    def test_ignore_on_the_action_line_suppresses(self, tmp_charm: pathlib.Path, rule_id: str):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\n"
+            "actions:\n"
+            f"  do-thing:  # charmlint: ignore[{rule_id}]\n"
+            "    description: x\n"
+            "  other:\n"
+            "    description: x\n"
+        )
+        write_charm_source(tmp_charm, self._CHARM)
+        assert [d.line for d in lint(tmp_charm) if d.rule_id == rule_id] == [5]
 
 
 class TestActionMissingDescription:

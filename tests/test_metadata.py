@@ -145,6 +145,32 @@ class TestProvidesMissingOptional:
         assert not [d for d in list(report) if d.rule_id == "METADATA-009"]
 
 
+@pytest.mark.parametrize(
+    ("rule_id", "section"), [("METADATA-008", "requires"), ("METADATA-009", "provides")]
+)
+class TestMissingOptionalIsAnchored:
+    """METADATA-008/009 point at the endpoint, so a directive there silences them."""
+
+    def test_anchored_to_the_endpoint_line(
+        self, tmp_charm: pathlib.Path, rule_id: str, section: str
+    ):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            f"name: x\n{section}:\n  first:\n    interface: a\n  second:\n    interface: b\n"
+        )
+        found = {d.line for d in lint(tmp_charm) if d.rule_id == rule_id}
+        assert found == {3, 5}
+
+    def test_ignore_on_the_endpoint_line_suppresses(
+        self, tmp_charm: pathlib.Path, rule_id: str, section: str
+    ):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            f"name: x\n{section}:\n"
+            f"  first:  # charmlint: ignore[{rule_id}]\n    interface: a\n"
+            "  second:\n    interface: b\n"
+        )
+        assert [d.line for d in lint(tmp_charm) if d.rule_id == rule_id] == [5]
+
+
 class TestCircularWebsiteLink:
     """Tests for METADATA-010 — `website` link to the charm's own Charmhub page."""
 
