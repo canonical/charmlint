@@ -6,31 +6,6 @@ from .. import _ast
 from .. import _models as models
 from ._base import Rule
 
-
-def _constant_key(key: ast.expr | None) -> str | None:
-    """Return the string key of a dict entry, or ``None``.
-
-    ``key`` is ``None`` for a ``**unpacking`` entry, which has no key at
-    all; a computed key is an expression we can't resolve statically.
-    """
-    if isinstance(key, ast.Constant) and isinstance(key.value, str):
-        return key.value
-    return None
-
-
-def _lookup(node: ast.Dict, name: str) -> ast.expr | None:
-    """Return the value of *node*'s ``name`` entry, or ``None``."""
-    for key, value in zip(node.keys, node.values, strict=True):
-        if _constant_key(key) == name:
-            return value
-    return None
-
-
-def _keys(node: ast.Dict) -> set[str]:
-    """Return the string keys of a dict literal."""
-    return {key for key in (_constant_key(k) for k in node.keys) if key is not None}
-
-
 # Keys that only a Pebble service dict carries. A layer's services are
 # often built a step at a time — the service dict assigned to a local
 # and then dropped into ``{"services": {name: <local>}}`` — so a service
@@ -60,17 +35,17 @@ def _environment_dicts(module: models.Module) -> list[ast.Dict]:
     def add(service: ast.expr | None) -> None:
         if not isinstance(service, ast.Dict):
             return
-        environment = _lookup(service, "environment")
+        environment = _ast.dict_get(service, "environment")
         if isinstance(environment, ast.Dict) and id(environment) not in seen:
             seen.add(id(environment))
             found.append(environment)
 
     for node in module.walk(ast.Dict):
-        services = _lookup(node, "services")
+        services = _ast.dict_get(node, "services")
         if isinstance(services, ast.Dict):
             for service in services.values:
                 add(service)
-        if _SERVICE_MARKERS.intersection(_keys(node)):
+        if _SERVICE_MARKERS.intersection(_ast.dict_keys(node)):
             add(node)
     return found
 
@@ -103,7 +78,7 @@ class PebbleEnvNonString(Rule):
         for key, value in zip(environment.keys, environment.values, strict=True):
             if not isinstance(value, ast.Constant) or isinstance(value.value, str):
                 continue
-            name = _constant_key(key)
+            name = _ast.dict_key(key)
             described = f"'{name}'" if name is not None else "an environment variable"
             severity: models.Severity | None = None
             if value.value is None:
