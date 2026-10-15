@@ -64,6 +64,7 @@ config file overrides it per rule.
 | [METADATA-009](#metadata-009-provides-missing-optional) | `provides-missing-optional` | Info | provides endpoint missing explicit `optional` field |
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
+| [PERFORMANCE-002](#performance-002-repeated-pebble-state) | `repeated-pebble-state` | Info | The same Pebble state read is made more than once in one function |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
@@ -825,6 +826,44 @@ f-string, or any other expression is left alone: the rule can't tell
 what it evaluates to, and the common cases are already strings.
 
 Reference: <https://ubuntu.com/docs/pebble/reference/layer-specification/>
+
+## PERFORMANCE
+
+Performance.
+
+### PERFORMANCE-002 repeated-pebble-state
+
+**Info** — The same Pebble state read is made more than once in one function
+
+Detect the same Pebble state read made twice in one function.
+
+`container.get_plan()`, `get_services()`, `get_service(name)`,
+`get_checks()` and `get_check(name)` each open a connection to
+pebbled over the workload's unix socket and wait for the reply. Making
+the same call twice in a function does the round trip twice for a
+result that has not changed in between; storing it in a local is both
+faster and easier to read.
+
+A repeat is not reported when the second call is not redundant:
+
+* Something between the two changes what is read: `add_layer` for
+  the plan, that plus `replan` and the start/stop family for
+  services, and `replan` and `start_checks`/`stop_checks` for
+  checks.
+* The receiver or an argument is rebound between them, by any form of
+  assignment.
+* A call between them might change the container where the rule can't
+  see: one that is handed the container, or a method call on `self`
+  when the container is reached through `self`.
+* The two calls sit in alternative branches of the same `if` or
+  `match`, so only one of them runs.
+
+The container is recognised by what it is called, so a repeat on a
+variable not named like a container is left alone. `get_service` is a
+common method name elsewhere, and with no type information the name is
+all there is to go on.
+
+Reference: <https://canonical.com/juju/docs/ops/latest/reference/pebble/>
 
 ## SECURITY
 
