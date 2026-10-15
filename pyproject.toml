@@ -3,7 +3,8 @@ name = "charmlint"
 version = "0.3.0"
 description = "A linter for Juju charms"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [
     { name = "Tony Meyer", email = "tony.meyer@canonical.com" },
@@ -13,7 +14,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -53,11 +53,16 @@ Issues = "https://github.com/canonical/charmlint/issues"
 exclude-newer = "7 days"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+# uv uses the backend it bundles only when its own version is inside this
+# range; outside it, every build installs uv_build from PyPI instead. Move
+# the upper bound with uv when releasing.
+requires = ["uv_build>=0.9.18,<0.13"]
+build-backend = "uv_build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/charmlint"]
+[tool.uv.build-backend]
+# The sdist carries what it takes to run the test suite, for packagers who
+# build from it. The tests load tools/generate_rules_doc.py by path.
+source-include = ["tests/**", "tools/**"]
 
 [tool.ruff]
 line-length = 99

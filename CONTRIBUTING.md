@@ -128,7 +128,7 @@ If you need to bring in the latest changes from `main` after the review has star
 charmlint is published to [PyPI](https://pypi.org/project/charmlint/) by `.github/workflows/publish.yaml`, with Trusted Publishing, whenever a `v*` tag is pushed.
 
 1. Work out the new version from [docs/versioning.md](docs/versioning.md): a minor bump if anything since the last release adds a rule or changes what a rule reports, and a patch bump otherwise.
-2. Open a PR that bumps the version (`uv version --bump minor` or `--bump patch` updates both `pyproject.toml` and `uv.lock`), titled like `chore: bump version to 0.3.0`, and merge it.
+2. Open a PR that bumps the version (`uv version --bump minor` or `--bump patch` updates both `pyproject.toml` and `uv.lock`), titled like `chore: bump version to 0.3.0`, and merge it. If uv has moved past the upper bound on `uv_build` in `[build-system]`, raise it in the same PR: outside that range, a build installs the backend from PyPI instead of using the one uv bundles.
 3. Create a GitHub release on the merge commit, with a new `vX.Y.Z` tag that matches the version and a short summary of what changed. Creating the release pushes the tag, which starts the publish workflow.
 4. Check that the publish run succeeds. It stops before building if the tag doesn't match the version in `pyproject.toml`. If that happens, don't move the tag (the tag ruleset won't let you anyway) - bump the patch version and release again.
 
