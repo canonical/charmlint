@@ -642,15 +642,11 @@ class OverrideBuildSkipsDefault(Rule):
     it, ``charmcraft pack`` still succeeds, but the charm holds only its
     metadata, so Juju has nothing to run for any hook.
 
-    A part whose own ``override-stage`` doesn't call ``craftctl default``
-    is left alone: it has replaced the step that takes up what the build
-    installed, so it isn't relying on the plugin. That is the legacy way
-    of building a reactive charm with Charmcraft, using the ``charm``
-    plugin as a shell around ``charm build``, from before Charmcraft had
-    a ``reactive`` plugin. A script that uses ``snapcraftctl`` is also
-    left alone: there is no ``snapcraftctl`` in Charmcraft, so the build
-    fails on that before the missing default matters. Any other
-    deliberate reimplementation of the build should be suppressed with a
+    A script that uses ``snapcraftctl`` is left alone: there is no
+    ``snapcraftctl`` in Charmcraft, so the build fails on that before the
+    missing default matters. A deliberate reimplementation of the build,
+    such as the legacy way of building a reactive charm with the ``charm``
+    plugin as a shell around ``charm build``, should be suppressed with a
     ``noqa`` on the ``override-build`` line.
     """
 
@@ -673,9 +669,6 @@ class OverrideBuildSkipsDefault(Rule):
                 continue
             override = part.get("override-build")
             if not isinstance(override.value, str):
-                continue
-            stage = part.get("override-stage")
-            if isinstance(stage.value, str) and not _runs_default(stage.value):
                 continue
             if _runs_default(override.value) or _SNAPCRAFTCTL.search(
                 _strip_shell_comments(override.value)

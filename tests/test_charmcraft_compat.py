@@ -1405,17 +1405,17 @@ class TestOverrideBuildSkipsDefault:
         _parts_charm(tmp_charm, f"  charm:\n    override-build: |\n      {line}\n")
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
 
-    def test_part_with_own_override_stage_not_flagged(self, tmp_charm: pathlib.Path):
-        """The legacy reactive build replaces staging as well as the build."""
+    def test_own_override_stage_does_not_exempt(self, tmp_charm: pathlib.Path):
+        """A build that skips the default packs no charm code, whatever staging does."""
         _parts_charm(
             tmp_charm,
             "  charm:\n"
             "    override-build: |\n"
-            "      tox -e build-reactive\n"
+            "      ./build.sh\n"
             "    override-stage: |\n"
-            "      cp -r $CRAFT_PART_BUILD/build/builds/*/* $CRAFT_STAGE/\n",
+            "      cp -r $CRAFT_PART_BUILD/out/* $CRAFT_STAGE/\n",
         )
-        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
 
     def test_override_stage_that_runs_the_default_does_not_exempt(self, tmp_charm: pathlib.Path):
         """A default stage step still relies on what the build should have installed."""
