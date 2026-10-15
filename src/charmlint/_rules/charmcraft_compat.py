@@ -674,9 +674,11 @@ class OverrideBuildSkipsDefault(Rule):
                 _strip_shell_comments(override.value)
             ):
                 continue
+            # An unquoted ``on:`` key is the boolean ``True`` under YAML 1.1.
+            described = f"the '{part_name}' part" if isinstance(part_name, str) else "a part"
             diagnostics.append(
                 self.diagnostic(
-                    f"override-build for the '{part_name}' part never runs "
+                    f"override-build for {described} never runs "
                     f"'craftctl default', so the {plugin} plugin's build step is "
                     f"skipped and the charm and its dependencies are not installed",
                     path=override.source,
@@ -956,6 +958,7 @@ def _edit_distance(a: str, b: str, threshold: int) -> int:
 
 # The plugins whose default build step installs the charm and its Python
 # dependencies into the part. ``nil`` and ``dump`` have little or nothing to
+# skip, ``reactive`` builds a reactive charm without a Python build step to
 # skip, and the other plugins aren't how a charm gets built.
 _PYTHON_PLUGINS: frozenset[str] = frozenset({"charm", "python", "uv", "poetry"})
 

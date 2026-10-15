@@ -1342,6 +1342,14 @@ class TestOverrideBuildSkipsDefault:
         _parts_charm(tmp_charm, f"  charm:\n    plugin: {plugin}\n    override-build: echo hi\n")
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
 
+    def test_boolean_part_name_is_not_quoted_in_message(self, tmp_charm: pathlib.Path):
+        # An unquoted ``on`` key is the boolean True under YAML 1.1.
+        _parts_charm(tmp_charm, "  on:\n    plugin: charm\n    override-build: echo hi\n")
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        assert len(diags) == 1
+        assert "True" not in diags[0].message
+        assert "for a part" in diags[0].message
+
     def test_part_name_is_ignored_when_plugin_is_given(self, tmp_charm: pathlib.Path):
         _parts_charm(tmp_charm, "  charm:\n    plugin: nil\n    override-build: echo hi\n")
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
