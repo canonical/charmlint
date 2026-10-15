@@ -2,33 +2,9 @@
 
 import ast
 
+from .. import _ast, _yaml
 from .. import _models as models
 from ._base import Rule
-
-
-def _constant_key(key: ast.expr | None) -> str | None:
-    """Return the string key of a dict entry, or ``None``.
-
-    ``key`` is ``None`` for a ``**unpacking`` entry, which has no key at
-    all; a computed key is an expression we can't resolve statically.
-    """
-    if isinstance(key, ast.Constant) and isinstance(key.value, str):
-        return key.value
-    return None
-
-
-def _lookup(node: ast.Dict, name: str) -> ast.expr | None:
-    """Return the value of *node*'s ``name`` entry, or ``None``."""
-    for key, value in zip(node.keys, node.values, strict=True):
-        if _constant_key(key) == name:
-            return value
-    return None
-
-
-def _keys(node: ast.Dict) -> set[str]:
-    """Return the string keys of a dict literal."""
-    return {key for key in (_constant_key(k) for k in node.keys) if key is not None}
-
 
 # Keys that only a Pebble service dict carries. A layer's services are
 # often built a step at a time — the service dict assigned to a local
@@ -59,17 +35,17 @@ def _environment_dicts(module: models.Module) -> list[ast.Dict]:
     def add(service: ast.expr | None) -> None:
         if not isinstance(service, ast.Dict):
             return
-        environment = _lookup(service, "environment")
+        environment = _ast.dict_get(service, "environment")
         if isinstance(environment, ast.Dict) and id(environment) not in seen:
             seen.add(id(environment))
             found.append(environment)
 
     for node in module.walk(ast.Dict):
-        services = _lookup(node, "services")
+        services = _ast.dict_get(node, "services")
         if isinstance(services, ast.Dict):
             for service in services.values:
                 add(service)
-        if _SERVICE_MARKERS.intersection(_keys(node)):
+        if _SERVICE_MARKERS.intersection(_ast.dict_keys(node)):
             add(node)
     return found
 
@@ -102,7 +78,7 @@ class PebbleEnvNonString(Rule):
         for key, value in zip(environment.keys, environment.values, strict=True):
             if not isinstance(value, ast.Constant) or isinstance(value.value, str):
                 continue
-            name = _constant_key(key)
+            name = _ast.dict_key(key)
             described = f"'{name}'" if name is not None else "an environment variable"
             severity: models.Severity | None = None
             if value.value is None:
@@ -137,3 +113,135 @@ class PebbleEnvNonString(Rule):
                 )
             )
         return diagnostics
+
+
+class PebbleCheckLevelAlive(Rule):
+    """Detect a Pebble check with ``level: alive`` in a layer built in charm source.
+
+    Juju points the sidecar container's Kubernetes liveness probe at
+    Pebble's ``/v1/health?level=alive``, so once an ``alive`` check is down
+    Kubernetes restarts the whole container, rather than Pebble or the
+    charm restarting the service. A workload that is slow to start, or
+    briefly unhealthy during an upgrade, ends up in a restart loop. Use a
+    check with no ``level`` and ``on-check-failure`` on the service instead.
+
+    A check is recognised by its shape: a dict literal, or a call such as
+    ``CheckDict(...)`` or ``dict(...)`` with keyword arguments, that has a
+    ``level`` of ``"alive"`` (or ``ops.pebble.CheckLevel.ALIVE``) alongside
+    an ``http``, ``tcp`` or ``exec`` key, or a check under ``checks`` in a
+    layer written as a YAML string passed to ``ops.pebble.Layer`` or
+    ``add_layer``. A level computed at runtime is left alone, as is a
+    layer read from a YAML file. A fast-starting
+    workload whose author really does want Kubernetes to restart the
+    container can suppress the rule on that line.
+    """
+
+    category = "PEBBLE"
+    number = 6
+    name = "pebble-check-level-alive"
+    description = "Pebble check uses level 'alive', which drives the Kubernetes liveness probe"
+    default_severity = models.Severity.INFO
+    reference_url = "https://canonical.com/juju/docs/ops/latest/howto/manage-containers/manage-pebble-health-checks/"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for module in context.charm_sources():
+            imports = _ast.Imports.of(module)
+            lines = [level.lineno for level in _check_levels(module) if _is_alive(level, imports)]
+            lines.extend(_yaml_alive_lines(module, imports))
+            for line in sorted(lines):
+                diagnostics.append(
+                    self.diagnostic(
+                        "Pebble check has level 'alive', so Kubernetes restarts the "
+                        "whole container when the check is down",
+                        path=module.path,
+                        line=line,
+                        fix_hint=(
+                            "Drop the level and set `on-check-failure` on the service, "
+                            "so Pebble restarts the service instead"
+                        ),
+                    )
+                )
+        return diagnostics
+
+
+# Keys only a Pebble check carries: the three kinds of check.
+_CHECK_MARKERS = frozenset({"http", "tcp", "exec"})
+
+
+def _check_levels(module: models.Module) -> list[ast.expr]:
+    """Return the ``level`` of every dict literal or keyword call shaped like a Pebble check.
+
+    As with services, a check is often built a step at a time, with the
+    kind added later or arriving through ``**``, so a dict nested under a
+    ``checks`` mapping counts as a check even without ``http``, ``tcp`` or
+    ``exec``. So does a dict on its own that carries one of those, or that
+    has both ``override`` and ``level``, which only a check does.
+    """
+    levels: list[ast.expr] = []
+    seen: set[int] = set()
+
+    def add(check: ast.expr) -> None:
+        if not isinstance(check, ast.Dict) or id(check) in seen:
+            return
+        seen.add(id(check))
+        level = _ast.dict_get(check, "level")
+        if level is not None:
+            levels.append(level)
+
+    for node in module.walk(ast.Dict, ast.Call):
+        if isinstance(node, ast.Dict):
+            checks = _ast.dict_get(node, "checks")
+            if isinstance(checks, ast.Dict):
+                for check in checks.values:
+                    add(check)
+            keys = _ast.dict_keys(node)
+            if _CHECK_MARKERS & keys or {"override", "level"} <= keys:
+                add(node)
+            continue
+        keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg is not None}
+        if _CHECK_MARKERS & keywords.keys() and "level" in keywords:
+            levels.append(keywords["level"])
+    return levels
+
+
+def _yaml_alive_lines(module: models.Module, imports: _ast.Imports) -> list[int]:
+    """Return the source line of each ``level: alive`` in a layer written as a YAML string.
+
+    The string is the first argument to ``ops.pebble.Layer(...)``, or the
+    second to ``<anything>.add_layer(label, ...)``, either positional or as
+    the ``raw``/``layer`` keyword. A line in the string is offset from the
+    line the string starts on, so a ``# noqa`` on the ``level`` line works.
+    """
+    lines: list[int] = []
+    for call in module.walk(ast.Call):
+        if _ast.call_target(call, imports) == "ops.pebble.Layer":
+            raw = call.args[0] if call.args else _ast.keyword(call, "raw")
+        elif isinstance(call.func, ast.Attribute) and call.func.attr == "add_layer":
+            raw = call.args[1] if len(call.args) > 1 else _ast.keyword(call, "layer")
+        else:
+            continue
+        if not isinstance(raw, ast.Constant) or not isinstance(raw.value, str):
+            continue
+        layer = _yaml.loads(raw.value, module.path)
+        if layer is None:
+            continue
+        for _, check in layer.get("checks").items():
+            level = check.get("level")
+            if level.value == "alive" and level.line is not None:
+                lines.append(raw.lineno + level.line - 1)
+    return lines
+
+
+def _is_alive(level: ast.expr, imports: _ast.Imports) -> bool:
+    """Whether *level* is the ``alive`` check level, as a string or the enum."""
+    if isinstance(level, ast.Constant):
+        return level.value == "alive"
+    # ``CheckLevel("alive")`` is the enum built from its value.
+    if isinstance(level, ast.Call) and _ast.call_target(level, imports) == "ops.pebble.CheckLevel":
+        arg = level.args[0] if level.args else _ast.keyword(level, "value")
+        return isinstance(arg, ast.Constant) and arg.value == "alive"
+    # ``CheckLevel.ALIVE.value`` is the same thing spelled the long way.
+    if isinstance(level, ast.Attribute) and level.attr == "value":
+        level = level.value
+    return imports.resolve(level) == "ops.pebble.CheckLevel.ALIVE"
