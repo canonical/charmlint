@@ -237,6 +237,10 @@ def _is_alive(level: ast.expr, imports: _ast.Imports) -> bool:
     """Whether *level* is the ``alive`` check level, as a string or the enum."""
     if isinstance(level, ast.Constant):
         return level.value == "alive"
+    # ``CheckLevel("alive")`` is the enum built from its value.
+    if isinstance(level, ast.Call) and _ast.call_target(level, imports) == "ops.pebble.CheckLevel":
+        arg = level.args[0] if level.args else _ast.keyword(level, "value")
+        return isinstance(arg, ast.Constant) and arg.value == "alive"
     # ``CheckLevel.ALIVE.value`` is the same thing spelled the long way.
     if isinstance(level, ast.Attribute) and level.attr == "value":
         level = level.value

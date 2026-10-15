@@ -250,7 +250,7 @@ def _lint_check_level(charm_dir: pathlib.Path, source: str, filename: str = "cha
 
 def _check_layer(check: str, imports: str = "import ops") -> str:
     """A charm source defining a Pebble layer with one check, *check* being its body."""
-    body = textwrap.indent(textwrap.dedent(check), " " * 24)
+    body = textwrap.indent(textwrap.dedent(check), " " * 28)
     return f"""\
         {imports}
 
@@ -271,18 +271,15 @@ class TestPebbleCheckLevelAlive:
     """PEBBLE-006 — a Pebble check with level 'alive'."""
 
     def test_alive_string_flagged(self, tmp_charm: pathlib.Path):
-        findings = _lint_check_level(
-            tmp_charm,
-            _check_layer(
-                '"override": "replace",\n'
-                '"level": "alive",\n'
-                '"http": {"url": "http://localhost:8080/"},'
-            ),
+        source = _check_layer(
+            '"override": "replace",\n"level": "alive",\n"http": {"url": "http://localhost:8080/"},'
         )
+        findings = _lint_check_level(tmp_charm, source)
         assert len(findings) == 1
         assert findings[0].severity == Severity.INFO
         assert findings[0].path == "src/charm.py"
-        assert findings[0].line == 10
+        level_line = next(i for i, line in enumerate(source.splitlines(), 1) if '"level"' in line)
+        assert findings[0].line == level_line
 
     def test_check_level_enum_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_check_level(
@@ -310,6 +307,20 @@ class TestPebbleCheckLevelAlive:
             ),
         )
         assert len(findings) == 1
+
+    def test_check_level_constructor_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer('"level": ops.pebble.CheckLevel("alive"),\n"tcp": {"port": 8080},'),
+        )
+        assert len(findings) == 1
+
+    def test_check_level_constructor_ready_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            _check_layer('"level": ops.pebble.CheckLevel("ready"),\n"tcp": {"port": 8080},'),
+        )
+        assert findings == []
 
     def test_unimported_check_level_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_check_level(
