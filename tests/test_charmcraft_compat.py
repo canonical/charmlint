@@ -1384,6 +1384,15 @@ class TestOverrideBuildSkipsDefault:
         )
         assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
 
+    def test_craftctl_default_across_a_line_continuation_not_flagged(
+        self, tmp_charm: pathlib.Path
+    ):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n    override-build: |\n      craftctl \\\n        default\n",
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
     def test_other_craftctl_commands_are_not_the_default(self, tmp_charm: pathlib.Path):
         _parts_charm(
             tmp_charm,

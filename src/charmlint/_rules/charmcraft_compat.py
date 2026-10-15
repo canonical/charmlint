@@ -959,7 +959,8 @@ def _edit_distance(a: str, b: str, threshold: int) -> int:
 # skip, and the other plugins aren't how a charm gets built.
 _PYTHON_PLUGINS: frozenset[str] = frozenset({"charm", "python", "uv", "poetry"})
 
-_CRAFTCTL_DEFAULT = re.compile(r"\bcraftctl\s+default\b")
+# ``(?:\s|\\)+`` spans a backslash line continuation as well as spaces.
+_CRAFTCTL_DEFAULT = re.compile(r"\bcraftctl(?:\s|\\)+default\b")
 _SNAPCRAFTCTL = re.compile(r"\bsnapcraftctl\b")
 
 
@@ -974,7 +975,10 @@ def _strip_shell_comments(script: str) -> str:
     A ``#`` starts a comment at the start of a word, so one at the start
     of a line or after whitespace is cut along with the rest of the line,
     while one inside a word (``$#``, a URL fragment) is kept. Quoting is
-    not tracked: a quoted ``" #"`` is cut too, which can only hide a
-    ``craftctl default`` later on the same line, not invent one.
+    not tracked, so a quoted ``" #"`` is cut too, along with any
+    ``craftctl default`` later on the same line. That is the expensive
+    direction for this rule, which then warns about a build that works,
+    but it is rare, and tracking quotes is what it costs to also catch a
+    trailing ``# craftctl default runs later``.
     """
     return "\n".join(re.sub(r"(^|\s)#.*", "", line) for line in script.splitlines())
