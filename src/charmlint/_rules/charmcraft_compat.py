@@ -632,6 +632,64 @@ class LegacyBases(Rule):
         ]
 
 
+class OverrideBuildSkipsDefault(Rule):
+    """Flag an ``override-build`` that never runs the plugin's own build.
+
+    An ``override-build`` script replaces the part's build step entirely
+    unless it calls ``craftctl default``. For the ``charm``, ``python``,
+    ``uv`` and ``poetry`` plugins the default step is what installs the
+    charm code, its dependencies and ``dispatch`` into the part. Without
+    it, ``charmcraft pack`` still succeeds, but the charm holds only its
+    metadata, so Juju has nothing to run for any hook.
+
+    A script that uses ``snapcraftctl`` is left alone: there is no
+    ``snapcraftctl`` in Charmcraft, so the build fails on that before the
+    missing default matters. A deliberate reimplementation of the build,
+    such as the legacy way of building a reactive charm with the ``charm``
+    plugin as a shell around ``charm build``, should be suppressed with a
+    ``noqa`` on the ``override-build`` line.
+    """
+
+    category = "CHARMCRAFT"
+    number = 10
+    name = "override-build-skips-default"
+    description = "override-build never runs 'craftctl default' for a Python plugin"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        parts = context.metadata.get("parts")
+        if parts.source != "charmcraft.yaml":
+            return []
+        diagnostics: list[models.Diagnostic] = []
+        for part_name, part in parts.items():
+            # craft-parts falls back to the part name for any empty plugin.
+            plugin = part.get("plugin").value or part_name
+            if not isinstance(plugin, str) or plugin not in _PYTHON_PLUGINS:
+                continue
+            override = part.get("override-build")
+            if not isinstance(override.value, str):
+                continue
+            if _runs_default(override.value) or _SNAPCRAFTCTL.search(
+                _strip_shell_comments(override.value)
+            ):
+                continue
+            # An unquoted ``on:`` key is the boolean ``True`` under YAML 1.1.
+            described = f"the '{part_name}' part" if isinstance(part_name, str) else "a part"
+            diagnostics.append(
+                self.diagnostic(
+                    f"override-build for {described} never runs "
+                    f"'craftctl default', so the {plugin} plugin's build step is "
+                    f"skipped and the charm and its dependencies are not installed",
+                    path=override.source,
+                    line=override.line,
+                    fix_hint="Call 'craftctl default' in override-build, before or after "
+                    "the extra commands",
+                )
+            )
+        return diagnostics
+
+
 def _entrypoint(context: models.CharmContext) -> str:
     """Return the charm-relative path of the entrypoint charmcraft will use.
 
@@ -896,3 +954,34 @@ def _edit_distance(a: str, b: str, threshold: int) -> int:
             curr[j + 1] = min(prev[j + 1] + 1, curr[j] + 1, prev[j] + cost)
         prev = curr
     return prev[len(b)]
+
+
+# The plugins whose default build step installs the charm and its Python
+# dependencies into the part. ``nil`` and ``dump`` have little or nothing to
+# skip, ``reactive`` builds a reactive charm without a Python build step to
+# skip, and the other plugins aren't how a charm gets built.
+_PYTHON_PLUGINS: frozenset[str] = frozenset({"charm", "python", "uv", "poetry"})
+
+# ``(?:\s|\\)+`` spans a backslash line continuation as well as spaces.
+_CRAFTCTL_DEFAULT = re.compile(r"\bcraftctl(?:\s|\\)+default\b")
+_SNAPCRAFTCTL = re.compile(r"\bsnapcraftctl\b")
+
+
+def _runs_default(script: str) -> bool:
+    """Report whether *script* calls ``craftctl default`` outside a comment."""
+    return _CRAFTCTL_DEFAULT.search(_strip_shell_comments(script)) is not None
+
+
+def _strip_shell_comments(script: str) -> str:
+    """Return *script* with its shell comments removed.
+
+    A ``#`` starts a comment at the start of a word, so one at the start
+    of a line or after whitespace is cut along with the rest of the line,
+    while one inside a word (``$#``, a URL fragment) is kept. Quoting is
+    not tracked, so a quoted ``" #"`` is cut too, along with any
+    ``craftctl default`` later on the same line. That is the expensive
+    direction for this rule, which then warns about a build that works,
+    but it is rare, and tracking quotes is what it costs to also catch a
+    trailing ``# craftctl default runs later``.
+    """
+    return "\n".join(re.sub(r"(^|\s)#.*", "", line) for line in script.splitlines())

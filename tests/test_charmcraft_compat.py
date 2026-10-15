@@ -2,6 +2,8 @@
 
 import pathlib
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import CharmContext, Diagnostic, LintReport, Severity
 from charmlint._rules.charmcraft_compat import Entrypoint
@@ -1282,3 +1284,194 @@ class TestContainerRunsAsRoot:
             "name: test\ncontainers:\n  w:  # noqa: CHARMCRAFT-009\n    resource: img\n"
         )
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-009")
+
+
+def _parts_charm(charm_dir: pathlib.Path, parts: str) -> None:
+    """Write a charmcraft.yaml whose ``parts:`` block is *parts*, verbatim."""
+    (charm_dir / "charmcraft.yaml").write_text(f"name: test\nparts:\n{parts}")
+
+
+class TestOverrideBuildSkipsDefault:
+    """Tests for CHARMCRAFT-010 — override-build without craftctl default."""
+
+    def test_charm_plugin_without_default_is_flagged(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n    plugin: charm\n    override-build: |\n      echo building\n",
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert diags[0].path == "charmcraft.yaml"
+        assert diags[0].line == 5
+        assert "'charm' part" in diags[0].message
+
+    def test_each_python_plugin_is_in_scope(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "".join(
+                f"  my-{plugin}:\n    plugin: {plugin}\n    override-build: echo hi\n"
+                for plugin in ("charm", "python", "uv", "poetry")
+            ),
+        )
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        assert sorted(d.message.split("'")[1] for d in diags) == [
+            "my-charm",
+            "my-poetry",
+            "my-python",
+            "my-uv",
+        ]
+
+    def test_plugin_defaults_to_the_part_name(self, tmp_charm: pathlib.Path):
+        """craft-parts uses the part's name as its plugin when none is given."""
+        _parts_charm(tmp_charm, "  uv:\n    override-build: echo hi\n")
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        assert len(diags) == 1
+        assert "uv plugin" in diags[0].message
+
+    @pytest.mark.parametrize("plugin", ["", "''", "null"])
+    def test_empty_plugin_defaults_to_the_part_name(self, tmp_charm: pathlib.Path, plugin: str):
+        """craft-parts falls back to the part name for any empty plugin, not just a missing one."""
+        _parts_charm(tmp_charm, f"  uv:\n    plugin: {plugin}\n    override-build: echo hi\n")
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        assert len(diags) == 1
+        assert "uv plugin" in diags[0].message
+
+    @pytest.mark.parametrize("plugin", ["[charm]", "{charm: uv}"])
+    def test_non_string_plugin_not_flagged(self, tmp_charm: pathlib.Path, plugin: str):
+        _parts_charm(tmp_charm, f"  charm:\n    plugin: {plugin}\n    override-build: echo hi\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_boolean_part_name_is_not_quoted_in_message(self, tmp_charm: pathlib.Path):
+        # An unquoted ``on`` key is the boolean True under YAML 1.1.
+        _parts_charm(tmp_charm, "  on:\n    plugin: charm\n    override-build: echo hi\n")
+        diags = _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        assert len(diags) == 1
+        assert "True" not in diags[0].message
+        assert "for a part" in diags[0].message
+
+    def test_part_name_is_ignored_when_plugin_is_given(self, tmp_charm: pathlib.Path):
+        _parts_charm(tmp_charm, "  charm:\n    plugin: nil\n    override-build: echo hi\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_nil_and_dump_parts_not_flagged(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  files:\n    plugin: dump\n    source: .\n    override-build: cp a b\n"
+            "  tools:\n    plugin: nil\n    override-build: apt-get install -y jq\n",
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_craftctl_default_not_flagged(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n"
+            "    plugin: uv\n"
+            "    override-build: |\n"
+            "      craftctl default\n"
+            "      git describe --always > $CRAFT_PART_INSTALL/version\n",
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_craftctl_default_after_other_commands_not_flagged(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n"
+            "    override-build: |\n"
+            "      uv export --frozen -o requirements.txt && craftctl default\n",
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_commented_out_craftctl_default_is_flagged(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n"
+            "    override-build: |\n"
+            "      # craftctl default\n"
+            "      echo building  # craftctl default runs later\n",
+        )
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
+
+    def test_craftctl_default_across_a_line_continuation_not_flagged(
+        self, tmp_charm: pathlib.Path
+    ):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n    override-build: |\n      craftctl \\\n        default\n",
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_other_craftctl_commands_are_not_the_default(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n"
+            "    override-build: |\n"
+            "      uv export --frozen -o requirements.txt\n"
+            "      craftctl set version=1.0\n",
+        )
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            '[ "$#" -eq 0 ] && craftctl default',
+            "curl -fsSO https://example.com/notes#latest && craftctl default",
+        ],
+    )
+    def test_hash_inside_a_word_is_not_a_comment(self, tmp_charm: pathlib.Path, line: str):
+        _parts_charm(tmp_charm, f"  charm:\n    override-build: |\n      {line}\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_own_override_stage_does_not_exempt(self, tmp_charm: pathlib.Path):
+        """A build that skips the default packs no charm code, whatever staging does."""
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n"
+            "    override-build: |\n"
+            "      ./build.sh\n"
+            "    override-stage: |\n"
+            "      cp -r $CRAFT_PART_BUILD/out/* $CRAFT_STAGE/\n",
+        )
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
+
+    def test_override_stage_that_runs_the_default_does_not_exempt(self, tmp_charm: pathlib.Path):
+        """A default stage step still relies on what the build should have installed."""
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n"
+            "    plugin: python\n"
+            "    override-build: |\n"
+            "      pip install --target $CRAFT_PART_INSTALL requests\n"
+            "    override-stage: |\n"
+            "      craftctl default\n"
+            "      rm -rf $CRAFT_STAGE/tests\n",
+        )
+        assert len(_diags(lint(tmp_charm), "CHARMCRAFT-010")) == 1
+
+    def test_snapcraftctl_left_to_its_own_finding(self, tmp_charm: pathlib.Path):
+        _parts_charm(tmp_charm, "  charm:\n    override-build: snapcraftctl build\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_no_override_build_not_flagged(self, tmp_charm: pathlib.Path):
+        _parts_charm(tmp_charm, "  charm:\n    plugin: charm\n    override-prime: echo hi\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_parts_in_metadata_yaml_not_checked(self, tmp_charm: pathlib.Path):
+        """charmcraft only reads parts from charmcraft.yaml."""
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: test\nparts:\n  charm:\n    override-build: echo hi\n"
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_malformed_parts_not_flagged(self, tmp_charm: pathlib.Path):
+        _parts_charm(tmp_charm, "  - charm\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+        _parts_charm(tmp_charm, "  charm:\n    override-build: [echo, hi]\n")
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+    def test_noqa_on_the_override_build_line_suppresses(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  charm:\n    override-build: |  # noqa: CHARMCRAFT-010\n      ./build.sh\n",
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")

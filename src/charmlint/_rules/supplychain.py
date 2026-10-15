@@ -283,7 +283,8 @@ def _dependency_part(metadata: models.Yaml) -> models.Yaml | None:
     default ``requirements.txt`` for it.
     """
     for _, part in metadata.get("parts").items():
-        if part.get("plugin").value in _DEPENDENCY_PLUGINS:
+        plugin = part.get("plugin").value
+        if isinstance(plugin, str) and plugin in _DEPENDENCY_PLUGINS:
             return part
     return None
 
