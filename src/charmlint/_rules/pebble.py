@@ -2,7 +2,7 @@
 
 import ast
 
-from .. import _ast
+from .. import _ast, _yaml
 from .. import _models as models
 from ._base import Rule
 
@@ -128,8 +128,10 @@ class PebbleCheckLevelAlive(Rule):
     A check is recognised by its shape: a dict literal, or a call such as
     ``CheckDict(...)`` or ``dict(...)`` with keyword arguments, that has a
     ``level`` of ``"alive"`` (or ``ops.pebble.CheckLevel.ALIVE``) alongside
-    an ``http``, ``tcp`` or ``exec`` key. A level computed at runtime is
-    left alone, as is a layer read from a YAML file. A fast-starting
+    an ``http``, ``tcp`` or ``exec`` key, or a check under ``checks`` in a
+    layer written as a YAML string passed to ``ops.pebble.Layer`` or
+    ``add_layer``. A level computed at runtime is left alone, as is a
+    layer read from a YAML file. A fast-starting
     workload whose author really does want Kubernetes to restart the
     container can suppress the rule on that line.
     """
@@ -145,15 +147,15 @@ class PebbleCheckLevelAlive(Rule):
         diagnostics: list[models.Diagnostic] = []
         for module in context.charm_sources():
             imports = _ast.Imports.of(module)
-            for level in _check_levels(module):
-                if not _is_alive(level, imports):
-                    continue
+            lines = [level.lineno for level in _check_levels(module) if _is_alive(level, imports)]
+            lines.extend(_yaml_alive_lines(module, imports))
+            for line in sorted(lines):
                 diagnostics.append(
                     self.diagnostic(
                         "Pebble check has level 'alive', so Kubernetes restarts the "
                         "whole container when the check is down",
                         path=module.path,
-                        line=level.lineno,
+                        line=line,
                         fix_hint=(
                             "Drop the level and set `on-check-failure` on the service, "
                             "so Pebble restarts the service instead"
@@ -201,6 +203,34 @@ def _check_levels(module: models.Module) -> list[ast.expr]:
         if _CHECK_MARKERS & keywords.keys() and "level" in keywords:
             levels.append(keywords["level"])
     return levels
+
+
+def _yaml_alive_lines(module: models.Module, imports: _ast.Imports) -> list[int]:
+    """Return the source line of each ``level: alive`` in a layer written as a YAML string.
+
+    The string is the first argument to ``ops.pebble.Layer(...)``, or the
+    second to ``<anything>.add_layer(label, ...)``, either positional or as
+    the ``raw``/``layer`` keyword. A line in the string is offset from the
+    line the string starts on, so a ``# noqa`` on the ``level`` line works.
+    """
+    lines: list[int] = []
+    for call in module.walk(ast.Call):
+        if _ast.call_target(call, imports) == "ops.pebble.Layer":
+            raw = call.args[0] if call.args else _ast.keyword(call, "raw")
+        elif isinstance(call.func, ast.Attribute) and call.func.attr == "add_layer":
+            raw = call.args[1] if len(call.args) > 1 else _ast.keyword(call, "layer")
+        else:
+            continue
+        if not isinstance(raw, ast.Constant) or not isinstance(raw.value, str):
+            continue
+        layer = _yaml.loads(raw.value, module.path)
+        if layer is None:
+            continue
+        for _, check in layer.get("checks").items():
+            level = check.get("level")
+            if level.value == "alive" and level.line is not None:
+                lines.append(raw.lineno + level.line - 1)
+    return lines
 
 
 def _is_alive(level: ast.expr, imports: _ast.Imports) -> bool:

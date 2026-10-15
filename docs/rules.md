@@ -826,8 +826,10 @@ check with no `level` and `on-check-failure` on the service instead.
 A check is recognised by its shape: a dict literal, or a call such as
 `CheckDict(...)` or `dict(...)` with keyword arguments, that has a
 `level` of `"alive"` (or `ops.pebble.CheckLevel.ALIVE`) alongside
-an `http`, `tcp` or `exec` key. A level computed at runtime is
-left alone, as is a layer read from a YAML file. A fast-starting
+an `http`, `tcp` or `exec` key, or a check under `checks` in a
+layer written as a YAML string passed to `ops.pebble.Layer` or
+`add_layer`. A level computed at runtime is left alone, as is a
+layer read from a YAML file. A fast-starting
 workload whose author really does want Kubernetes to restart the
 container can suppress the rule on that line.
 

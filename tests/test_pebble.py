@@ -454,6 +454,86 @@ class TestPebbleCheckLevelAlive:
         )
         assert len(findings) == 1
 
+    def test_yaml_string_layer_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                LAYER = ops.pebble.Layer(\"\"\"
+                checks:
+                  up:
+                    override: replace
+                    level: alive
+                    tcp:
+                      port: 80
+                \"\"\")
+
+                class C(ops.CharmBase):
+                    pass
+            """,
+        )
+        assert len(findings) == 1
+        assert findings[0].line == 7
+
+    def test_yaml_string_add_layer_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                class C(ops.CharmBase):
+                    def _on_start(self, event):
+                        container = self.unit.get_container("web")
+                        container.add_layer("web", layer=\"\"\"
+                services:
+                  web:
+                    command: /bin/web
+                checks:
+                  up:
+                    level: alive
+                    http:
+                      url: http://localhost/
+                \"\"\", combine=True)
+            """,
+        )
+        assert len(findings) == 1
+        assert findings[0].line == 12
+
+    def test_yaml_string_ready_level_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                LAYER = ops.pebble.Layer(\"\"\"
+                checks:
+                  up:
+                    level: ready
+                    tcp:
+                      port: 80
+                \"\"\")
+
+                class C(ops.CharmBase):
+                    pass
+            """,
+        )
+        assert findings == []
+
+    def test_yaml_string_unparseable_not_flagged(self, tmp_charm: pathlib.Path):
+        findings = _lint_check_level(
+            tmp_charm,
+            """\
+                import ops
+
+                LAYER = ops.pebble.Layer("checks: [unterminated")
+
+                class C(ops.CharmBase):
+                    pass
+            """,
+        )
+        assert findings == []
+
     def test_level_outside_a_check_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_check_level(
             tmp_charm,
