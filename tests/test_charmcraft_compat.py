@@ -4,9 +4,9 @@ import pathlib
 
 import pytest
 
-from charmlint._linter import build_context, lint
+from charmlint._linter import lint
 from charmlint._models import CharmContext, Diagnostic, LintReport, Severity
-from charmlint._rules.charmcraft_compat import Entrypoint, OverrideBuildSkipsDefault
+from charmlint._rules.charmcraft_compat import Entrypoint
 from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 
@@ -1340,8 +1340,7 @@ class TestOverrideBuildSkipsDefault:
     @pytest.mark.parametrize("plugin", ["[charm]", "{charm: uv}"])
     def test_non_string_plugin_not_flagged(self, tmp_charm: pathlib.Path, plugin: str):
         _parts_charm(tmp_charm, f"  charm:\n    plugin: {plugin}\n    override-build: echo hi\n")
-        # Run the rule alone: SUPPLYCHAIN-005/006 don't survive this input yet.
-        assert not OverrideBuildSkipsDefault().check(build_context(tmp_charm))
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
 
     def test_part_name_is_ignored_when_plugin_is_given(self, tmp_charm: pathlib.Path):
         _parts_charm(tmp_charm, "  charm:\n    plugin: nil\n    override-build: echo hi\n")

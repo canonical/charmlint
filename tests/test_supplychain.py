@@ -2,6 +2,8 @@
 
 import pathlib
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from charmlint._rules import supplychain as _supplychain
@@ -441,6 +443,17 @@ class TestOpsPinningRules:
 
     def test_charm_plugin_still_checks_requirements_txt(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "x", "parts": {"my-charm": {"plugin": "charm"}}})
+        (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
+        report = lint(tmp_charm)
+        assert [d for d in report if d.rule_id == "SUPPLYCHAIN-006"]
+
+    @pytest.mark.parametrize("plugin", [["charm"], {"charm": "uv"}])
+    def test_non_string_plugin_checks_requirements_txt(
+        self, tmp_charm: pathlib.Path, plugin: object
+    ):
+        # A plugin that isn't a string is Charmcraft's problem to report;
+        # it says nothing about where ops is declared, and must not crash.
+        write_charmcraft_yaml(tmp_charm, {"name": "x", "parts": {"charm": {"plugin": plugin}}})
         (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
         report = lint(tmp_charm)
         assert [d for d in report if d.rule_id == "SUPPLYCHAIN-006"]
