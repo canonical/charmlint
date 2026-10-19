@@ -5,6 +5,13 @@ the ``ops-scenario`` rule) share this, so the layouts a
 ``pyproject.toml`` can declare a dependency in, and how a requirement
 names its distribution, are written down once. Each rule decides for
 itself which declarations it cares about.
+
+That includes which requirements files to read, so the rules
+deliberately disagree. The ``ops`` pinning rules read only the files
+the charm's build plugin installs from, because a pin elsewhere never
+reaches the built charm. The ``ops-scenario`` rule globs for every
+requirements file at the top of the charm and in ``tests/``, because a
+test dependency is never in the files the build reads.
 """
 
 import dataclasses
