@@ -80,7 +80,8 @@ class UsesOpsScenario(Rule):
     reported, each where it would be fixed:
 
     * a declaration of ``ops-scenario`` in ``pyproject.toml``, in a
-      requirements file at the top of the charm, or in the ``deps`` of a
+      requirements file at the top of the charm or in ``tests/``, or in
+      the ``deps`` of a
       tox env in ``tox.ini``, ``tox.toml`` or ``[tool.tox]``;
     * a test module that imports ``scenario``, once per module, anchored
       at the first import. The test tree is examined as for TESTING-003,
@@ -172,13 +173,15 @@ def _scenario_declarations(
         if sections:
             yield "pyproject.toml", None, _where(sections)
     requirements = {
-        *context.charm_dir.glob("*requirements*.txt"),
-        *context.charm_dir.glob("*requirements*.in"),
+        path
+        for directory in (context.charm_dir, context.charm_dir / "tests")
+        for pattern in ("*requirements*.txt", "*requirements*.in")
+        for path in directory.glob(pattern)
     }
     for path in sorted(requirements):
         line = _requirements_line(path)
         if line is not None:
-            yield path.name, line, ""
+            yield path.relative_to(context.charm_dir).as_posix(), line, ""
     line = _tox_ini_line(context.charm_dir / "tox.ini")
     if line is not None:
         yield "tox.ini", line, ""

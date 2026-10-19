@@ -391,6 +391,16 @@ class TestUsesOpsScenario:
         )
         assert [(d.path, d.line) for d in findings] == [("test-requirements.in", 2)]
 
+    def test_tests_requirements_file_flagged(self, tmp_charm: pathlib.Path):
+        findings = _ops_scenario_findings(
+            tmp_charm,
+            {
+                "requirements.txt": "ops\n",
+                "tests/requirements.txt": "pytest\nops-scenario\n",
+            },
+        )
+        assert [(d.path, d.line) for d in findings] == [("tests/requirements.txt", 2)]
+
     def test_compiled_requirements_file_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(
             tmp_charm,

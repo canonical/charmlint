@@ -977,7 +977,8 @@ import `ops.testing` rather than `scenario`. Two things are
 reported, each where it would be fixed:
 
 * a declaration of `ops-scenario` in `pyproject.toml`, in a
-  requirements file at the top of the charm, or in the `deps` of a
+  requirements file at the top of the charm or in `tests/`, or in
+  the `deps` of a
   tox env in `tox.ini`, `tox.toml` or `[tool.tox]`;
 * a test module that imports `scenario`, once per module, anchored
   at the first import. The test tree is examined as for TESTING-003,
