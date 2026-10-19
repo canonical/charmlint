@@ -227,6 +227,11 @@ def _requirements_line(path: pathlib.Path) -> int | None:
 # tox only reads a colon as ending the condition when whitespace follows it.
 _TOX_FACTOR = re.compile(r"^[A-Za-z0-9_.,!-]+:\s+")
 
+# A tox.ini key and its delimiter. configparser accepts ``=`` or ``:`` and
+# splits at whichever comes first, so ``deps: unit: ops-scenario`` is the
+# key ``deps`` with a factor-conditional value.
+_TOX_INI_KEY = re.compile(r"([^=:]*)[=:]")
+
 
 def _tox_ini_line(path: pathlib.Path) -> int | None:
     """Return the first line of a ``tox.ini`` ``deps`` value that is ``ops-scenario``.
@@ -248,8 +253,9 @@ def _tox_ini_line(path: pathlib.Path) -> int | None:
             in_deps = False
             continue
         if raw[0] not in " \t":
-            key, separator, value = raw.partition("=")
-            in_deps = bool(separator) and key.strip() == "deps"
+            key = _TOX_INI_KEY.match(raw)
+            in_deps = key is not None and key[1].strip() == "deps"
+            value = raw[key.end() :] if key else ""
         if not in_deps:
             continue
         requirement = _TOX_FACTOR.sub("", value.split(" #", 1)[0].strip())

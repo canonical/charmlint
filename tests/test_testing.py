@@ -436,6 +436,21 @@ class TestUsesOpsScenario:
         )
         assert [d.line for d in findings] == [2]
 
+    def test_tox_ini_colon_delimited_deps_flagged(self, tmp_charm: pathlib.Path):
+        # configparser takes ``:`` as a key delimiter as well as ``=``.
+        findings = _ops_scenario_findings(
+            tmp_charm,
+            {"tox.ini": "[testenv:unit]\ndeps:\n    pytest\n    ops-scenario\n"},
+        )
+        assert [d.line for d in findings] == [4]
+
+    def test_tox_ini_colon_delimited_single_line_deps_flagged(self, tmp_charm: pathlib.Path):
+        findings = _ops_scenario_findings(
+            tmp_charm,
+            {"tox.ini": "[testenv:unit]\ndeps: unit: ops-scenario\n"},
+        )
+        assert [d.line for d in findings] == [2]
+
     def test_tox_ini_other_keys_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(
             tmp_charm,
