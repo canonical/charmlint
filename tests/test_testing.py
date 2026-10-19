@@ -490,6 +490,25 @@ class TestUsesOpsScenario:
         assert len(findings) == 1
         assert "`env_run_base.deps`" in findings[0].message
 
+    def test_tox_in_pyproject_flagged(self, tmp_charm: pathlib.Path):
+        # tox reads [tool.tox] in pyproject.toml the same way as tox.toml.
+        findings = _ops_scenario_findings(
+            tmp_charm,
+            {
+                "pyproject.toml": """\
+                [project]
+                name = "my-charm"
+                dependencies = ["ops"]
+
+                [tool.tox.env.unit]
+                deps = ["pytest", "ops-scenario"]
+                """
+            },
+        )
+        assert len(findings) == 1
+        assert findings[0].path == "pyproject.toml"
+        assert "`tool.tox.env.unit.deps`" in findings[0].message
+
     def test_broken_tox_toml_not_flagged(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(tmp_charm, {"tox.toml": "[env.unit\n"})
         assert not findings

@@ -81,7 +81,7 @@ class UsesOpsScenario(Rule):
 
     * a declaration of ``ops-scenario`` in ``pyproject.toml``, in a
       requirements file at the top of the charm, or in the ``deps`` of a
-      ``tox.ini`` or ``tox.toml`` env;
+      tox env in ``tox.ini``, ``tox.toml`` or ``[tool.tox]``;
     * a test module that imports ``scenario``, once per module, anchored
       at the first import. The test tree is examined as for TESTING-003,
       ``tests/integration/`` excepted.
@@ -188,12 +188,19 @@ def _scenario_declarations(
 
 
 def _pyproject_sections(data: dict[str, Any]) -> list[str]:
-    """Return the dotted names of the ``pyproject.toml`` sections declaring it."""
-    sections = (
+    """Return the dotted names of the ``pyproject.toml`` sections declaring it.
+
+    tox reads its own config from ``[tool.tox]`` as well as from
+    ``tox.toml``, so a ``deps`` there counts too.
+    """
+    sections = [
         declaration.section
         for declaration in _dependencies.pyproject_declarations(data)
         if declaration.name == _OPS_SCENARIO
-    )
+    ]
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        sections.extend(f"tool.tox.{section}" for section in _tox_sections(tool.get("tox")))
     return list(dict.fromkeys(sections))
 
 
@@ -271,7 +278,16 @@ def _tox_toml_sections(path: pathlib.Path) -> list[str]:
     except _yaml.FileLoadError:
         # tox.toml is tox's input, not charmlint's: tox reports a broken one.
         return []
-    if data is None:
+    return _tox_sections(data)
+
+
+def _tox_sections(data: Any) -> list[str]:
+    """Return the tox env tables in *data* whose ``deps`` declare ``ops-scenario``.
+
+    *data* is a ``tox.toml`` document, or the ``[tool.tox]`` table of a
+    ``pyproject.toml``: tox reads the same shape from either.
+    """
+    if not isinstance(data, dict):
         return []
     tables: dict[str, Any] = {name: data.get(name) for name in ("env_run_base", "env_pkg_base")}
     envs = data.get("env")
