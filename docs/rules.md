@@ -39,6 +39,7 @@ config file overrides it per rule.
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
 | [CONFIG-006](#config-006-config-option-undeclared) | `config-option-undeclared` | Error | Config key read in src/ is not a declared config option |
+| [CONFIG-007](#config-007-config-default-type-mismatch) | `config-default-type-mismatch` | Error | Config option's default value contradicts its declared type |
 | [CONFIG-008](#config-008-config-options-not-nested) | `config-options-not-nested` | Error | Config options are not under an `options` key |
 | [CORRECTNESS-001](#correctness-001-defer-without-return) | `defer-without-return` | Warning | event.defer() not immediately followed by return |
 | [CORRECTNESS-002](#correctness-002-defer-before-raise) | `defer-before-raise` | Warning | event.defer() immediately followed by raise |
@@ -338,6 +339,22 @@ form raises `KeyError` only once that code path runs.
 Only literal keys in the charm's own `src/` are considered. A library
 reads the config of whichever charm uses it, so its keys are not this
 charm's to declare, and a computed key cannot be resolved statically.
+
+Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
+
+### CONFIG-007 config-default-type-mismatch
+
+**Error** — Config option's default value contradicts its declared type
+
+A config option's default must match the type it declares.
+
+Juju hands the charm the default as written, not coerced to the
+declared type. A `type: int` option defaulting to `"8080"`
+gives the charm a string, and arithmetic on it raises a
+`TypeError` in the charm's own code, far from the config. YAML
+1.1 makes this commoner than it sounds: an unquoted `yes`,
+`no`, `on` or `off` is a boolean, so a `type: string`
+option defaulting to `no` never sees a string at all.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
 
