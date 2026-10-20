@@ -73,14 +73,20 @@ def main() -> None:
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?", version):
             fail(f"'{version}' is not X.Y.Z or X.Y.Z{{a,b,rc}}N.")
     else:
-        output = dict(
-            line.split("=", 1)
-            for line in run(
+        # `next-version` refuses to count from a pre-release such as 0.4.0rc1,
+        # since only a person knows whether the next one is rc2 or final.
+        try:
+            output = run(
                 *tool, "next-version", "--previous", previous.removeprefix("v"), input=log
-            ).splitlines()
-        )
-        version = output["version"]
-        print(f"The commits since {previous} are a {output['size']} release.")
+            )
+        except subprocess.CalledProcessError:
+            fail(
+                f"Could not work out the version after {previous}."
+                " Run this again with an explicit version."
+            )
+        fields = dict(line.split("=", 1) for line in output.splitlines())
+        version = fields["version"]
+        print(f"The commits since {previous} are a {fields['size']} release.")
 
     if succeeds("git", "rev-parse", "-q", "--verify", f"refs/tags/v{version}"):
         fail(f"v{version} is already tagged.")
