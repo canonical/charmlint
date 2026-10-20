@@ -1,8 +1,7 @@
 """Tests for charmlint rules.
 
 Only METADATA-relevant tests live here during the rules-refactor; the
-other rule families are re-added alongside their PRs from
-``RULES_TRACKER.md``.
+other rule families get their own test modules as they are re-added.
 """
 
 import collections

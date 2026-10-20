@@ -29,6 +29,29 @@ A new or changed rule needs measurements over the charm corpus before review - s
 
 [docs/rules.md](docs/rules.md) is generated from the rule registry (CI fails if it's stale). After adding or changing a rule, regenerate it with `make docs`. Don't edit the page by hand; improve the rule docstrings instead.
 
+# Develop in a workshop
+
+[Workshop](https://ubuntu.com/workshop) definitions live in `.workshop/`. The `dev` workshop is a container with `uv`, `make`, and charmlint's development dependencies, so you don't need to install any of them on the host:
+
+```bash
+sudo snap install workshop --classic  # If you don't have it already.
+workshop launch dev
+workshop run dev lint
+```
+
+The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+
+The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a read-only mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
+
+```bash
+workshop stop dev
+workshop remount dev/tools:charms ~/code/my-charm
+workshop start dev
+workshop run dev charmlint
+```
+
+Arguments go through to charmlint, and it resolves relative paths against `~/charms` inside the workshop, not on your host. That includes `--config`, so to use a config file from your checkout rather than one in the mounted charms, give its path under `/project`, where the workshop mounts the project directory. If you mount a directory of charms, name the charm to lint. For example, with the hyrum cache (`~/.cache/hyrum/charms`) mounted, run `workshop run dev charmlint canonical/some-operator`.
+
 # Project status
 
 charmlint is early work, and the implementation is subject to change (and probably will change). Please don't treat anything under `src/` as settled, or build on it expecting the internals to stay where they are.
@@ -49,6 +72,22 @@ Most of the attention belongs on the rule itself:
 * Do the tests actually capture that? A test that only exercises the case the rule was written for isn't telling us much.
 
 The implementation gets a lighter pass. We're more lenient about "agent-isms" here than in the other Charm Tech repos: if the code is more verbose or more defensive than a person would have written it, and it's correct and readable, that's ok. That's not a license to let quality slide - we still want code we'd be happy to maintain, and unnecessary comments (especially ones referring to history) should still go. But if you find yourself choosing, spend the time on the rule rather than on the style of the code implementing it.
+
+# Rules
+
+We take rule and engine work in order of value. Roughly, the value of a rule is the number of charms that have the defect, times how bad the defect is, divided by the risk of false positives. Two kinds of work jump the queue:
+
+* False positives in rules that already ship. A false positive is worse than a gap, and a rule that's already in the default `select` is costing trust today.
+* Engine work that several queued rules are blocked on - anything that would otherwise be re-implemented in each rule, or retrofitted into every rule written before it.
+
+A rule that prescribes a feature rather than finding a defect, or that would fire on a large fraction of charms by design, needs a decision on scope (in its issue) before it's worth writing.
+
+For a rule PR:
+
+* One rule (or one group of rules that share a factory) per PR. Helpers that several rules share land in their own PR first.
+* Rule IDs are `CATEGORY-###`, as described in [docs/id-scheme.md](docs/id-scheme.md). A number in an older issue's title (`CORR008`, say) isn't reserved: the ID is assigned when the rule is written.
+* Include the rule's tests, the `_rules/__init__.py` import if it adds a module, and the regenerated `docs/rules.md`.
+* Put the corpus measurements in the PR description, counted as [docs/corpus.md](docs/corpus.md) describes. If the false-positive rate isn't close to zero, tighten the rule and measure again.
 
 # AI
 

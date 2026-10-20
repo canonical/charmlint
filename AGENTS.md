@@ -10,6 +10,8 @@
 uv sync
 ```
 
+The `dev` [Workshop](https://ubuntu.com/workshop) in `.workshop/` has the same tooling in a container. Its actions run the `make` targets of the same names, such as `workshop run dev lint`, and `workshop run dev charmlint` lints the charm mounted at `~/charms` with this checkout. See [CONTRIBUTING.md](CONTRIBUTING.md#develop-in-a-workshop).
+
 ## Tests
 
 ```bash
