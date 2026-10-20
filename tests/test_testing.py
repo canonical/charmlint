@@ -519,9 +519,13 @@ class TestUsesOpsScenario:
         assert findings[0].path == "pyproject.toml"
         assert "`tool.tox.env.unit.deps`" in findings[0].message
 
-    def test_broken_tox_toml_not_flagged(self, tmp_charm: pathlib.Path):
+    def test_broken_tox_toml_reported(self, tmp_charm: pathlib.Path):
+        # Saying nothing would look like a tox.toml that was checked and
+        # found clean.
         findings = _ops_scenario_findings(tmp_charm, {"tox.toml": "[env.unit\n"})
-        assert not findings
+        assert len(findings) == 1
+        assert findings[0].path == "tox.toml"
+        assert "not checked" in findings[0].message
 
     def test_declaration_and_import_both_reported(self, tmp_charm: pathlib.Path):
         findings = _ops_scenario_findings(

@@ -105,15 +105,23 @@ class UsesOpsScenario(Rule):
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics = [
-            self.diagnostic(
-                f"ops-scenario is declared{where} — depend on ops[testing], "
-                "which installs the version that matches ops",
-                path=path,
-                line=line,
-                fix_hint="Depend on ops[testing] instead",
-            )
+            self._declared(path, line, where)
             for path, line, where in _scenario_declarations(context)
         ]
+        try:
+            sections = _tox_toml_sections(context.charm_dir / "tox.toml")
+        except _yaml.FileLoadError as exc:
+            # Saying nothing would read as "tox.toml declares no
+            # ops-scenario" when it was never checked.
+            diagnostics.append(
+                self.diagnostic(
+                    f"tox.toml was not checked for ops-scenario: {exc.reason}",
+                    path="tox.toml",
+                )
+            )
+        else:
+            if sections:
+                diagnostics.append(self._declared("tox.toml", None, _where(sections)))
         for module in context.modules(models.Scope.TESTS_UNIT, models.Scope.TESTS_OTHER):
             line = _scenario_import_line(module)
             if line is None:
@@ -127,6 +135,16 @@ class UsesOpsScenario(Rule):
                 )
             )
         return diagnostics
+
+    def _declared(self, path: str, line: int | None, where: str) -> models.Diagnostic:
+        """Report a declaration of ``ops-scenario`` in *path*."""
+        return self.diagnostic(
+            f"ops-scenario is declared{where} — depend on ops[testing], "
+            "which installs the version that matches ops",
+            path=path,
+            line=line,
+            fix_hint="Depend on ops[testing] instead",
+        )
 
 
 # The deprecated class, spelled canonically. Every spelling a charm might
@@ -185,9 +203,6 @@ def _scenario_declarations(
     line = _tox_ini_line(context.charm_dir / "tox.ini")
     if line is not None:
         yield "tox.ini", line, ""
-    sections = _tox_toml_sections(context.charm_dir / "tox.toml")
-    if sections:
-        yield "tox.toml", None, _where(sections)
 
 
 def _pyproject_sections(data: dict[str, Any]) -> list[str]:
@@ -275,13 +290,12 @@ def _tox_ini_line(path: pathlib.Path) -> int | None:
 
 
 def _tox_toml_sections(path: pathlib.Path) -> list[str]:
-    """Return the ``tox.toml`` tables whose ``deps`` declare ``ops-scenario``."""
-    try:
-        data = _toml.load(path)
-    except _yaml.FileLoadError:
-        # tox.toml is tox's input, not charmlint's: tox reports a broken one.
-        return []
-    return _tox_sections(data)
+    """Return the ``tox.toml`` tables whose ``deps`` declare ``ops-scenario``.
+
+    Raises :class:`~charmlint._yaml.FileLoadError` when the file is present
+    but cannot be read or parsed.
+    """
+    return _tox_sections(_toml.load(path))
 
 
 def _tox_sections(data: Any) -> list[str]:
