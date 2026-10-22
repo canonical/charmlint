@@ -12,8 +12,8 @@ import pathlib
 import re
 from typing import Any
 
+from .. import _dependencies, _yaml
 from .. import _models as models
-from .. import _yaml
 from ._base import Rule
 
 _PEP508_RE = re.compile(
@@ -97,17 +97,12 @@ class _OpsDependency:
         return f" in `{self.section}`"
 
 
-def _normalize(name: str) -> str:
-    """PEP 503 name normalisation — dashes/underscores/dots collapse and lowercase."""
-    return re.sub(r"[-_.]+", "-", name).lower()
-
-
 def _parse_pep508(
     entry: str, source: str, section: str, line: int | None = None
 ) -> _OpsDependency | None:
     """Parse a PEP 508 requirement string, returning ``None`` if it isn't ``ops``."""
     match = _PEP508_RE.match(entry)
-    if match is None or _normalize(match.group("name")) != "ops":
+    if match is None or _dependencies.normalise(match.group("name")) != "ops":
         return None
     # Drop any environment marker: `ops>=2.23; python_version < "3.12"`
     # constrains when the dependency applies, not which versions satisfy it.
@@ -147,15 +142,6 @@ def _split_extras(extras: str | None) -> tuple[str, ...]:
     return tuple(part for part in stripped if part)
 
 
-def _walk_pep508_list(entries: Any):
-    """Yield PEP 508 strings from a value that should be a list of requirements."""
-    if not isinstance(entries, list):
-        return
-    for entry in entries:
-        if isinstance(entry, str):
-            yield entry
-
-
 def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
     """Look for an ``ops`` dependency across the common pyproject.toml layouts.
 
@@ -164,62 +150,15 @@ def _find_ops_in_pyproject(data: dict[str, Any]) -> _OpsDependency | None:
     known location.
     """
     source = "pyproject.toml"
-
-    # PEP 621 — [project.dependencies] and [project.optional-dependencies.*]
-    project = data.get("project")
-    if isinstance(project, dict):
-        for entry in _walk_pep508_list(project.get("dependencies")):
-            dep = _parse_pep508(entry, source, "project.dependencies")
-            if dep is not None and not dep.is_test_only:
-                return dep
-        optional = project.get("optional-dependencies")
-        if isinstance(optional, dict):
-            for name, entries in optional.items():
-                for entry in _walk_pep508_list(entries):
-                    dep = _parse_pep508(entry, source, f"project.optional-dependencies.{name}")
-                    if dep is not None and not dep.is_test_only:
-                        return dep
-
-    # PEP 735 — [dependency-groups.*]
-    groups = data.get("dependency-groups")
-    if isinstance(groups, dict):
-        for name, entries in groups.items():
-            for entry in _walk_pep508_list(entries):
-                dep = _parse_pep508(entry, source, f"dependency-groups.{name}")
-                if dep is not None and not dep.is_test_only:
-                    return dep
-
-    # Poetry — [tool.poetry.dependencies], legacy [tool.poetry.dev-dependencies],
-    # and [tool.poetry.group.<name>.dependencies].
-    tool = data.get("tool")
-    if isinstance(tool, dict):
-        poetry = tool.get("poetry")
-        if isinstance(poetry, dict):
-            for key in ("dependencies", "dev-dependencies"):
-                deps = poetry.get(key)
-                if isinstance(deps, dict):
-                    for name, value in deps.items():
-                        if _normalize(name) == "ops":
-                            dep = _parse_poetry(value, source, f"tool.poetry.{key}")
-                            if not dep.is_test_only:
-                                return dep
-            poetry_groups = poetry.get("group")
-            if isinstance(poetry_groups, dict):
-                for group_name, group in poetry_groups.items():
-                    if not isinstance(group, dict):
-                        continue
-                    deps = group.get("dependencies")
-                    if isinstance(deps, dict):
-                        for name, value in deps.items():
-                            if _normalize(name) == "ops":
-                                dep = _parse_poetry(
-                                    value,
-                                    source,
-                                    f"tool.poetry.group.{group_name}.dependencies",
-                                )
-                                if not dep.is_test_only:
-                                    return dep
-
+    for declaration in _dependencies.pyproject_declarations(data):
+        if declaration.name != "ops":
+            continue
+        if declaration.requirement is not None:
+            dep = _parse_pep508(declaration.requirement, source, declaration.section)
+        else:
+            dep = _parse_poetry(declaration.poetry_value, source, declaration.section)
+        if dep is not None and not dep.is_test_only:
+            return dep
     return None
 
 
@@ -238,11 +177,8 @@ def _find_ops_in_requirements(
         text = requirements.read_text()
     except OSError:
         return None
-    for lineno, raw in enumerate(text.splitlines(), start=1):
-        stripped = raw.split("#", 1)[0].strip()
-        if not stripped or stripped.startswith("-"):
-            continue
-        dep = _parse_pep508(stripped, name, name, lineno)
+    for lineno, requirement in _dependencies.requirement_lines(text):
+        dep = _parse_pep508(requirement, name, name, lineno)
         if dep is not None and not dep.is_test_only:
             return dep
     return None
