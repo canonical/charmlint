@@ -34,6 +34,27 @@ uvx charmlint --ignore no-readme --strict .
 
 `charmlint --help` lists the rest. Errors cause charmlint to exit with code 1. With `--strict`, warnings cause charmlint to exit with code 2.
 
+### In GitHub Actions
+
+`--format github` prints each finding as a workflow command, so it shows up as an annotation on the pull request's diff:
+
+```yaml
+- uses: astral-sh/setup-uv@v10
+- run: uvx charmlint --format github --strict .
+```
+
+GitHub shows at most 10 error and 10 warning annotations per step. To keep every finding, and track them over time, use `--format sarif` and upload the result to code scanning:
+
+```yaml
+- run: uvx charmlint --format sarif . > charmlint.sarif
+- uses: github/codeql-action/upload-sarif@v4
+  if: always()
+  with:
+    sarif_file: charmlint.sarif
+```
+
+Uploading needs the `security-events: write` permission. Both formats name files relative to the current directory, which in a workflow is the repository root, so run charmlint from there and pass the charm's path.
+
 ## Configuration
 
 Configure under `[tool.charmlint]` in `pyproject.toml`:
