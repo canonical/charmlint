@@ -1475,3 +1475,69 @@ class TestOverrideBuildSkipsDefault:
             "  charm:\n    override-build: |  # noqa: CHARMCRAFT-010\n      ./build.sh\n",
         )
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+
+class TestInvalidStorage:
+    """Tests for CHARMCRAFT-012 — storage definitions Juju will not accept."""
+
+    def _diags(self, tmp_charm: pathlib.Path, storage: dict) -> list[Diagnostic]:
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "storage": storage})
+        return [d for d in list(lint(tmp_charm)) if d.rule_id == "CHARMCRAFT-012"]
+
+    def test_valid_storage(self, tmp_charm: pathlib.Path):
+        storage = {
+            "data": {"type": "filesystem", "location": "/data", "minimum-size": "1G"},
+            "disk": {"type": "block", "multiple": {"range": "0-3"}, "properties": ["transient"]},
+        }
+        assert self._diags(tmp_charm, storage) == []
+
+    def test_file_type_is_an_error(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"config": {"type": "file", "location": "/etc/x"}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "'file'" in diags[0].message
+        assert "config" in diags[0].message
+
+    def test_missing_type(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"data": {"location": "/data"}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+
+    def test_directory_key_suggests_location(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "directory": "/d"}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert diags[0].fix_hint == "location"
+
+    def test_no_storage(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        assert "CHARMCRAFT-012" not in {d.rule_id for d in list(lint(tmp_charm))}
+
+    def test_location_on_block_storage(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"disk": {"type": "block", "location": "/dev/x"}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "'location'" in diags[0].message
+
+    @pytest.mark.parametrize("multiple", ["0-3", 3, {"min": 1}])
+    def test_multiple_without_range(self, tmp_charm: pathlib.Path, multiple: object):
+        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "multiple": multiple}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "'multiple'" in diags[0].message
+
+    def test_unknown_key_without_close_match(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "colour": "blue"}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "'colour'" in diags[0].message
+
+    def test_storage_written_as_a_list_is_ignored(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "storage": {"data": ["filesystem"]}})
+        assert "CHARMCRAFT-012" not in {d.rule_id for d in list(lint(tmp_charm))}
+
+    def test_noqa(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nstorage:\n  config:\n    type: file  # noqa: CHARMCRAFT-012\n"
+        )
+        assert "CHARMCRAFT-012" not in {d.rule_id for d in list(lint(tmp_charm))}
