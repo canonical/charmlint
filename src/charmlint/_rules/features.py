@@ -467,6 +467,95 @@ class NoConfigChangedObserver(Rule):
         ]
 
 
+class CharmObservesNoEvents(Rule):
+    """Flag a charm class that never observes an event.
+
+    Juju runs a hook for every event, but a charm only reacts to the ones
+    it observes. A charm whose class never calls ``framework.observe``
+    deploys cleanly, runs every hook, does nothing, and leaves the unit at
+    ``unknown`` status with no error to explain why. No real charm should
+    observe nothing.
+
+    The rule stays quiet wherever something charmlint cannot see might be
+    observing on the charm's behalf:
+
+    * An observe call could not be read statically, such as a helper that
+      observes a list of events.
+    * A charm class is built on a framework base class or a mixin, or no
+      plain ``ops.CharmBase`` subclass was found in the charm's own source.
+    * A charm class hands ``self`` to a collaborator in ``__init__``
+      (a charm library, say), which can observe the charm's events itself,
+      or reconciles unconditionally in ``__init__``.
+    """
+
+    category = "FEATURES"
+    number = 8
+    name = "charm-observes-no-events"
+    description = "Charm class never observes any event"
+    default_severity = models.Severity.ERROR
+    reference_url = "https://canonical.com/juju/docs/ops/latest/explanation/event/"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        first: tuple[str, int] | None = None
+        for module in context.charm_sources():
+            if _ast.observers(module) or _has_opaque_observe(module):
+                return []
+            classes = _classes(module)
+            if classes.framework or classes.holistic or _hands_self_to_collaborator(module):
+                return []
+            if classes.plain and first is None:
+                first = (module.path, _first_plain_class_line(module))
+        if first is None:
+            return []
+        return [
+            self.diagnostic(
+                "Charm class never observes any event, so no hook will do anything",
+                path=first[0],
+                line=first[1],
+                fix_hint=(
+                    "Add `framework.observe(self.on.<event>, self._on_<event>)` calls in "
+                    "__init__ and matching handlers"
+                ),
+            )
+        ]
+
+
+def _first_plain_class_line(module: models.Module) -> int:
+    """The line of the first class deriving straight from ``ops.CharmBase``."""
+    imports = _ast.Imports.of(module)
+    for node in module.walk(ast.ClassDef):
+        bases = {name for name in (imports.resolve(base) for base in node.bases) if name}
+        if bases & _ast.CHARM_BASES and not bases - _ast.CHARM_BASES:
+            return node.lineno
+    return 1
+
+
+def _hands_self_to_collaborator(module: models.Module) -> bool:
+    """Whether a charm's ``__init__`` passes ``self`` to anything but ``super()``.
+
+    ``TracingEndpointRequirer(self)`` and friends observe the charm's
+    events from inside the library, so the charm's own source can look
+    observer-free and still be wired up.
+    """
+    for node in module.walk(ast.ClassDef):
+        for function in node.body:
+            if not isinstance(function, ast.FunctionDef) or function.name != "__init__":
+                continue
+            for call in ast.walk(function):
+                if not isinstance(call, ast.Call):
+                    continue
+                if (
+                    isinstance(call.func, ast.Attribute)
+                    and isinstance(call.func.value, ast.Call)
+                    and _called_name(call.func.value.func) == "super"
+                ):
+                    continue
+                arguments = [*call.args, *(kw.value for kw in call.keywords)]
+                if any(isinstance(a, ast.Name) and a.id == "self" for a in arguments):
+                    return True
+    return False
+
+
 def _mentions_config_changed(module: models.Module) -> bool:
     """Whether *module* names the ``config-changed`` event at all.
 

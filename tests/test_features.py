@@ -794,3 +794,101 @@ class TestNoConfigChangedObserver:
             tmp_charm, _charm("framework.observe(self.on.start, self._handler)")
         )
         assert len(findings) == 1
+
+
+class TestCharmObservesNoEvents:
+    """Tests for FEATURES-008 — charm class that observes no events."""
+
+    @staticmethod
+    def _hits(charm_dir: pathlib.Path, source: str):
+        write_charmcraft_yaml(charm_dir, {"name": "test"})
+        write_charm_source(charm_dir, textwrap.dedent(source))
+        return [d for d in lint(charm_dir) if d.rule_id == "FEATURES-008"]
+
+    def test_no_observers_flagged(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+
+
+            ops.main(C)
+            """,
+        )
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.ERROR
+        assert hits[0].path == "src/charm.py"
+        assert hits[0].line == 4
+
+    def test_observer_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event):
+                    pass
+            """,
+        )
+        assert not hits
+
+    def test_opaque_observe_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    observe_events(self, EVENTS, self._reconcile)
+            """,
+        )
+        assert not hits
+
+    def test_library_given_self_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self.tracing = TracingEndpointRequirer(self)
+            """,
+        )
+        assert not hits
+
+    def test_framework_base_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+            from somewhere import BaseCharm
+
+
+            class C(BaseCharm):
+                pass
+
+
+            ops.main(C)
+            """,
+        )
+        assert not hits
+
+    def test_no_charm_class_not_flagged(self, tmp_charm: pathlib.Path):
+        assert not self._hits(tmp_charm, "x = 1\n")

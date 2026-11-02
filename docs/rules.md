@@ -52,6 +52,7 @@ config file overrides it per rule.
 | [FEATURES-005](#features-005-no-set-workload-version) | `no-set-workload-version` | Info | Charm never calls set_workload_version() |
 | [FEATURES-006](#features-006-hardcoded-workload-version) | `hardcoded-workload-version` | Warning | Workload version is a hardcoded constant, not read from the workload |
 | [FEATURES-007](#features-007-no-config-changed-observer) | `no-config-changed-observer` | Warning | Charm declares config options but does not observe config-changed |
+| [FEATURES-008](#features-008-charm-observes-no-events) | `charm-observes-no-events` | Error | Charm class never observes any event |
 | [LIBRARY-001](#library-001-fetch-libs-has-pypi) | `fetch-libs-has-pypi` | Warning | Deprecated Charmhub library has PyPI replacement |
 | [METADATA-001](#metadata-001-missing-name) | `missing-name` | Error | Empty or missing 'name' field in charm metadata |
 | [METADATA-002](#metadata-002-missing-display-name) | `missing-display-name` | Warning | Empty or missing 'display-name'/'title' field |
@@ -651,6 +652,31 @@ next run, and one that applies its configuration outside ops
 altogether, such as in the entry point before it calls `ops.main`.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuration/>
+
+### FEATURES-008 charm-observes-no-events
+
+**Error** — Charm class never observes any event
+
+Flag a charm class that never observes an event.
+
+Juju runs a hook for every event, but a charm only reacts to the ones
+it observes. A charm whose class never calls `framework.observe`
+deploys cleanly, runs every hook, does nothing, and leaves the unit at
+`unknown` status with no error to explain why. No real charm should
+observe nothing.
+
+The rule stays quiet wherever something charmlint cannot see might be
+observing on the charm's behalf:
+
+* An observe call could not be read statically, such as a helper that
+  observes a list of events.
+* A charm class is built on a framework base class or a mixin, or no
+  plain `ops.CharmBase` subclass was found in the charm's own source.
+* A charm class hands `self` to a collaborator in `__init__`
+  (a charm library, say), which can observe the charm's events itself,
+  or reconciles unconditionally in `__init__`.
+
+Reference: <https://canonical.com/juju/docs/ops/latest/explanation/event/>
 
 ## LIBRARY
 
