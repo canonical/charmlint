@@ -64,6 +64,7 @@ config file overrides it per rule.
 | [METADATA-009](#metadata-009-provides-missing-optional) | `provides-missing-optional` | Info | provides endpoint missing explicit `optional` field |
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
+| [PERFORMANCE-001](#performance-001-logging-in-loop) | `logging-in-loop` | Info | Logging inside a loop runs juju-log once per iteration |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
@@ -826,6 +827,35 @@ f-string, or any other expression is left alone: the rule can't tell
 what it evaluates to, and the common cases are already strings.
 
 Reference: <https://ubuntu.com/docs/pebble/reference/layer-specification/>
+
+## PERFORMANCE
+
+Performance.
+
+### PERFORMANCE-001 logging-in-loop
+
+**Info** — Logging inside a loop runs juju-log once per iteration
+
+Check for logging calls made inside a `for` or `while` loop.
+
+Under Juju, ops sends each log record to the controller by running the
+`juju-log` hook tool, which is a subprocess. A loop that logs on every
+iteration therefore starts a process per iteration. That is cheap for a
+handful of items and very slow for hundreds, for example when iterating
+over every relation of a charm that sits in the middle of a large
+deployment.
+
+The rule reports once per outermost loop, at the first logging call in
+its body, and says how many calls there are. It recognises calls on a
+receiver named like a logger (`logger`, `log`, `logging`,
+`self._logger`, ...) using the standard level methods. Calls in a
+nested function, class or lambda defined in the loop are not counted,
+because they do not necessarily run once per iteration. Comprehensions
+and the `else` clause of a loop are not examined.
+
+Move the logging out of the loop (log a summary afterwards), or limit it
+to the exceptional case. Logging a rare failure inside a loop is
+reasonable; suppress the finding with a `# charmlint: ignore` comment if so.
 
 ## SECURITY
 
