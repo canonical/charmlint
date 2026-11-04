@@ -316,6 +316,24 @@ class TestNoSetWorkloadVersion:
         """
         assert len(_lint(tmp_charm, {"containers": _CONTAINERS}, source)) == 1
 
+    def test_charms_openstack_charm_suppresses(self, tmp_charm: pathlib.Path):
+        source = """\
+            import charms_openstack.charm
+
+            class C(charms_openstack.charm.OpenStackCharm):
+                pass
+        """
+        assert _lint(tmp_charm, {"containers": _CONTAINERS}, source) == []
+
+    def test_ops_sunbeam_does_not_suppress(self, tmp_charm: pathlib.Path):
+        source = """\
+            import ops_sunbeam.charm
+
+            class C(ops_sunbeam.charm.OSBaseOperatorCharm):
+                pass
+        """
+        assert len(_lint(tmp_charm, {"containers": _CONTAINERS}, source)) == 1
+
     def test_charm_with_no_source_not_flagged(self, tmp_charm: pathlib.Path):
         assert _lint(tmp_charm, {"containers": _CONTAINERS}, source=None) == []
 
