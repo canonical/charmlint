@@ -163,3 +163,16 @@ class TestSarif:
         report = _report(tmp_path, models.Diagnostic("FATAL", models.Severity.ERROR, "m"))
         result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
         assert "locations" not in result
+
+    def test_pathless_finding_in_a_monorepo_says_which_charm(
+        self, tmp_path: pathlib.Path, monkeypatch, capsys
+    ):
+        for name in ("foo", "bar"):
+            charm_dir = tmp_path / "charms" / name
+            charm_dir.mkdir(parents=True)
+            write_charmcraft_yaml(charm_dir, {"name": name})
+        monkeypatch.chdir(tmp_path)
+        main([".", "--format", "sarif", "--select", "STRUCTURE-001"])
+        results = json.loads(capsys.readouterr().out)["runs"][0]["results"]
+        uris = {r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for r in results}
+        assert uris == {"charms/foo/charmcraft.yaml", "charms/bar/charmcraft.yaml"}

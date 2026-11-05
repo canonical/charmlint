@@ -11,8 +11,8 @@ import json
 import os
 import pathlib
 
+from . import _discovery, _rules
 from . import _models as models
-from . import _rules
 
 _GITHUB_COMMANDS: dict[models.Severity, str] = {
     models.Severity.ERROR: "error",
@@ -57,7 +57,7 @@ def format_sarif(report: models.LintReport) -> str:
     rule_index = {rule.id: index for index, rule in enumerate(rules)}
     # Code scanning only displays a result that has a location, so a
     # finding about the charm as a whole is anchored to its metadata file.
-    fallback = _fallback_path(report.charm_dir)
+    fallback = _discovery.metadata_file(report.charm_dir)
 
     results: list[dict[str, object]] = []
     for d in report:
@@ -132,14 +132,6 @@ def _full_message(d: models.Diagnostic) -> str:
     if d.reference_url:
         parts.append(f"See {d.reference_url}")
     return "\n".join(parts)
-
-
-def _fallback_path(charm_dir: pathlib.Path) -> str | None:
-    """The linted directory's metadata file, to anchor findings that have no file."""
-    for name in ("charmcraft.yaml", "metadata.yaml"):
-        if (charm_dir / name).is_file():
-            return name
-    return None
 
 
 def _sarif_rule(rule: _rules.Rule) -> dict[str, object]:
