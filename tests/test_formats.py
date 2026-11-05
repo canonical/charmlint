@@ -155,9 +155,25 @@ class TestSarif:
         )
         result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
         assert result["locations"][0]["physicalLocation"] == {
-            "artifactLocation": {"uri": "metadata.yaml", "uriBaseId": "%SRCROOT%"}
+            "artifactLocation": {"uri": "metadata.yaml"}
         }
         assert "ruleIndex" not in result
+
+    def test_path_outside_current_directory_is_a_file_uri(
+        self, tmp_path: pathlib.Path, monkeypatch
+    ):
+        charm_dir = tmp_path / "my charm"
+        charm_dir.mkdir()
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        report = _report(
+            charm_dir, models.Diagnostic("A-001", models.Severity.WARNING, "m", path="a.py")
+        )
+        result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
+        assert result["locations"][0]["physicalLocation"] == {
+            "artifactLocation": {"uri": (charm_dir / "a.py").as_uri()}
+        }
 
     def test_pathless_finding_without_metadata_has_no_location(self, tmp_path: pathlib.Path):
         report = _report(tmp_path, models.Diagnostic("FATAL", models.Severity.ERROR, "m"))
