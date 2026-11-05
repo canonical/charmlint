@@ -270,15 +270,20 @@ def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[mod
     return _apply_noqa(charm_dir, all_diagnostics)
 
 
-def _prefixed(diagnostic: models.Diagnostic, prefix: pathlib.PurePosixPath) -> models.Diagnostic:
+def _prefixed(
+    diagnostic: models.Diagnostic, charm_dir: pathlib.Path, root: pathlib.Path
+) -> models.Diagnostic:
     """Return *diagnostic* with its path moved from charm-relative to root-relative.
 
     Only reached when one run covers several charms, where a bare
-    ``src/charm.py`` would not say which charm it came from.
+    ``src/charm.py`` would not say which charm it came from. For the same
+    reason, a finding about a charm as a whole is anchored to its metadata file.
     """
-    if diagnostic.path is None:
+    path = diagnostic.path if diagnostic.path is not None else _discovery.metadata_file(charm_dir)
+    if path is None:
         return diagnostic
-    return dataclasses.replace(diagnostic, path=str(prefix / diagnostic.path))
+    prefix = pathlib.PurePosixPath(charm_dir.relative_to(root))
+    return dataclasses.replace(diagnostic, path=str(prefix / path))
 
 
 def lint(
@@ -322,8 +327,7 @@ def lint(
 
     diagnostics: list[models.Diagnostic] = []
     for charm_dir in charm_dirs:
-        prefix = pathlib.PurePosixPath(charm_dir.relative_to(path))
-        diagnostics.extend(_prefixed(d, prefix) for d in _lint_charm(charm_dir, config))
+        diagnostics.extend(_prefixed(d, charm_dir, path) for d in _lint_charm(charm_dir, config))
     return models.LintReport.from_diagnostics(charm_dir=path, diagnostics=diagnostics)
 
 
