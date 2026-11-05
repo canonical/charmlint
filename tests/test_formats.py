@@ -2,6 +2,8 @@
 
 import json
 import pathlib
+import subprocess
+import sys
 
 import pytest
 
@@ -115,6 +117,25 @@ class TestSarif:
         driver = log["runs"][0]["tool"]["driver"]
         assert driver["name"] == "charmlint"
         assert driver["version"]
+
+    @pytest.mark.network
+    def test_output_matches_the_sarif_schema(self, log: dict, tmp_path: pathlib.Path):
+        sarif = tmp_path / "charmlint.sarif"
+        sarif.write_text(json.dumps(log))
+        result = subprocess.run(  # ruff: ignore[S603]
+            [
+                sys.executable,
+                "-m",
+                "check_jsonschema",
+                "--schemafile",
+                log["$schema"],
+                str(sarif),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
 
     def test_rules_describe_every_registered_rule(self, log: dict):
         from charmlint._rules import get_all_rules
