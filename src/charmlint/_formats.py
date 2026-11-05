@@ -34,7 +34,9 @@ def format_github(report: models.LintReport) -> str:
     """Render *report* as GitHub Actions workflow commands, one per line.
 
     Each line becomes an annotation: on the PR diff when the finding has a
-    file and line, and in the run summary otherwise.
+    file and line, and in the run summary otherwise. Unlike a SARIF result,
+    a finding with no file doesn't need anchoring to the metadata file,
+    because the run summary still displays it.
     """
     lines: list[str] = []
     for d in report:
@@ -53,6 +55,7 @@ def format_sarif(report: models.LintReport) -> str:
     """Render *report* as a SARIF 2.1.0 log, for GitHub code scanning."""
     from . import __version__
 
+    # Every rule is declared, so rule indexes don't depend on --select.
     rules = sorted(_rules.get_all_rules().values(), key=lambda r: r.id)
     rule_index = {rule.id: index for index, rule in enumerate(rules)}
     # Code scanning only displays a result that has a location, so a
