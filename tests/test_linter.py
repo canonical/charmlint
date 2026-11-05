@@ -252,6 +252,21 @@ class TestLintMultiCharm:
         fired = {d.path for d in lint(repo) if d.rule_id == "METADATA-001"}
         assert fired == {"charms/beta/charmcraft.yaml"}
 
+    def test_finding_with_no_file_says_which_charm(self, tmp_path: pathlib.Path):
+        repo = self._repo(tmp_path)
+        (repo / "charms" / "beta" / "charmcraft.yaml").rename(
+            repo / "charms" / "beta" / "metadata.yaml"
+        )
+        for name in ("alpha", "beta"):
+            (repo / "charms" / name / "LICENSE").unlink()
+        fired = {d.path for d in lint(repo) if d.rule_id == "STRUCTURE-001"}
+        assert fired == {"charms/alpha/charmcraft.yaml", "charms/beta/metadata.yaml"}
+
+    def test_single_charm_finding_with_no_file_has_no_path(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm)
+        assert all(d.path is None for d in report if d.rule_id == "STRUCTURE-001")
+
     def test_no_charm_below_the_root_is_fatal(self, tmp_path: pathlib.Path):
         (tmp_path / "docs").mkdir()
         report = lint(tmp_path)

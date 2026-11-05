@@ -7,7 +7,7 @@ import os
 import pathlib
 import sys
 
-from . import _config, _discovery, _linter, _selectors
+from . import _config, _discovery, _formats, _linter, _selectors
 from . import _models as models
 
 # ---------------------------------------------------------------------------
@@ -134,10 +134,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=["text", "json"],
+        choices=["text", "json", "github", "sarif"],
         default="text",
         dest="output_format",
-        help="Output format (default: text)",
+        help=(
+            "Output format (default: text). 'github' prints GitHub Actions annotations; "
+            "'sarif' prints SARIF 2.1.0 for GitHub code scanning."
+        ),
     )
     parser.add_argument(
         "--select",
@@ -204,13 +207,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    # Determine colour mode: off if --no-colour, NO_COLOR env var, not a TTY, or JSON output.
+    # Determine colour mode: off if --no-colour, NO_COLOR env var, not a TTY, or not text output.
     no_color_env = os.environ.get("NO_COLOR", "") != ""
     use_colour = (
         not args.no_colour
         and not no_color_env
         and sys.stdout.isatty()
-        and args.output_format != "json"
+        and args.output_format == "text"
     )
 
     charm_dir = pathlib.Path(args.path).resolve()
@@ -254,6 +257,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.output_format == "json":
         print(json.dumps(report.to_dict(), indent=2))
+    elif args.output_format == "github":
+        if len(report):
+            print(_formats.format_github(report))
+    elif args.output_format == "sarif":
+        print(_formats.format_sarif(report))
     else:
         any_diag = False
         for diagnostic in report:
