@@ -71,10 +71,7 @@ def format_sarif(report: models.LintReport) -> str:
         path = d.path if d.path is not None else fallback
         if path is not None:
             physical: dict[str, object] = {
-                "artifactLocation": {
-                    "uri": _repo_path(report.charm_dir, path),
-                    "uriBaseId": "%SRCROOT%",
-                }
+                "artifactLocation": {"uri": _sarif_uri(report.charm_dir, path)}
             }
             if d.path is not None and d.line is not None:
                 physical["region"] = {"startLine": d.line}
@@ -122,6 +119,12 @@ def _repo_path(charm_dir: pathlib.Path, path: str) -> str:
     if not full.is_relative_to(cwd):
         return full.as_posix()
     return pathlib.PurePath(os.path.relpath(full, cwd)).as_posix()
+
+
+def _sarif_uri(charm_dir: pathlib.Path, path: str) -> str:
+    """Return *path* as a SARIF URI: relative to the repository root, or else ``file://``."""
+    repo_path = pathlib.Path(_repo_path(charm_dir, path))
+    return repo_path.as_uri() if repo_path.is_absolute() else repo_path.as_posix()
 
 
 def _full_message(d: models.Diagnostic) -> str:
