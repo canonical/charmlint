@@ -39,7 +39,7 @@ uvx charmlint --ignore no-readme --strict .
 `--format github` prints each finding as a workflow command, so it shows up as an annotation on the pull request's diff:
 
 ```yaml
-- uses: astral-sh/setup-uv@v10
+- uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 - run: uvx charmlint --format github --strict .
 ```
 
@@ -47,7 +47,7 @@ GitHub shows at most 10 error and 10 warning annotations per step. To keep every
 
 ```yaml
 - run: uvx charmlint --format sarif . > charmlint.sarif
-- uses: github/codeql-action/upload-sarif@v4
+- uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
   if: always()
   with:
     sarif_file: charmlint.sarif
@@ -56,7 +56,11 @@ GitHub shows at most 10 error and 10 warning annotations per step. To keep every
 
 If you run charmlint separately for each charm, for example in a matrix, give each upload its own `category`.
 
-Uploading needs the `security-events: write` permission. Both formats name files relative to the current directory, which in a workflow is the repository root, so run charmlint from there and pass the charm's path.
+An error makes the charmlint step fail. To make code scanning the only signal, set `continue-on-error: true` on that step.
+
+Uploading needs the `security-events: write` permission. A private repository also needs the `contents: read` permission and GitHub Advanced Security.
+
+Both formats name files relative to the current directory, which in a workflow is the repository root. Run charmlint from there, and pass the charm's path if it isn't at the root.
 
 ## Configuration
 
