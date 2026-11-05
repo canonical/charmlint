@@ -51,7 +51,10 @@ GitHub shows at most 10 error and 10 warning annotations per step. To keep every
   if: always()
   with:
     sarif_file: charmlint.sarif
+    category: charmlint
 ```
+
+If you run charmlint separately for each charm, for example in a matrix, give each upload its own `category`.
 
 Uploading needs the `security-events: write` permission. Both formats name files relative to the current directory, which in a workflow is the repository root, so run charmlint from there and pass the charm's path.
 
