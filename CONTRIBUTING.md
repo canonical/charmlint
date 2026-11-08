@@ -31,7 +31,7 @@ A new or changed rule needs measurements over the charm corpus before review - s
 
 # Develop in a workshop
 
-[Workshop](https://ubuntu.com/workshop) definitions live in `.workshop/`. The `dev` workshop is a container with `uv`, `make`, and charmlint's development dependencies, so you don't need to install any of them on the host:
+[Workshop](https://ubuntu.com/workshop) definitions live in `.workshop/`. The `dev` workshop is a container with `uv`, `make`, charmlint's development dependencies, and the [Pi](https://pi.dev) coding agent, so you don't need to install any of them on the host:
 
 ```bash
 sudo snap install workshop --classic  # If you don't have it already.
@@ -40,6 +40,8 @@ workshop run dev lint
 ```
 
 The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+
+The `pi` action runs Pi in the workshop. Pi's settings and credentials are kept in a mount, so they survive `workshop refresh`.
 
 The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a read-only mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
 
