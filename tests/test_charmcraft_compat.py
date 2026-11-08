@@ -1475,3 +1475,59 @@ class TestOverrideBuildSkipsDefault:
             "  charm:\n    override-build: |  # noqa: CHARMCRAFT-010\n      ./build.sh\n",
         )
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+
+class TestRedeclaredExtensionRelation:
+    """Tests for CHARMCRAFT-013 — relation re-declared over a framework extension."""
+
+    @staticmethod
+    def _lint(charm_dir: pathlib.Path, body: str, extension: str = "flask-framework"):
+        (charm_dir / "charmcraft.yaml").write_text(
+            f"name: test\nextensions:\n  - {extension}\n{body}"
+        )
+        return _diags(lint(charm_dir), "CHARMCRAFT-013")
+
+    def test_changed_interface_is_warning(self, tmp_charm: pathlib.Path):
+        [diag] = self._lint(tmp_charm, "requires:\n  ingress:\n    interface: other\n")
+        assert diag.severity == Severity.WARNING
+        assert diag.line == 5
+        assert "'interface' ('other' rather than 'ingress')" in diag.message
+
+    def test_changed_limit_is_warning(self, tmp_charm: pathlib.Path):
+        [diag] = self._lint(tmp_charm, "requires:\n  ingress:\n    limit: 2\n")
+        assert diag.severity == Severity.WARNING
+        assert "'limit' (2 rather than 1)" in diag.message
+
+    @pytest.mark.parametrize("name", ["ingress", "logging"])
+    def test_optional_true_is_warning(self, tmp_charm: pathlib.Path, name: str):
+        [diag] = self._lint(tmp_charm, f"requires:\n  {name}:\n    optional: true\n")
+        assert diag.severity == Severity.WARNING
+        assert "'optional' (true rather than false)" in diag.message
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "provides:\n  metrics-endpoint:\n    interface: prometheus_scrape\n",
+            "requires:\n  ingress:\n    interface: ingress\n    limit: 1\n    optional: false\n",
+            "provides:\n  grafana-dashboard: {}\n",
+        ],
+    )
+    def test_identical_restatement_is_info(self, tmp_charm: pathlib.Path, body: str):
+        [diag] = self._lint(tmp_charm, body, extension="django-framework")
+        assert diag.severity == Severity.INFO
+
+    def test_no_extension_is_clean(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nrequires:\n  ingress:\n    interface: other\n"
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-013")
+
+    def test_other_relation_is_clean(self, tmp_charm: pathlib.Path):
+        assert not self._lint(
+            tmp_charm, "requires:\n  database:\n    interface: postgresql_client\n"
+        )
+
+    def test_noqa_suppresses(self, tmp_charm: pathlib.Path):
+        assert not self._lint(
+            tmp_charm, "requires:\n  ingress:  # noqa: CHARMCRAFT-013\n    interface: other\n"
+        )

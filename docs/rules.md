@@ -36,6 +36,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-008](#charmcraft-008-charm-user) | `charm-user` | Warning | Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user' |
 | [CHARMCRAFT-009](#charmcraft-009-container-runs-as-root) | `container-runs-as-root` | Warning | Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity |
 | [CHARMCRAFT-010](#charmcraft-010-override-build-skips-default) | `override-build-skips-default` | Warning | override-build never runs 'craftctl default' for a Python plugin |
+| [CHARMCRAFT-013](#charmcraft-013-redeclared-extension-relation) | `redeclared-extension-relation` | Warning | 12-factor charm re-declares a relation its extension already provides |
 | [CONFIG-001](#config-001-config-missing-type) | `config-missing-type` | Warning | Config option is missing a type |
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
@@ -320,6 +321,26 @@ plugin as a shell around `charm build`, should be suppressed with a
 `noqa` on the `override-build` line.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build>
+
+### CHARMCRAFT-013 redeclared-extension-relation
+
+**Warning** — 12-factor charm re-declares a relation its extension already provides
+
+Flag a 12-factor charm that re-declares a relation its extension provides.
+
+The `*-framework` extensions declare `ingress` (with `limit: 1`),
+`logging`, `metrics-endpoint` and `grafana-dashboard` for the
+charm. charmcraft doesn't warn when `charmcraft.yaml` declares one of
+them again: its merge keeps the charm's value for every scalar key, so
+a different `interface`, `limit` or `optional` silently changes
+the packed charm from what paas-charm expects. The extension doesn't
+set `optional`, so Juju's default (`false`) is what it declares.
+
+A re-declaration that changes any of these is a warning. An identical
+restatement is only redundant, so it's info, but it hides the next
+change.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/extensions/>
 
 ## CONFIG
 

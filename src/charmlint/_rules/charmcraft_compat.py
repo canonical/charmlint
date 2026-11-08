@@ -581,6 +581,84 @@ class ContainerRunsAsRoot(Rule):
 # --- Helpers ---------------------------------------------------------------
 
 
+class RedeclaredExtensionRelation(Rule):
+    """Flag a 12-factor charm that re-declares a relation its extension provides.
+
+    The ``*-framework`` extensions declare ``ingress`` (with ``limit: 1``),
+    ``logging``, ``metrics-endpoint`` and ``grafana-dashboard`` for the
+    charm. charmcraft doesn't warn when ``charmcraft.yaml`` declares one of
+    them again: its merge keeps the charm's value for every scalar key, so
+    a different ``interface``, ``limit`` or ``optional`` silently changes
+    the packed charm from what paas-charm expects. The extension doesn't
+    set ``optional``, so Juju's default (``false``) is what it declares.
+
+    A re-declaration that changes any of these is a warning. An identical
+    restatement is only redundant, so it's info, but it hides the next
+    change.
+    """
+
+    category = "CHARMCRAFT"
+    number = 13
+    name = "redeclared-extension-relation"
+    description = "12-factor charm re-declares a relation its extension already provides"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/extensions/"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        extensions = context.metadata.get("extensions")
+        if not any(
+            isinstance(element.value, str) and element.value in _FRAMEWORK_EXTENSIONS
+            for element in extensions.elements or ()
+        ):
+            return []
+        diagnostics: list[models.Diagnostic] = []
+        for section, relations in _EXTENSION_RELATIONS.items():
+            declared = context.metadata.get(section)
+            for name, expected in relations.items():
+                relation = declared.get(name)
+                if not relation.present:
+                    continue
+                changes = [
+                    f"'{key}' ({_yaml_scalar(relation.get(key).value)} rather than "
+                    f"{_yaml_scalar(value)})"
+                    for key, value in expected.items()
+                    if relation.get(key).present and relation.get(key).value != value
+                ]
+                if changes:
+                    message = (
+                        f"{section}.{name} is declared by the framework extension, and "
+                        f"this changes {' and '.join(changes)}"
+                    )
+                    severity = models.Severity.WARNING
+                    fix_hint = f"Remove '{name}' from '{section}' and let the extension declare it"
+                else:
+                    message = (
+                        f"{section}.{name} is already declared by the framework extension, "
+                        "and this repeats it unchanged"
+                    )
+                    severity = models.Severity.INFO
+                    fix_hint = f"Remove '{name}' from '{section}'"
+                diagnostics.append(
+                    self.diagnostic(
+                        message,
+                        severity=severity,
+                        path=relation.source,
+                        line=relation.line,
+                        fix_hint=fix_hint,
+                    )
+                )
+        return diagnostics
+
+
+def _yaml_scalar(value: object) -> str:
+    """Spell *value* the way it's written in YAML, for a message."""
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, str):
+        return f"'{value}'"
+    return str(value)
+
+
 class LegacyBases(Rule):
     """Flag the charmcraft 2 ``bases:`` block.
 
@@ -703,6 +781,30 @@ def _entrypoint(context: models.CharmContext) -> str:
         configured = "src/charm.py"
     return pathlib.PurePosixPath(configured).as_posix()
 
+
+_FRAMEWORK_EXTENSIONS: frozenset[str] = frozenset({
+    "flask-framework",
+    "django-framework",
+    "fastapi-framework",
+    "go-framework",
+    "expressjs-framework",
+    "spring-boot-framework",
+})
+
+# What the framework extensions declare (charmcraft's ``extensions/app.py``),
+# as ``{section: {relation: {key: value}}}``. The extensions don't set
+# ``optional``, so Juju's default, ``false``, is what they declare. Update
+# this when the extensions change.
+_EXTENSION_RELATIONS: dict[str, dict[str, dict[str, object]]] = {
+    "requires": {
+        "ingress": {"interface": "ingress", "limit": 1, "optional": False},
+        "logging": {"interface": "loki_push_api", "optional": False},
+    },
+    "provides": {
+        "metrics-endpoint": {"interface": "prometheus_scrape", "optional": False},
+        "grafana-dashboard": {"interface": "grafana_dashboard", "optional": False},
+    },
+}
 
 _VALID_CHARM_USERS: frozenset[str] = frozenset({"root", "sudoer", "non-root"})
 
