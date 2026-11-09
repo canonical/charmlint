@@ -1475,3 +1475,88 @@ class TestOverrideBuildSkipsDefault:
             "  charm:\n    override-build: |  # noqa: CHARMCRAFT-010\n      ./build.sh\n",
         )
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+
+class TestSnapcraftScriptlet:
+    """Tests for CHARMCRAFT-011 — snapcraft spellings in part scriptlets."""
+
+    def _lint(self, charm: pathlib.Path, parts: dict) -> list[Diagnostic]:
+        write_charmcraft_yaml(charm, {"name": "test", "parts": parts})
+        return _diags(lint(charm), "CHARMCRAFT-011")
+
+    def test_snapcraftctl_is_flagged(self, tmp_charm: pathlib.Path):
+        diags = self._lint(
+            tmp_charm,
+            {"charm": {"plugin": "charm", "override-build": "snapcraftctl build\n"}},
+        )
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert diags[0].path == "charmcraft.yaml"
+        assert "'snapcraftctl'" in diags[0].message
+        assert "override-build for the 'charm' part" in diags[0].message
+
+    @pytest.mark.parametrize("scriptlet", ["override-pull", "override-stage", "override-prime"])
+    def test_snapcraft_variable_is_flagged(self, tmp_charm: pathlib.Path, scriptlet: str):
+        diags = self._lint(
+            tmp_charm, {"x": {"plugin": "nil", scriptlet: "cp a $SNAPCRAFT_PART_INSTALL/a"}}
+        )
+        assert len(diags) == 1
+        assert "'$SNAPCRAFT_PART_INSTALL'" in diags[0].message
+
+    def test_braced_variable_is_flagged(self, tmp_charm: pathlib.Path):
+        diags = self._lint(
+            tmp_charm,
+            {"x": {"plugin": "nil", "override-stage": "cp a ${SNAPCRAFT_PROJECT_DIR}/a"}},
+        )
+        assert len(diags) == 1
+        assert "'${SNAPCRAFT_PROJECT_DIR'" in diags[0].message
+
+    def test_one_finding_per_scriptlet(self, tmp_charm: pathlib.Path):
+        script = "snapcraftctl pull\ncp a $SNAPCRAFT_PART_INSTALL\n"
+        diags = self._lint(
+            tmp_charm,
+            {"x": {"plugin": "nil", "override-pull": script, "override-prime": script}},
+        )
+        assert len(diags) == 2
+
+    def test_craftctl_is_fine(self, tmp_charm: pathlib.Path):
+        diags = self._lint(
+            tmp_charm,
+            {
+                "x": {
+                    "plugin": "nil",
+                    "override-build": "craftctl default\ncp a $CRAFT_PART_INSTALL",
+                }
+            },
+        )
+        assert diags == []
+
+    def test_comment_is_ignored(self, tmp_charm: pathlib.Path):
+        diags = self._lint(
+            tmp_charm,
+            {
+                "x": {
+                    "plugin": "nil",
+                    "override-build": "# was snapcraftctl build\ncraftctl default",
+                }
+            },
+        )
+        assert diags == []
+
+    def test_other_fields_are_not_scanned(self, tmp_charm: pathlib.Path):
+        diags = self._lint(
+            tmp_charm, {"x": {"plugin": "nil", "build-environment": [{"SNAPCRAFT_X": "1"}]}}
+        )
+        assert diags == []
+
+    def test_no_parts(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-011")
+
+    def test_noqa_suppresses(self, tmp_charm: pathlib.Path):
+        _parts_charm(
+            tmp_charm,
+            "  x:\n    plugin: nil\n    override-build: |  # noqa: CHARMCRAFT-011\n"
+            "      snapcraftctl build\n",
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-011")
