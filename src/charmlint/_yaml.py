@@ -81,6 +81,26 @@ def load(path: pathlib.Path) -> models.Yaml:
     return root
 
 
+def loads(text: str, source: str) -> models.Yaml | None:
+    """Parse a YAML document held in a string, such as a Pebble layer literal.
+
+    Lines are 1-based within *text*. Returns ``None`` for anything that
+    isn't a well-formed mapping: an inline document that doesn't parse is
+    not the linter's to report, so there is no error to raise.
+    """
+    loader = _SafeLoader(text)
+    try:
+        node = loader.get_single_node()
+        root = None if node is None else _build(node, loader, source, line=None)
+    except (yaml.YAMLError, TypeError, RecursionError):
+        return None
+    finally:
+        loader.dispose()
+    if root is None or not isinstance(root.value, dict):
+        return None
+    return root
+
+
 def merge(primary: models.Yaml, fallback: models.Yaml) -> models.Yaml:
     """Merge two metadata mappings, *primary* winning on duplicate keys.
 
