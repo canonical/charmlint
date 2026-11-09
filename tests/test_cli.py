@@ -74,6 +74,15 @@ class TestCLI:
         exit_code_strict = main([str(tmp_charm), "--strict"])
         assert exit_code_strict == 1
 
+    def test_strict_mode_keeps_2_for_failing_to_run(self, tmp_charm: pathlib.Path):
+        # --strict findings exit 1, so 2 still means charmlint couldn't run,
+        # even on a charm whose warnings would otherwise fail the run.
+        make_full_charm(tmp_charm)
+        assert main([str(tmp_charm), "--strict", "--select", "NOT-A-RULE"]) == 2
+        bad_config = tmp_charm / "bad.toml"
+        bad_config.write_text("this is not toml = = =\n")
+        assert main([str(tmp_charm), "--strict", "--config", str(bad_config)]) == 2
+
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
             main(["--version"])
