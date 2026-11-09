@@ -458,6 +458,20 @@ class TestOpsPinningRules:
         report = lint(tmp_charm)
         assert [d for d in report if d.rule_id == "SUPPLYCHAIN-006"]
 
+    @pytest.mark.parametrize("part", ["uv", "poetry"])
+    @pytest.mark.parametrize("plugin", [None, ""])
+    def test_part_named_for_a_lockfile_plugin_uses_it(
+        self, tmp_charm: pathlib.Path, part: str, plugin: str | None
+    ):
+        # craft-parts uses the part name as the plugin when ``plugin`` is
+        # empty, so a bare ``uv:`` part resolves from the lock file and the
+        # stray requirements.txt isn't where ops is declared.
+        spec = {} if plugin is None else {"plugin": plugin}
+        write_charmcraft_yaml(tmp_charm, {"name": "x", "parts": {part: spec}})
+        (tmp_charm / "requirements.txt").write_text("ops==3.7.1\n")
+        report = lint(tmp_charm)
+        assert not [d for d in report if d.rule_id in {"SUPPLYCHAIN-005", "SUPPLYCHAIN-006"}]
+
     def test_non_dependency_plugin_checks_requirements_txt(self, tmp_charm: pathlib.Path):
         # nil and dump put files in the payload without resolving
         # anything, so they say nothing about where ops is declared and

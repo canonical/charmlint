@@ -135,6 +135,19 @@ def option_type(option: models.Yaml) -> str | None:
     return declared if isinstance(declared, str) else None
 
 
+def part_plugin(part_name: object, part: models.Yaml) -> str | None:
+    """The plugin a ``parts`` entry builds with, or ``None`` if it names none.
+
+    craft-parts uses the part's name as its plugin when ``plugin`` is
+    empty, so a bare ``uv:`` part builds with the uv plugin. A plugin
+    (or, with no plugin, a part name) that isn't a string names no
+    plugin, and a list or mapping there is unhashable, so a rule testing
+    membership of a set of plugin names would raise rather than report.
+    """
+    plugin = part.get("plugin").value or part_name
+    return plugin if isinstance(plugin, str) else None
+
+
 def _build(node: yaml.Node, loader: Any, source: str, line: int | None) -> models.Yaml:
     """Wrap a composed YAML node, recursing into mappings and sequences.
 
