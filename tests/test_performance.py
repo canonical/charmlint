@@ -201,3 +201,33 @@ class TestLoggingInLoop:
             """,
         )
         assert found == []
+
+    def test_except_handler_not_flagged(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            def f(self):
+                for relation in self.model.relations["db"]:
+                    try:
+                        parse(relation)
+                    except ValueError:
+                        logger.error("bad data on relation %s", relation.id)
+            """,
+        )
+        assert found == []
+
+    def test_try_body_flagged(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            def f(self):
+                for relation in self.model.relations["db"]:
+                    try:
+                        logger.debug("parsing %s", relation.id)
+                        parse(relation)
+                    except ValueError:
+                        logger.error("bad data")
+            """,
+        )
+        assert len(found) == 1
+        assert "1 logging call" in found[0].message

@@ -905,12 +905,12 @@ It recognises calls on a receiver named like a logger (`logger`,
 `log`, `logging`, `self._logger`, ...) using the standard level
 methods. Calls in a nested function, class or lambda defined in the
 loop are not counted, because they don't necessarily run once per
-iteration. Comprehensions and the `else` clause of a loop are not
-examined.
+iteration, and nor are calls in an `except` handler, since logging a
+failure for one relation is the unusual path. Comprehensions and the
+`else` clause of a loop are not examined.
 
 Move the logging out of the loop (log a summary afterwards), or limit it
-to the exceptional case. Logging a rare failure inside a loop is
-reasonable; suppress the finding with a `# charmlint: ignore` comment if so.
+to the exceptional case.
 
 ## SECURITY
 

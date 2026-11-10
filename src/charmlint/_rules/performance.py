@@ -48,12 +48,12 @@ class LoggingInLoop(Rule):
     ``log``, ``logging``, ``self._logger``, ...) using the standard level
     methods. Calls in a nested function, class or lambda defined in the
     loop are not counted, because they don't necessarily run once per
-    iteration. Comprehensions and the ``else`` clause of a loop are not
-    examined.
+    iteration, and nor are calls in an ``except`` handler, since logging a
+    failure for one relation is the unusual path. Comprehensions and the
+    ``else`` clause of a loop are not examined.
 
     Move the logging out of the loop (log a summary afterwards), or limit it
-    to the exceptional case. Logging a rare failure inside a loop is
-    reasonable; suppress the finding with a ``# charmlint: ignore`` comment if so.
+    to the exceptional case.
     """
 
     category = "PERFORMANCE"
@@ -151,7 +151,9 @@ def _logging_calls(loop: ast.stmt) -> list[ast.Call]:
 
     def visit(node: ast.AST) -> None:
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, _SCOPES):
+            # A nested scope doesn't run per iteration, and an ``except``
+            # handler is the unusual path, which is where logging belongs.
+            if isinstance(child, (*_SCOPES, ast.ExceptHandler)):
                 continue
             if isinstance(child, ast.Call) and _is_logging_call(child):
                 calls.append(child)
