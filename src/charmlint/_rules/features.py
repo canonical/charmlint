@@ -493,7 +493,9 @@ class CharmObservesNoEvents(Rule):
     name = "charm-observes-no-events"
     description = "Charm class never observes any event"
     default_severity = models.Severity.ERROR
-    reference_url = "https://canonical.com/juju/docs/ops/latest/explanation/event/"
+    reference_url = (
+        "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Framework.observe"
+    )
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         first: tuple[str, int] | None = None

@@ -700,7 +700,7 @@ observing on the charm's behalf:
   (a charm library, say), which can observe the charm's events itself,
   or reconciles unconditionally in `__init__`.
 
-Reference: <https://canonical.com/juju/docs/ops/latest/explanation/event/>
+Reference: <https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Framework.observe>
 
 ## LIBRARY
 
