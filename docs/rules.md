@@ -188,6 +188,30 @@ handing it to an interpreter — may not carry the executable bit.
 An entrypoint passed to `python3` needs no such bit, and is not
 reported for lacking one.
 
+Without a hand-written `dispatch`, the entrypoint charmcraft's
+generated one will run is checked instead, following how charmcraft
+builds it:
+
+* A `charm` plugin part (including the part charmcraft adds when
+  there's no `parts`) gets a `dispatch` that execs
+  `charm-entrypoint` (default `src/charm.py`) directly, so it
+  must exist and be executable. Inside a git repository the
+  executable bit is the mode git has recorded (`100755`), which
+  is what gets packed, rather than the working tree's.
+* A `python`, `poetry` or `uv` plugin part gets a `dispatch`
+  that runs `src/charm.py` with the charm's Python, so only that
+  file has to exist. charmcraft doesn't generate a `dispatch` at all
+  without it, so the charm deploys and no hook ever runs.
+
+A charm with `hooks/` or a `layer.yaml` (at the top or in
+`src/`), a part using the `reactive` plugin, a bundle, and a charm
+built only by other plugins are passed over: their hooks don't come
+from a generated `dispatch`. A missing entrypoint is only reported
+when the charm calls `ops.main()` somewhere else, such as
+`src/charm/charm.py`. Without that, it's a `charmcraft.yaml` that
+only publishes libraries, or a charm whose code is copied in at build
+time.
+
 Anything the script does not spell out statically is left alone: a
 command built from a shell variable, a path leading outside the
 charm, or a `dispatch` whose last statement does not run a

@@ -24,7 +24,11 @@ def write_charmcraft_yaml(charm_dir: pathlib.Path, data: dict[str, Any]) -> None
 
 def write_charm_source(charm_dir: pathlib.Path, content: str, filename: str = "charm.py") -> None:
     """Write a Python source file to the charm's src/ directory."""
-    (charm_dir / "src" / filename).write_text(content)
+    path = charm_dir / "src" / filename
+    path.write_text(content)
+    if filename == "charm.py":
+        # The charm plugin's generated dispatch runs the entrypoint directly.
+        path.chmod(0o755)
 
 
 def make_full_charm(charm_dir: pathlib.Path) -> None:
