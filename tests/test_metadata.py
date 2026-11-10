@@ -308,3 +308,82 @@ class TestDiscourseDocsLink:
         (tmp_charm / "docs" / "conf.py").write_text("project = 'x'\n")
         report = lint(tmp_charm)
         assert "METADATA-011" not in {d.rule_id for d in report}
+
+    def _discourse_charm(self, charm_dir: pathlib.Path) -> None:
+        write_charmcraft_yaml(
+            charm_dir,
+            {"name": "x", "links": {"documentation": "https://discourse.charmhub.io/t/x/123"}},
+        )
+
+    def test_fires_for_docs_project_at_monorepo_root(self, tmp_path: pathlib.Path):
+        charm_dir = tmp_path / "repo" / "charms" / "x"
+        charm_dir.mkdir(parents=True)
+        (tmp_path / "repo" / ".git").mkdir()
+        (tmp_path / "repo" / "docs").mkdir()
+        (tmp_path / "repo" / "docs" / "conf.py").write_text("html_baseurl = 'https://x.io/'\n")
+        self._discourse_charm(charm_dir)
+        hits = [d for d in list(lint(charm_dir)) if d.rule_id == "METADATA-011"]
+        assert len(hits) == 1
+        assert "https://x.io/" in (hits[0].fix_hint or "")
+
+    def test_ignores_docs_project_above_the_repository(self, tmp_path: pathlib.Path):
+        charm_dir = tmp_path / "repo"
+        charm_dir.mkdir()
+        (charm_dir / ".git").mkdir()
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "conf.py").write_text("project = 'other'\n")
+        self._discourse_charm(charm_dir)
+        assert "METADATA-011" not in {d.rule_id for d in lint(charm_dir)}
+
+    def test_ignores_parent_docs_project_outside_a_repository(self, tmp_charm: pathlib.Path):
+        (tmp_charm.parent / "docs").mkdir()
+        (tmp_charm.parent / "docs" / "conf.py").write_text("project = 'other'\n")
+        self._discourse_charm(tmp_charm)
+        assert "METADATA-011" not in {d.rule_id for d in lint(tmp_charm)}
+
+    def test_list_of_links(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "links": {
+                    "documentation": [
+                        "https://x.readthedocs.io/",
+                        "https://discourse.charmhub.io/t/x/123",
+                    ]
+                },
+            },
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text("project = 'x'\n")
+        hits = [d for d in list(lint(tmp_charm)) if d.rule_id == "METADATA-011"]
+        assert len(hits) == 1
+        assert "discourse" in hits[0].message
+
+    @pytest.mark.parametrize(
+        ("conf", "expected"),
+        [
+            (
+                "ogp_site_url = 'https://x.readthedocs.io/'\nhtml_baseurl = 'https://x.io/'\n",
+                "https://x.io/",
+            ),
+            (
+                "ogp_site_url = 'https://canonical-starter-pack.readthedocs-hosted.com/'\n",
+                None,
+            ),
+            (
+                "ogp_site_url = 'https://x.io/'\n"
+                "html_baseurl = os.environ.get('READTHEDOCS_CANONICAL_URL', '/')\n",
+                "https://x.io/",
+            ),
+        ],
+    )
+    def test_suggestion(self, tmp_charm: pathlib.Path, conf: str, expected: str | None):
+        self._discourse_charm(tmp_charm)
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text(conf)
+        [hit] = [d for d in list(lint(tmp_charm)) if d.rule_id == "METADATA-011"]
+        if expected:
+            assert expected in (hit.fix_hint or "")
+        else:
+            assert "published URL" in (hit.fix_hint or "")

@@ -843,10 +843,11 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ch
 Flag a documentation link that still points at Charmhub Discourse.
 
 Charm documentation has moved from Discourse topics to Sphinx projects
-published on Read the Docs. When the charm ships a `docs/conf.py`, the
-documentation link should follow it: the docs pull request touches only
-`docs/`, so the link is easy to leave behind. When `conf.py` sets
-`ogp_site_url` or `html_baseurl`, the message suggests that value.
+published on Read the Docs. When the charm or its repository has a
+`docs/conf.py`, the documentation link should follow it: the docs
+pull request touches only `docs/`, so the link is easy to leave
+behind. When `conf.py` sets `html_baseurl` or `ogp_site_url` to
+a plain string, the fix hint suggests that URL.
 
 A docs project that exists but is not published yet is a false positive;
 silence it with `noqa` until it is.

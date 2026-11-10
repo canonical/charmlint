@@ -363,10 +363,11 @@ class DiscourseDocsLink(Rule):
     """Flag a documentation link that still points at Charmhub Discourse.
 
     Charm documentation has moved from Discourse topics to Sphinx projects
-    published on Read the Docs. When the charm ships a ``docs/conf.py``, the
-    documentation link should follow it: the docs pull request touches only
-    ``docs/``, so the link is easy to leave behind. When ``conf.py`` sets
-    ``ogp_site_url`` or ``html_baseurl``, the message suggests that value.
+    published on Read the Docs. When the charm or its repository has a
+    ``docs/conf.py``, the documentation link should follow it: the docs
+    pull request touches only ``docs/``, so the link is easy to leave
+    behind. When ``conf.py`` sets ``html_baseurl`` or ``ogp_site_url`` to
+    a plain string, the fix hint suggests that URL.
 
     A docs project that exists but is not published yet is a false positive;
     silence it with ``noqa`` until it is.
@@ -425,8 +426,18 @@ def _is_discourse_url(url: str) -> bool:
 
 
 def _find_docs_conf(charm_dir: pathlib.Path) -> pathlib.Path | None:
-    """Find the Sphinx ``conf.py`` for the charm, or for the monorepo it is in."""
-    for directory in (charm_dir, charm_dir.parent):
+    """Find the Sphinx ``conf.py`` for the charm, or for the repository it is in.
+
+    Looks for ``docs/conf.py`` in the charm directory and then in each
+    directory above it, up to and including the repository root (the
+    first directory with a ``.git``), so a charm under ``charms/<name>/``
+    in a monorepo finds the repository's docs project. Outside a
+    repository only the charm directory is checked, so an unrelated
+    ``docs/`` higher up the file system is never picked up.
+    """
+    directories = [charm_dir.resolve(), *charm_dir.resolve().parents]
+    root = next((i for i, d in enumerate(directories) if (d / ".git").exists()), 0)
+    for directory in directories[: root + 1]:
         conf = directory / "docs" / "conf.py"
         if conf.is_file():
             return conf
@@ -434,13 +445,21 @@ def _find_docs_conf(charm_dir: pathlib.Path) -> pathlib.Path | None:
 
 
 def _published_url(conf: pathlib.Path) -> str | None:
-    """Return the published URL that ``conf.py`` assigns, if it is a plain literal."""
+    """Return the published URL that ``conf.py`` assigns, if it is a plain literal.
+
+    ``html_baseurl`` is tried first: ``ogp_site_url`` is often still the
+    starter pack's placeholder, or points somewhere other than the docs.
+    """
     try:
         text = conf.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
-    for setting in ("ogp_site_url", "html_baseurl"):
+    for setting in ("html_baseurl", "ogp_site_url"):
         match = re.search(rf"^{setting}\s*=\s*(['\"])(?P<url>[^'\"]+)\1", text, re.MULTILINE)
-        if match:
+        if match and _STARTER_PACK_HOST not in match.group("url"):
             return match.group("url")
     return None
+
+
+# The ``ogp_site_url`` that the documentation starter pack ships with.
+_STARTER_PACK_HOST = "canonical-starter-pack.readthedocs-hosted.com"
