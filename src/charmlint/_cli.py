@@ -229,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Loaded config from {config.source_path}", file=sys.stderr)
 
     if args.select:
-        config.select = [s.strip() for s in args.select.split(",")]
+        _config.replace_select(config, [s.strip() for s in args.select.split(",")])
     if args.ignore:
         config.ignore.extend(s.strip() for s in args.ignore.split(","))
     if args.min_severity:
@@ -243,6 +243,9 @@ def main(argv: list[str] | None = None) -> int:
             f"error: not a known rule ID, rule name or category: {', '.join(unknown)}",
             file=sys.stderr,
         )
+        return 2
+    if overlap := _config.contradictions(config):
+        print(f"error: select and ignore both cover: {', '.join(overlap)}", file=sys.stderr)
         return 2
 
     if args.verbose:

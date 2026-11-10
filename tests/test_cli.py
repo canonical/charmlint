@@ -51,6 +51,21 @@ class TestCLI:
         # no diagnostics → exit 0.
         assert exit_code == 0
 
+    def test_select_overrides_config_ignore(self, tmp_charm: pathlib.Path, capsys):
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        (tmp_charm / "pyproject.toml").write_text('[tool.charmlint]\nignore = ["METADATA-001"]\n')
+        main([str(tmp_charm), "--format", "json"])
+        data = json.loads(capsys.readouterr().out)
+        assert not [d for d in data["diagnostics"] if d["rule_id"] == "METADATA-001"]
+        main([str(tmp_charm), "--format", "json", "--select", "METADATA-001"])
+        data = json.loads(capsys.readouterr().out)
+        assert [d for d in data["diagnostics"] if d["rule_id"] == "METADATA-001"]
+
+    def test_select_and_ignore_contradict_on_command_line(self, tmp_charm: pathlib.Path, capsys):
+        exit_code = main([str(tmp_charm), "--select", "METADATA-001", "--ignore", "METADATA-001"])
+        assert exit_code == 2
+        assert "select and ignore both cover: METADATA-001" in capsys.readouterr().err
+
     def test_ignore_filter(self, tmp_charm: pathlib.Path, capsys):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json", "--ignore", "METADATA-001"])

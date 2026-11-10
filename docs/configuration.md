@@ -28,6 +28,8 @@ Case is significant. Rule IDs and categories are upper-case, rule names lower-ca
 
 When `select` and `ignore` disagree, the more specific spelling wins: `select = ["secret-in-plain-config"]` with `ignore = ["SECURITY"]` runs that one rule and no other security rule.
 
+`--select` on the command line replaces the config's `select`, and the config's `ignore` stops applying to the rules it names: with `ignore = ["SECURITY-001"]` in the config, `charmlint --select SECURITY-001 .` runs SECURITY-001. As in the config file, a command line that selects and ignores the same rule (`--select X --ignore X`) is an error.
+
 ## Suppressing findings inline
 
 Individual findings can be silenced from within a charm's YAML and Python files, with ruff-style suppression comments. Codes inside a directive are the same three spellings as `select` and `ignore` accept — rule ID, rule name, or category.

@@ -100,13 +100,34 @@ def _validate(config: "LintConfig", path: pathlib.Path) -> None:
             f"not a known rule ID, rule name or category: {', '.join(unknown)}",
         )
 
-    # Only tokens of the same specificity can contradict each other: a
-    # rule named in ``select`` and its category named in ``ignore`` is
-    # the ordinary way to run one rule out of a category.
+    overlap = contradictions(config)
+    if overlap:
+        raise ConfigError(path, f"select and ignore both cover: {', '.join(overlap)}")
+
+
+def contradictions(config: "LintConfig") -> list[str]:
+    """The rule IDs that *config* both selects and ignores at the same specificity.
+
+    Only tokens of the same specificity can contradict each other: a
+    rule named in ``select`` and its category named in ``ignore`` is
+    the ordinary way to run one rule out of a category.
+    """
+    overlap: set[str] = set()
     for covered in (_rules_covered, _categories_covered):
-        overlap = sorted(covered(config.select) & covered(config.ignore))
-        if overlap:
-            raise ConfigError(path, f"select and ignore both cover: {', '.join(overlap)}")
+        overlap |= covered(config.select) & covered(config.ignore)
+    return sorted(overlap)
+
+
+def replace_select(config: "LintConfig", select: list[str]) -> None:
+    """Make *select* (from ``--select``) the selection, as ruff's CLI does.
+
+    The config's ``select`` is replaced. So that the rules *select* names
+    actually run, the config's ``ignore`` stops applying to them: a token
+    is dropped from ``ignore`` when it names any rule that *select* names.
+    """
+    wanted = {rule_id for token in select for rule_id in _selectors.resolve(token)}
+    config.select = select
+    config.ignore = [token for token in config.ignore if not wanted & _selectors.resolve(token)]
 
 
 def _rules_covered(tokens: list[str]) -> set[str]:
