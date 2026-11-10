@@ -39,9 +39,9 @@ workshop launch dev
 workshop run dev lint
 ```
 
-The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. `test` passes any extra arguments to `pytest`, so `workshop run dev test -k test_cli` does what `make test ARGS='-k test_cli'` does. A run with extra arguments doesn't enforce the coverage floor, because a filtered run can't reach it. `lint` passes extra arguments to `ty` only, and `ruff` checks everything either way. An argument that contains whitespace won't survive, because the `make` recipes expand `$(ARGS)` unquoted. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
 
-The `pi` action runs Pi in the workshop. Pi's settings and credentials are kept in a mount, so they survive `workshop refresh`.
+The `pi` action runs Pi in the workshop. Pi's settings and credentials are kept in a mount at `/home/workshop/.pi`, so they survive `workshop refresh`.
 
 The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a read-only mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
 

@@ -14,8 +14,8 @@ sdks:
 # The checks CONTRIBUTING.md asks for, through the Makefile targets.
 actions:
   format: make format
-  lint: make lint
-  test: make test
+  lint: make lint ARGS="$*"
+  test: make test ARGS="$*"
   docs: make docs
   docs-check: make docs-check
   pi: pi "$@"
