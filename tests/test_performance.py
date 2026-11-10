@@ -34,28 +34,89 @@ class TestLoggingInLoop:
             """,
         )
         assert len(found) == 1
-        assert found[0].severity == Severity.INFO
+        assert found[0].severity == Severity.WARNING
         assert found[0].line == 8
         assert "1 logging call" in found[0].message
 
-    def test_while_loop_and_self_logger_flagged(self, tmp_charm: pathlib.Path):
+    def test_self_logger_over_model_relations_flagged(self, tmp_charm: pathlib.Path):
         found = _lint_source(
             tmp_charm,
             """\
             class C:
                 def f(self):
-                    while self.more():
+                    for relation in self.model.relations["metrics"]:
                         self._logger.info("tick")
             """,
         )
         assert len(found) == 1
 
+    def test_units_flagged(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            def f(relation):
+                for unit in relation.units:
+                    logger.debug("unit %s", unit)
+            """,
+        )
+        assert len(found) == 1
+
+    def test_while_loop_not_flagged(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            def f(self):
+                while self.more_relations():
+                    logger.info("tick")
+            """,
+        )
+        assert found == []
+
+    def test_other_collections_not_flagged(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            def f(rules, retries):
+                for name, rule in rules.items():
+                    logger.debug("rule %s", name)
+                for attempt in range(retries):
+                    logger.warning("attempt %d", attempt)
+            """,
+        )
+        assert found == []
+
+    def test_literal_list_named_after_relation_not_flagged(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            def f(self):
+                for step in [self._ensure_secrets, self._ensure_cluster_relation]:
+                    logger.debug("running %s", step)
+                    step()
+            """,
+        )
+        assert found == []
+
+    def test_relation_loop_inside_other_loop(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            def f(self, endpoints):
+                for endpoint in endpoints:
+                    logger.info("endpoint")
+                    for relation in self.model.relations[endpoint]:
+                        logger.info("relation")
+            """,
+        )
+        assert len(found) == 1
+        assert found[0].line == 5
+
     def test_reported_once_per_outermost_loop(self, tmp_charm: pathlib.Path):
         found = _lint_source(
             tmp_charm,
             """\
-            def f(items):
-                for a in items:
+            def f(relations):
+                for a in relations:
                     logger.info("a")
                     for b in a:
                         logger.info("b")
@@ -70,8 +131,8 @@ class TestLoggingInLoop:
         found = _lint_source(
             tmp_charm,
             """\
-            def f(items):
-                for item in items:
+            def f(relations):
+                for item in relations:
                     process(item)
                 logger.info("done")
             """,
@@ -82,8 +143,8 @@ class TestLoggingInLoop:
         found = _lint_source(
             tmp_charm,
             """\
-            def f(items):
-                for item in items:
+            def f(relations):
+                for item in relations:
                     process(item)
                 else:
                     logger.info("no break")
@@ -95,8 +156,8 @@ class TestLoggingInLoop:
         found = _lint_source(
             tmp_charm,
             """\
-            def f(items):
-                for item in items:
+            def f(relations):
+                for item in relations:
                     def callback():
                         logger.info("later")
                     register(callback)
@@ -108,10 +169,10 @@ class TestLoggingInLoop:
         found = _lint_source(
             tmp_charm,
             """\
-            def f(items):
-                for item in items:
-                    def callback(xs):
-                        for x in xs:
+            def f(relations):
+                for item in relations:
+                    def callback(relation):
+                        for x in relation.units:
                             logger.info("x")
             """,
         )
@@ -122,8 +183,8 @@ class TestLoggingInLoop:
         found = _lint_source(
             tmp_charm,
             """\
-            def f(items):
-                for item in items:
+            def f(relations):
+                for item in relations:
                     item.debug("x")
                     print(item)
             """,
@@ -134,8 +195,8 @@ class TestLoggingInLoop:
         found = _lint_source(
             tmp_charm,
             """\
-            def f(items):
-                for item in items:
+            def f(relations):
+                for item in relations:
                     logger.warning("bad")  # charmlint: ignore[PERFORMANCE-001]
             """,
         )
