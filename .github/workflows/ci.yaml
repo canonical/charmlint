@@ -19,8 +19,12 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
       - name: uv lock --check
         run: make lock-check
-      - name: Lint, format check and type check
-        run: make lint
+      - name: ruff check
+        run: make ruff-check
+      - name: ruff format
+        run: make ruff-format-check
+      - name: ty
+        run: make typecheck
       - name: Rule reference up to date
         run: make docs-check
 
