@@ -35,6 +35,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-007](#charmcraft-007-legacy-bases) | `legacy-bases` | Info | Legacy 'bases' block instead of 'base' and 'platforms' |
 | [CHARMCRAFT-008](#charmcraft-008-charm-user) | `charm-user` | Warning | Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user' |
 | [CHARMCRAFT-009](#charmcraft-009-container-runs-as-root) | `container-runs-as-root` | Warning | Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity |
+| [CHARMCRAFT-010](#charmcraft-010-override-build-skips-default) | `override-build-skips-default` | Warning | override-build never runs 'craftctl default' for a Python plugin |
 | [CONFIG-001](#config-001-config-missing-type) | `config-missing-type` | Warning | Config option is missing a type |
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
@@ -64,6 +65,7 @@ config file overrides it per rule.
 | [METADATA-009](#metadata-009-provides-missing-optional) | `provides-missing-optional` | Info | provides endpoint missing explicit `optional` field |
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
+| [PEBBLE-006](#pebble-006-pebble-check-level-alive) | `pebble-check-level-alive` | Info | Pebble check uses level 'alive', which drives the Kubernetes liveness probe |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
@@ -296,6 +298,28 @@ same as elsewhere in this module: a malformed section is not a
 privilege finding.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers>
+
+### CHARMCRAFT-010 override-build-skips-default
+
+**Warning** — override-build never runs 'craftctl default' for a Python plugin
+
+Flag an `override-build` that never runs the plugin's own build.
+
+An `override-build` script replaces the part's build step entirely
+unless it calls `craftctl default`. For the `charm`, `python`,
+`uv` and `poetry` plugins the default step is what installs the
+charm code, its dependencies and `dispatch` into the part. Without
+it, `charmcraft pack` still succeeds, but the charm holds only its
+metadata, so Juju has nothing to run for any hook.
+
+A script that uses `snapcraftctl` is left alone: there is no
+`snapcraftctl` in Charmcraft, so the build fails on that before the
+missing default matters. A deliberate reimplementation of the build,
+such as the legacy way of building a reactive charm with the `charm`
+plugin as a shell around `charm build`, should be suppressed with a
+`noqa` on the `override-build` line.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build>
 
 ## CONFIG
 
@@ -826,6 +850,31 @@ f-string, or any other expression is left alone: the rule can't tell
 what it evaluates to, and the common cases are already strings.
 
 Reference: <https://ubuntu.com/docs/pebble/reference/layer-specification/>
+
+### PEBBLE-006 pebble-check-level-alive
+
+**Info** — Pebble check uses level 'alive', which drives the Kubernetes liveness probe
+
+Detect a Pebble check with `level: alive` in a layer built in charm source.
+
+Juju points the sidecar container's Kubernetes liveness probe at
+Pebble's `/v1/health?level=alive`, so once an `alive` check is down
+Kubernetes restarts the whole container, rather than Pebble or the
+charm restarting the service. A workload that is slow to start, or
+briefly unhealthy during an upgrade, ends up in a restart loop. Use a
+check with no `level` and `on-check-failure` on the service instead.
+
+A check is recognised by its shape: a dict literal, or a call such as
+`CheckDict(...)` or `dict(...)` with keyword arguments, that has a
+`level` of `"alive"` (or `ops.pebble.CheckLevel.ALIVE`) alongside
+an `http`, `tcp` or `exec` key, or a check under `checks` in a
+layer written as a YAML string passed to `ops.pebble.Layer` or
+`add_layer`. A level computed at runtime is left alone, as is a
+layer read from a YAML file. A fast-starting
+workload whose author really does want Kubernetes to restart the
+container can suppress the rule on that line.
+
+Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-containers/manage-pebble-health-checks/>
 
 ## SECURITY
 
