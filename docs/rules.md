@@ -35,6 +35,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-007](#charmcraft-007-legacy-bases) | `legacy-bases` | Info | Legacy 'bases' block instead of 'base' and 'platforms' |
 | [CHARMCRAFT-008](#charmcraft-008-charm-user) | `charm-user` | Warning | Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user' |
 | [CHARMCRAFT-009](#charmcraft-009-container-runs-as-root) | `container-runs-as-root` | Warning | Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity |
+| [CHARMCRAFT-010](#charmcraft-010-override-build-skips-default) | `override-build-skips-default` | Warning | override-build never runs 'craftctl default' for a Python plugin |
 | [CONFIG-001](#config-001-config-missing-type) | `config-missing-type` | Warning | Config option is missing a type |
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
@@ -64,7 +65,8 @@ config file overrides it per rule.
 | [METADATA-009](#metadata-009-provides-missing-optional) | `provides-missing-optional` | Info | provides endpoint missing explicit `optional` field |
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
-| [PERFORMANCE-001](#performance-001-logging-in-loop) | `logging-in-loop` | Info | Logging inside a loop runs juju-log once per iteration |
+| [PEBBLE-006](#pebble-006-pebble-check-level-alive) | `pebble-check-level-alive` | Info | Pebble check uses level 'alive', which drives the Kubernetes liveness probe |
+| [PERFORMANCE-001](#performance-001-logging-in-loop) | `logging-in-loop` | Warning | Logging inside a loop over relations or units runs juju-log once per iteration |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
@@ -297,6 +299,28 @@ same as elsewhere in this module: a malformed section is not a
 privilege finding.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-containers>
+
+### CHARMCRAFT-010 override-build-skips-default
+
+**Warning** — override-build never runs 'craftctl default' for a Python plugin
+
+Flag an `override-build` that never runs the plugin's own build.
+
+An `override-build` script replaces the part's build step entirely
+unless it calls `craftctl default`. For the `charm`, `python`,
+`uv` and `poetry` plugins the default step is what installs the
+charm code, its dependencies and `dispatch` into the part. Without
+it, `charmcraft pack` still succeeds, but the charm holds only its
+metadata, so Juju has nothing to run for any hook.
+
+A script that uses `snapcraftctl` is left alone: there is no
+`snapcraftctl` in Charmcraft, so the build fails on that before the
+missing default matters. A deliberate reimplementation of the build,
+such as the legacy way of building a reactive charm with the `charm`
+plugin as a shell around `charm build`, should be suppressed with a
+`noqa` on the `override-build` line.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build>
 
 ## CONFIG
 
@@ -828,30 +852,61 @@ what it evaluates to, and the common cases are already strings.
 
 Reference: <https://ubuntu.com/docs/pebble/reference/layer-specification/>
 
+### PEBBLE-006 pebble-check-level-alive
+
+**Info** — Pebble check uses level 'alive', which drives the Kubernetes liveness probe
+
+Detect a Pebble check with `level: alive` in a layer built in charm source.
+
+Juju points the sidecar container's Kubernetes liveness probe at
+Pebble's `/v1/health?level=alive`, so once an `alive` check is down
+Kubernetes restarts the whole container, rather than Pebble or the
+charm restarting the service. A workload that is slow to start, or
+briefly unhealthy during an upgrade, ends up in a restart loop. Use a
+check with no `level` and `on-check-failure` on the service instead.
+
+A check is recognised by its shape: a dict literal, or a call such as
+`CheckDict(...)` or `dict(...)` with keyword arguments, that has a
+`level` of `"alive"` (or `ops.pebble.CheckLevel.ALIVE`) alongside
+an `http`, `tcp` or `exec` key, or a check under `checks` in a
+layer written as a YAML string passed to `ops.pebble.Layer` or
+`add_layer`. A level computed at runtime is left alone, as is a
+layer read from a YAML file. A fast-starting
+workload whose author really does want Kubernetes to restart the
+container can suppress the rule on that line.
+
+Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-containers/manage-pebble-health-checks/>
+
 ## PERFORMANCE
 
 Performance.
 
 ### PERFORMANCE-001 logging-in-loop
 
-**Info** — Logging inside a loop runs juju-log once per iteration
+**Warning** — Logging inside a loop over relations or units runs juju-log once per iteration
 
-Check for logging calls made inside a `for` or `while` loop.
+Check for logging calls inside a loop over relations or units.
 
 Under Juju, ops sends each log record to the controller by running the
 `juju-log` hook tool, which is a subprocess. A loop that logs on every
-iteration therefore starts a process per iteration. That is cheap for a
-handful of items and very slow for hundreds, for example when iterating
-over every relation of a charm that sits in the middle of a large
-deployment.
+iteration therefore starts a process per iteration. That's cheap for a
+handful of items, but a loop over relations or units grows with the
+deployment, and a charm at the centre of a large one (an aggregator
+with hundreds of relations, say) can spend most of a hook in
+`juju-log`.
 
-The rule reports once per outermost loop, at the first logging call in
-its body, and says how many calls there are. It recognises calls on a
-receiver named like a logger (`logger`, `log`, `logging`,
-`self._logger`, ...) using the standard level methods. Calls in a
-nested function, class or lambda defined in the loop are not counted,
-because they do not necessarily run once per iteration. Comprehensions
-and the `else` clause of a loop are not examined.
+The rule looks at `for` loops whose iterable names a relation or
+units (`self.model.relations[...]`, `relation.units`,
+`self._peer_relations()`, `relation_ids`, ...). Loops over other
+collections, `while` loops, and retry loops usually run a few times,
+so they aren't reported. It reports once per outermost such loop, at
+the first logging call in its body, and says how many calls there are.
+It recognises calls on a receiver named like a logger (`logger`,
+`log`, `logging`, `self._logger`, ...) using the standard level
+methods. Calls in a nested function, class or lambda defined in the
+loop are not counted, because they don't necessarily run once per
+iteration. Comprehensions and the `else` clause of a loop are not
+examined.
 
 Move the logging out of the loop (log a summary afterwards), or limit it
 to the exceptional case. Logging a rare failure inside a loop is
