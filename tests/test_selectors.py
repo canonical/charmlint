@@ -8,7 +8,7 @@ from charmlint import _selectors
 from charmlint._cli import main
 from charmlint._config import ConfigError, LintConfig, load_config
 from charmlint._linter import lint
-from charmlint._models import Severity
+from charmlint._models import CharmContext, Diagnostic, Severity
 from charmlint._rules import CATEGORIES, Rule, get_all_rules
 from tests.conftest import write_charmcraft_yaml
 
@@ -178,7 +178,7 @@ class TestRuleNameRegistry:
                 description = "x"
                 default_severity = Severity.INFO
 
-                def check(self, context):
+                def check(self, context: CharmContext) -> list[Diagnostic]:
                     return []
 
     def test_non_kebab_case_name_rejected(self):
@@ -191,7 +191,7 @@ class TestRuleNameRegistry:
                 description = "x"
                 default_severity = Severity.INFO
 
-                def check(self, context):
+                def check(self, context: CharmContext) -> list[Diagnostic]:
                     return []
 
     def test_name_that_spells_a_category_rejected(self):
@@ -204,7 +204,7 @@ class TestRuleNameRegistry:
                 description = "x"
                 default_severity = Severity.INFO
 
-                def check(self, context):
+                def check(self, context: CharmContext) -> list[Diagnostic]:
                     return []
 
     def test_duplicate_name_rejected(self):
@@ -217,5 +217,5 @@ class TestRuleNameRegistry:
                 description = "x"
                 default_severity = Severity.INFO
 
-                def check(self, context):
+                def check(self, context: CharmContext) -> list[Diagnostic]:
                     return []

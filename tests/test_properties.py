@@ -30,7 +30,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from charmlint._linter import lint
-from charmlint._models import Severity
+from charmlint._models import Diagnostic, Severity
 
 # Hypothesis warns when a @given test uses a function-scoped pytest
 # fixture because the fixture is created once and then reused across
@@ -141,7 +141,7 @@ def _write_and_lint(tmp_charm: pathlib.Path, metadata: dict):
     return lint(tmp_charm)
 
 
-def _diagnostic_key(d) -> tuple:
+def _diagnostic_key(d: Diagnostic) -> tuple:
     """Stable equality key for a Diagnostic — drops nothing."""
     return (d.rule_id, d.severity, d.message, d.path, d.line, d.fix_hint)
 

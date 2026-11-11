@@ -82,10 +82,13 @@ select = [
     "ARG", # flake8-unused-arguments
     "SIM", # flake8-simplify
     "S",   # flake8-bandit
+    "ANN", # flake8-annotations
     "noqa-comments",  # RUF105: use `# ruff: ignore[...]`
 ]
 ignore = [
     "line-too-long",  # E501 (handled by formatter)
+    "missing-return-type-special-method",  # ANN204
+    "any-type",  # ANN401
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -93,7 +96,12 @@ ignore = [
     "unused-method-argument",  # ARG002
     "assert",  # S101
     "suspicious-subprocess-import",  # S404
+    "missing-return-type-undocumented-public-function",  # ANN201
+    "missing-return-type-private-function",  # ANN202
 ]
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
 
 [tool.ruff.lint.isort]
 known-first-party = ["charmlint"]
