@@ -1551,7 +1551,13 @@ class TestSnapcraftScriptlet:
 
     def test_other_fields_are_not_scanned(self, tmp_charm: pathlib.Path):
         diags = self._lint(
-            tmp_charm, {"x": {"plugin": "nil", "build-environment": [{"SNAPCRAFT_X": "1"}]}}
+            tmp_charm,
+            {
+                "x": {
+                    "plugin": "nil",
+                    "build-environment": [{"PATH": "$SNAPCRAFT_PART_INSTALL/bin"}],
+                }
+            },
         )
         assert diags == []
 
