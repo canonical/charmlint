@@ -425,16 +425,21 @@ class DiscourseDocsLink(Rule):
         ]
 
 
-def _is_discourse_url(url: str) -> bool:
-    """Report whether *url* is on Charmhub's Discourse."""
+def _host(url: str) -> str | None:
+    """Return *url*'s lower-cased host, without ``www.``, or ``None``."""
     candidate = url.strip()
     if "://" not in candidate:
         candidate = f"//{candidate}"
     try:
         host = urllib.parse.urlsplit(candidate).hostname
     except ValueError:
-        return False
-    return host is not None and host.lower() == "discourse.charmhub.io"
+        return None
+    return host.lower().removeprefix("www.") if host else None
+
+
+def _is_discourse_url(url: str) -> bool:
+    """Report whether *url* is on Charmhub's Discourse."""
+    return _host(url) == "discourse.charmhub.io"
 
 
 def _find_docs_conf(charm_dir: pathlib.Path) -> pathlib.Path | None:
@@ -490,6 +495,9 @@ def _published_url(conf: pathlib.Path) -> str | None:
             and isinstance(value.value, str)
             and value.value
             and _STARTER_PACK_HOST not in value.value
+            # A Charmhub page isn't the docs; suggesting it would trade one
+            # link that isn't the docs for another (see METADATA-010).
+            and _host(value.value) != "charmhub.io"
         ):
             return value.value
     return None

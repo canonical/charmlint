@@ -407,6 +407,8 @@ class TestDiscourseDocsLink:
                 "https://x.io/",
             ),
             ("html_baseurl: str = 'https://x.io/'\n", "https://x.io/"),
+            # A Charmhub page isn't the published docs.
+            ("ogp_site_url = 'https://charmhub.io/x/'\n", None),
             # A conf.py that doesn't parse gives no suggestion, not a crash.
             ("html_baseurl = 'https://x.io/'\nprint 'x'\n", None),
         ],
