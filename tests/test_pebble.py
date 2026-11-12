@@ -52,7 +52,7 @@ class TestPebbleEnvNonString:
         assert len(findings) == 1
         assert findings[0].severity == Severity.WARNING
         assert "set but empty rather than absent" in findings[0].message
-        assert "plan" in findings[0].message
+        assert "will not match the plan Pebble returns" in findings[0].message
         assert "PROXY" in findings[0].message
         assert findings[0].path is not None
         assert findings[0].line is not None
@@ -64,13 +64,14 @@ class TestPebbleEnvNonString:
         assert "DEBUG" in findings[0].message
         assert "'true'" in findings[0].message
         assert "often expect '1'" in findings[0].message
-        assert "plan" in findings[0].message
+        assert "will not match the plan Pebble returns" in findings[0].message
 
     def test_int_value_flagged_as_info(self, tmp_charm: pathlib.Path):
         findings = _lint_source(tmp_charm, _layer('"PORT": 8080,'))
         assert len(findings) == 1
         assert findings[0].severity == Severity.INFO
         assert "PORT" in findings[0].message
+        assert "will not match the plan Pebble returns" in findings[0].message
 
     def test_float_value_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_source(tmp_charm, _layer('"RATIO": 0.5,'))
