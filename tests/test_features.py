@@ -825,6 +825,33 @@ class TestCharmObservesNoEvents:
         assert hits[0].path == "src/charm.py"
         assert hits[0].line == 4
 
+    def test_observer_in_a_later_module_suppresses(self, tmp_charm: pathlib.Path):
+        # Modules are read in sorted order, so charm.py records the plain
+        # class before handlers.py turns out to observe for it.
+        (tmp_charm / "src" / "handlers.py").write_text(
+            textwrap.dedent(
+                """\
+                def wire_up(charm):
+                    charm.framework.observe(charm.on.start, charm._on_start)
+                """
+            )
+        )
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+
+
+            ops.main(C)
+            """,
+        )
+        assert hits == []
+
     def test_reconciling_in_init_suppresses(self, tmp_charm: pathlib.Path):
         hits = self._hits(
             tmp_charm,
