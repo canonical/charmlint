@@ -447,6 +447,8 @@ def _find_docs_conf(charm_dir: pathlib.Path) -> pathlib.Path | None:
     """
     base = charm_dir.resolve()
     directories = [base, *base.parents]
+    # 0 covers both "the charm dir is the repository root" and "no
+    # repository": either way, only the charm dir is checked.
     root = next((i for i, d in enumerate(directories) if (d / ".git").exists()), 0)
     for directory in directories[: root + 1]:
         conf = directory / "docs" / "conf.py"
