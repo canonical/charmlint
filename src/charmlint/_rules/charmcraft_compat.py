@@ -690,6 +690,7 @@ class OverrideBuildSkipsDefault(Rule):
         return diagnostics
 
 
+# No corpus charm has this, as expected for something that breaks packing.
 class SnapcraftScriptlet(Rule):
     """Flag ``snapcraftctl`` and ``$SNAPCRAFT_*`` in a part scriptlet.
 
@@ -701,9 +702,8 @@ class SnapcraftScriptlet(Rule):
     old snap either fails with "command not found" partway through
     ``charmcraft pack``, or expands an unset ``$SNAPCRAFT_PART_INSTALL`` to
     an empty string and copies files somewhere other than the part's
-    install directory. None of the charms in the corpus has this, as
-    expected for something that breaks packing; the point is to name the
-    problem in a second rather than minutes into a pack.
+    install directory. Naming it here saves finding out minutes into a
+    pack.
 
     Comments are ignored, so a scriptlet that mentions ``snapcraftctl`` in
     a comment isn't flagged.

@@ -336,9 +336,8 @@ up to core22, and Charmcraft has neither. A scriptlet copied from an
 old snap either fails with "command not found" partway through
 `charmcraft pack`, or expands an unset `$SNAPCRAFT_PART_INSTALL` to
 an empty string and copies files somewhere other than the part's
-install directory. None of the charms in the corpus has this, as
-expected for something that breaks packing; the point is to name the
-problem in a second rather than minutes into a pack.
+install directory. Naming it here saves finding out minutes into a
+pack.
 
 Comments are ignored, so a scriptlet that mentions `snapcraftctl` in
 a comment isn't flagged.
