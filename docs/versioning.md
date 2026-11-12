@@ -34,6 +34,7 @@ A new minor version is released when charmlint makes a change that is likely to 
 - Making a backwards-incompatible change to how a configuration option is interpreted (for example, changing the meaning of an existing value).
 - Removing a previously deprecated option or flag.
 - Changing configuration discovery or precedence in a way that changes which files are read.
+- Changing the exit code charmlint returns for a given outcome.
 
 ### Runtime
 
