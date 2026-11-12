@@ -850,7 +850,8 @@ behind. When `conf.py` sets `html_baseurl` or `ogp_site_url` to
 a plain string, the fix hint suggests that URL.
 
 A docs project that exists but is not published yet is a false positive;
-silence it with `noqa` until it is.
+silence it with `# noqa: METADATA-011` on the documentation link's
+line until it is.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links>
 

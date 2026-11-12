@@ -329,6 +329,15 @@ class TestDiscourseDocsLink:
             {"name": "x", "links": {"documentation": "https://discourse.charmhub.io/t/x/123"}},
         )
 
+    def test_noqa_on_the_link_line(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: x\nlinks:\n"
+            "  documentation: https://discourse.charmhub.io/t/x/123  # noqa: METADATA-011\n"
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text("project = 'x'\n")
+        assert "METADATA-011" not in {d.rule_id for d in lint(tmp_charm)}
+
     def test_fires_for_docs_project_at_monorepo_root(self, tmp_path: pathlib.Path):
         charm_dir = tmp_path / "repo" / "charms" / "x"
         charm_dir.mkdir(parents=True)
