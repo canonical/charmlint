@@ -7,8 +7,8 @@ level. Accepting the wrong spelling in the wrong file would silently
 paper over a real misplacement.
 """
 
+import ast
 import pathlib
-import re
 import urllib.parse
 
 from .. import _models as models
@@ -459,15 +459,35 @@ def _published_url(conf: pathlib.Path) -> str | None:
 
     ``html_baseurl`` is tried first: ``ogp_site_url`` is often still the
     starter pack's placeholder, or points somewhere other than the docs.
+    Only the last module-level assignment to a setting counts, as when
+    Sphinx runs the file, and only when its value is a string literal: a
+    conditional or an ``os.environ`` lookup can't be read without running
+    it, so it gives no suggestion.
     """
     try:
-        text = conf.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        tree = ast.parse(conf.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
         return None
+    values: dict[str, ast.expr | None] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets, value = [node.target], node.value
+        else:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                values[target.id] = value
     for setting in ("html_baseurl", "ogp_site_url"):
-        match = re.search(rf"^{setting}\s*=\s*(['\"])(?P<url>[^'\"]+)\1", text, re.MULTILINE)
-        if match and _STARTER_PACK_HOST not in match.group("url"):
-            return match.group("url")
+        value = values.get(setting)
+        if (
+            isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+            and value.value
+            and _STARTER_PACK_HOST not in value.value
+        ):
+            return value.value
     return None
 
 

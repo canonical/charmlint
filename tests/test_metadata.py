@@ -390,6 +390,16 @@ class TestDiscourseDocsLink:
                 "html_baseurl = os.environ.get('READTHEDOCS_CANONICAL_URL', '/')\n",
                 "https://x.io/",
             ),
+            # A conditional can't be read without running conf.py.
+            ("html_baseurl = 'https://x.io/' if rtd else 'https://old.io/'\n", None),
+            # The last assignment is the one Sphinx sees.
+            (
+                "html_baseurl = 'https://old.io/'\nhtml_baseurl = 'https://x.io/'\n",
+                "https://x.io/",
+            ),
+            ("html_baseurl: str = 'https://x.io/'\n", "https://x.io/"),
+            # A conf.py that doesn't parse gives no suggestion, not a crash.
+            ("html_baseurl = 'https://x.io/'\nprint 'x'\n", None),
         ],
     )
     def test_suggestion(self, tmp_charm: pathlib.Path, conf: str, expected: str | None):
