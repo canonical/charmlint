@@ -498,22 +498,23 @@ class CharmObservesNoEvents(Rule):
     )
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        first: tuple[str, int] | None = None
+        first_path: str | None = None
+        first_line: int | None = None
         for module in context.charm_sources():
             if _ast.observers(module) or _has_opaque_observe(module):
                 return []
             classes = _classes(module)
             if classes.framework or classes.holistic or classes.delegating:
                 return []
-            if classes.first_line is not None and first is None:
-                first = (module.path, classes.first_line)
-        if first is None:
+            if classes.first_line is not None and first_path is None:
+                first_path, first_line = module.path, classes.first_line
+        if first_path is None:
             return []
         return [
             self.diagnostic(
                 "Charm class never observes any event, so no hook will do anything",
-                path=first[0],
-                line=first[1],
+                path=first_path,
+                line=first_line,
                 fix_hint=(
                     "Add `framework.observe(self.on.<event>, self._on_<event>)` calls in "
                     "__init__ and matching handlers"
