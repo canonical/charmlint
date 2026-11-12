@@ -63,6 +63,7 @@ class TestPebbleEnvNonString:
         assert findings[0].severity == Severity.INFO
         assert "DEBUG" in findings[0].message
         assert "'true'" in findings[0].message
+        assert "often expect '1'" in findings[0].message
         assert "plan" in findings[0].message
 
     def test_int_value_flagged_as_info(self, tmp_charm: pathlib.Path):

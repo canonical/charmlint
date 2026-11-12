@@ -107,11 +107,14 @@ class PebbleEnvNonString(Rule):
                 literal = str(value.value)
                 message = (
                     f"Pebble layer environment value for {described} is a bool "
-                    f"— Pebble turns it into '{literal.lower()}', but the layer "
-                    f"will not match the plan Pebble returns, so comparing them "
-                    f"always differs"
+                    f"— Pebble turns it into '{literal.lower()}', where workloads "
+                    f"often expect '{int(value.value)}', and the layer will not match "
+                    f"the plan Pebble returns, so comparing them always differs"
                 )
-                fix_hint = f"Write the value the workload expects, e.g. '{literal.lower()}'"
+                fix_hint = (
+                    f"Write the value the workload expects, "
+                    f"e.g. '{literal.lower()}' or '{int(value.value)}'"
+                )
             else:
                 message = (
                     f"Pebble layer environment value for {described} is not a string "
