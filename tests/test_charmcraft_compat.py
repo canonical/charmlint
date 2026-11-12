@@ -1508,7 +1508,7 @@ class TestInvalidStorage:
         diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "directory": "/d"}})
         assert len(diags) == 1
         assert diags[0].severity == Severity.WARNING
-        assert diags[0].fix_hint == "location"
+        assert diags[0].fix_hint == "Did you mean 'location'?"
 
     def test_no_storage(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})

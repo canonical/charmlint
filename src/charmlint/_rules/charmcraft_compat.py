@@ -376,7 +376,7 @@ class InvalidStorage(Rule):
                 if key in _KNOWN_STORAGE_FIELDS:
                     continue
                 hint = (
-                    "location"
+                    "Did you mean 'location'?"
                     if key == "directory"
                     else _suggest_closest(str(key), _KNOWN_STORAGE_FIELDS)
                 )
