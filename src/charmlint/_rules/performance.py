@@ -110,12 +110,19 @@ def _iterates_relations(iterable: ast.expr) -> bool:
     """Whether *iterable* names relations or units, so grows with the deployment.
 
     A literal list or tuple is a fixed set of items, even when one of
-    them is named after a relation (a list of reconcile steps, say).
+    them is named after a relation (a list of reconcile steps, say). So
+    are the charm's declared endpoints (``self.meta.relations``), read
+    from its metadata, and an all-caps constant such as
+    ``RELATION_NAMES``.
     """
     if isinstance(iterable, (ast.List, ast.Tuple, ast.Set)):
         return False
+    if any(isinstance(node, ast.Attribute) and node.attr == "meta" for node in ast.walk(iterable)):
+        return False
     for node in ast.walk(iterable):
         if isinstance(node, ast.Name):
+            if node.id.isupper():
+                continue
             name = node.id
         elif isinstance(node, ast.Attribute):
             name = node.attr

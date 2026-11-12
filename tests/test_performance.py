@@ -3,6 +3,8 @@
 import pathlib
 import textwrap
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from tests.conftest import write_charm_source, write_charmcraft_yaml
@@ -93,6 +95,21 @@ class TestLoggingInLoop:
                 for step in [self._ensure_secrets, self._ensure_cluster_relation]:
                     logger.debug("running %s", step)
                     step()
+            """,
+        )
+        assert found == []
+
+    @pytest.mark.parametrize("iterable", ["self.meta.relations", "RELATION_NAMES"])
+    def test_fixed_size_iterable_not_flagged(self, tmp_charm: pathlib.Path, iterable: str):
+        found = _lint_source(
+            tmp_charm,
+            f"""\
+            RELATION_NAMES = ("db", "cache")
+
+
+            def f(self):
+                for name in {iterable}:
+                    logger.debug("checking %s", name)
             """,
         )
         assert found == []
