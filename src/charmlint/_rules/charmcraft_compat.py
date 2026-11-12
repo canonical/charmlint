@@ -644,7 +644,7 @@ class OverrideBuildSkipsDefault(Rule):
 
     A script that uses ``snapcraftctl`` is left alone: there is no
     ``snapcraftctl`` in Charmcraft, so the build fails on that before the
-    missing default matters. A deliberate reimplementation of the build,
+    missing default matters, and CHARMCRAFT-011 reports it. A deliberate reimplementation of the build,
     such as the legacy way of building a reactive charm with the ``charm``
     plugin as a shell around ``charm build``, should be suppressed with a
     ``noqa`` on the ``override-build`` line.
