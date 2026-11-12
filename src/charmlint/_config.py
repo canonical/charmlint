@@ -118,7 +118,7 @@ def contradictions(select: list[str], ignore: list[str]) -> list[str]:
     return sorted(overlap)
 
 
-def replace_select(config: "LintConfig", select: list[str]) -> None:
+def apply_cli_select(config: "LintConfig", select: list[str]) -> None:
     """Make *select* (from ``--select``) the selection, as ruff's CLI does.
 
     The config's ``select`` is replaced. So that the rules *select* names
