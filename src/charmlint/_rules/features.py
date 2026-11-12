@@ -535,7 +535,9 @@ def _passes_self(node: ast.ClassDef) -> bool:
         for call in ast.walk(function):
             if not isinstance(call, ast.Call):
                 continue
-            if (
+            # Neither ``super().__init__(...)`` nor the ``super(C, self)``
+            # inside the two-argument form hands the charm to anyone.
+            if _called_name(call.func) == "super" or (
                 isinstance(call.func, ast.Attribute)
                 and isinstance(call.func.value, ast.Call)
                 and _called_name(call.func.value.func) == "super"

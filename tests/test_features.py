@@ -825,6 +825,23 @@ class TestCharmObservesNoEvents:
         assert hits[0].path == "src/charm.py"
         assert hits[0].line == 4
 
+    def test_two_argument_super_does_not_suppress(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super(C, self).__init__(framework)
+
+
+            ops.main(C)
+            """,
+        )
+        assert len(hits) == 1
+
     def test_self_passed_outside_the_charm_class_does_not_suppress(self, tmp_charm: pathlib.Path):
         # Only a charm class handing itself to a collaborator counts; a
         # helper class in another module doing the same says nothing.
