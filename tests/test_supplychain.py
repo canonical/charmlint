@@ -507,6 +507,24 @@ class TestOpsPinningRules:
         assert len(pinned) == 1
         assert pinned[0].path == "deps/runtime.txt"
 
+    @pytest.mark.parametrize("plugin", [None, ""])
+    def test_part_named_python_reads_declared_requirements_files(
+        self, tmp_charm: pathlib.Path, plugin: str | None
+    ):
+        # A bare ``python:`` part builds with the python plugin, so its
+        # python-requirements are what get read, not requirements.txt.
+        spec: dict[str, object] = {"python-requirements": ["deps/runtime.txt"]}
+        if plugin is not None:
+            spec["plugin"] = plugin
+        write_charmcraft_yaml(tmp_charm, {"name": "x", "parts": {"python": spec}})
+        (tmp_charm / "deps").mkdir()
+        (tmp_charm / "deps" / "runtime.txt").write_text("ops==3.7.1\n")
+        (tmp_charm / "requirements.txt").write_text("ops>=2.23,<4\n")
+        report = lint(tmp_charm)
+        pinned = [d for d in report if d.rule_id == "SUPPLYCHAIN-006"]
+        assert len(pinned) == 1
+        assert pinned[0].path == "deps/runtime.txt"
+
     def test_python_plugin_without_declaration_falls_back(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm, {"name": "x", "parts": {"my-charm": {"plugin": "python"}}}
