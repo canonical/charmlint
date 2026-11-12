@@ -503,10 +503,10 @@ class CharmObservesNoEvents(Rule):
             if _ast.observers(module) or _has_opaque_observe(module):
                 return []
             classes = _classes(module)
-            if classes.framework or classes.holistic or _hands_self_to_collaborator(module):
+            if classes.framework or classes.holistic or classes.delegating:
                 return []
-            if classes.plain and first is None:
-                first = (module.path, _first_plain_class_line(module))
+            if classes.first_line is not None and first is None:
+                first = (module.path, classes.first_line)
         if first is None:
             return []
         return [
@@ -522,39 +522,28 @@ class CharmObservesNoEvents(Rule):
         ]
 
 
-def _first_plain_class_line(module: models.Module) -> int:
-    """The line of the first class deriving straight from ``ops.CharmBase``."""
-    imports = _ast.Imports.of(module)
-    for node in module.walk(ast.ClassDef):
-        bases = {name for name in (imports.resolve(base) for base in node.bases) if name}
-        if bases & _ast.CHARM_BASES and not bases - _ast.CHARM_BASES:
-            return node.lineno
-    return 1
-
-
-def _hands_self_to_collaborator(module: models.Module) -> bool:
-    """Whether a charm's ``__init__`` passes ``self`` to anything but ``super()``.
+def _passes_self(node: ast.ClassDef) -> bool:
+    """Whether *node*'s ``__init__`` passes ``self`` to anything but ``super()``.
 
     ``TracingEndpointRequirer(self)`` and friends observe the charm's
     events from inside the library, so the charm's own source can look
     observer-free and still be wired up.
     """
-    for node in module.walk(ast.ClassDef):
-        for function in node.body:
-            if not isinstance(function, ast.FunctionDef) or function.name != "__init__":
+    for function in node.body:
+        if not isinstance(function, ast.FunctionDef) or function.name != "__init__":
+            continue
+        for call in ast.walk(function):
+            if not isinstance(call, ast.Call):
                 continue
-            for call in ast.walk(function):
-                if not isinstance(call, ast.Call):
-                    continue
-                if (
-                    isinstance(call.func, ast.Attribute)
-                    and isinstance(call.func.value, ast.Call)
-                    and _called_name(call.func.value.func) == "super"
-                ):
-                    continue
-                arguments = [*call.args, *(kw.value for kw in call.keywords)]
-                if any(isinstance(a, ast.Name) and a.id == "self" for a in arguments):
-                    return True
+            if (
+                isinstance(call.func, ast.Attribute)
+                and isinstance(call.func.value, ast.Call)
+                and _called_name(call.func.value.func) == "super"
+            ):
+                continue
+            arguments = [*call.args, *(kw.value for kw in call.keywords)]
+            if any(isinstance(a, ast.Name) and a.id == "self" for a in arguments):
+                return True
     return False
 
 
@@ -605,6 +594,11 @@ class _Classes:
     # A charm class that reconciles unconditionally in ``__init__``, or
     # hands a callback to a collaborator that will observe for it.
     holistic: bool = False
+    # A charm class whose ``__init__`` hands ``self`` to a collaborator,
+    # which may observe the charm's events itself.
+    delegating: bool = False
+    # The line of the first plain charm class, if there is one.
+    first_line: int | None = None
 
 
 def _classes(module: models.Module) -> _Classes:
@@ -622,9 +616,12 @@ def _classes(module: models.Module) -> _Classes:
         ops_bases = bases & _ast.CHARM_BASES
         if ops_bases and not bases - ops_bases:
             result.plain += 1
+            if result.first_line is None:
+                result.first_line = node.lineno
             result.holistic = (
                 result.holistic or _reconciles_in_init(node) or _delegates_to_collaborator(node)
             )
+            result.delegating = result.delegating or _passes_self(node)
         elif ops_bases or node.name in entry_points:
             # Either a mixin alongside ``ops.CharmBase``, or a charm class
             # whose base is something charmlint cannot see into.
