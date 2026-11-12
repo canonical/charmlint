@@ -11,6 +11,7 @@ import pytest
 
 import charmlint
 from charmlint._cli import main
+from charmlint._linter import lint
 from tests.conftest import make_full_charm, write_charmcraft_yaml
 
 
@@ -69,6 +70,11 @@ class TestCLI:
 
     def test_strict_mode(self, tmp_charm: pathlib.Path):
         make_full_charm(tmp_charm)
+        # --strict only changes the exit code when there are warnings and no
+        # errors, so check the fixture still gives that before relying on it.
+        report = lint(tmp_charm)
+        assert report.error_count == 0
+        assert report.warning_count > 0
         exit_code_normal = main([str(tmp_charm)])
         assert exit_code_normal == 0
         exit_code_strict = main([str(tmp_charm), "--strict"])
