@@ -23,8 +23,8 @@ Tests that need the network (the reference-URL checks) are deselected by default
 ## Lint
 
 ```bash
-make lint      # ruff check, ruff format --check, ty check, docs-check, lock-check
-make format    # apply ruff formatting and safe fixes
+make lint      # everything CI's lint job checks; `make help` lists the targets
+make format    # apply safe lint fixes, then format
 ```
 
 `pre-commit` runs the same `make` targets (config in `.pre-commit-config.yaml`); tool versions live in `pyproject.toml`'s `dev` dependency group.
