@@ -51,7 +51,7 @@ class TestPebbleEnvNonString:
         findings = _lint_source(tmp_charm, _layer('"PROXY": None,'))
         assert len(findings) == 1
         assert findings[0].severity == Severity.WARNING
-        assert "rejects" not in findings[0].message
+        assert "set but empty rather than absent" in findings[0].message
         assert "plan" in findings[0].message
         assert "PROXY" in findings[0].message
         assert findings[0].path is not None
