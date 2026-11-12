@@ -101,7 +101,10 @@ class PebbleEnvNonString(Rule):
                     f"rather than absent, and {_PLAN_MISMATCH}"
                 )
                 severity = models.Severity.WARNING
-                fix_hint = "Use a string, or omit the variable when it has no value"
+                fix_hint = (
+                    "Omit the variable if it should be unset, "
+                    "or use '' if the workload should see it set and empty"
+                )
             elif isinstance(value.value, bool):
                 # bool is a subclass of int, so it has to be tested first.
                 literal = str(value.value)
