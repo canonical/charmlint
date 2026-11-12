@@ -912,6 +912,8 @@ failure for one relation is the unusual path. Comprehensions and the
 Move the logging out of the loop (log a summary afterwards), or limit it
 to the exceptional case.
 
+Reference: <https://canonical.com/juju/docs/juju-cli/latest/reference/hook-command/list-of-hook-commands/juju-log/>
+
 ## SECURITY
 
 Security.

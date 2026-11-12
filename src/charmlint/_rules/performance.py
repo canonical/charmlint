@@ -61,6 +61,7 @@ class LoggingInLoop(Rule):
     name = "logging-in-loop"
     description = "Logging inside a loop over relations or units runs juju-log once per iteration"
     default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/juju-cli/latest/reference/hook-command/list-of-hook-commands/juju-log/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         diagnostics: list[models.Diagnostic] = []
