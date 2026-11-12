@@ -715,7 +715,7 @@ class SnapcraftScriptlet(Rule):
     description = (
         "Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_*"
     )
-    default_severity = models.Severity.WARNING
+    default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:

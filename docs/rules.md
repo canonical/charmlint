@@ -36,7 +36,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-008](#charmcraft-008-charm-user) | `charm-user` | Warning | Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user' |
 | [CHARMCRAFT-009](#charmcraft-009-container-runs-as-root) | `container-runs-as-root` | Warning | Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity |
 | [CHARMCRAFT-010](#charmcraft-010-override-build-skips-default) | `override-build-skips-default` | Warning | override-build never runs 'craftctl default' for a Python plugin |
-| [CHARMCRAFT-011](#charmcraft-011-snapcraft-scriptlet) | `snapcraft-scriptlet` | Warning | Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_* |
+| [CHARMCRAFT-011](#charmcraft-011-snapcraft-scriptlet) | `snapcraft-scriptlet` | Error | Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_* |
 | [CONFIG-001](#config-001-config-missing-type) | `config-missing-type` | Warning | Config option is missing a type |
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
@@ -324,7 +324,7 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts
 
 ### CHARMCRAFT-011 snapcraft-scriptlet
 
-**Warning** — Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_*
+**Error** — Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_*
 
 Flag `snapcraftctl` and `$SNAPCRAFT_*` in a part scriptlet.
 

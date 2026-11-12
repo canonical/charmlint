@@ -1490,7 +1490,7 @@ class TestSnapcraftScriptlet:
             {"charm": {"plugin": "charm", "override-build": "snapcraftctl build\n"}},
         )
         assert len(diags) == 1
-        assert diags[0].severity == Severity.WARNING
+        assert diags[0].severity == Severity.ERROR
         assert diags[0].path == "charmcraft.yaml"
         assert "'snapcraftctl'" in diags[0].message
         assert "override-build for the 'charm' part" in diags[0].message
