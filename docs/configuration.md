@@ -26,9 +26,9 @@ A config can mix rule IDs and rule names.
 
 Case is significant. Rule IDs and categories are upper-case, rule names lower-case; `security-001` names nothing.
 
-When `select` and `ignore` disagree, the more specific spelling wins: `select = ["secret-in-plain-config"]` with `ignore = ["SECURITY"]` runs that one rule and no other security rule.
+When `select` and `ignore` in the config disagree, the more specific spelling wins: `select = ["secret-in-plain-config"]` with `ignore = ["SECURITY"]` runs that one rule and no other security rule.
 
-`--select` on the command line replaces the config's `select`, and the config's `ignore` stops applying to the rules it names: with `ignore = ["SECURITY-001"]` in the config, `charmlint --select SECURITY-001 .` runs SECURITY-001. As in the config file, a command line that selects and ignores the same rule (`--select X --ignore X`) is an error.
+On the command line, `--select` replaces the config's `select`, and the config's `ignore` stops applying to every rule it selects, whatever the spelling: with `ignore = ["SECURITY-001"]` in the config, both `charmlint --select SECURITY-001 .` and `charmlint --select SECURITY .` run SECURITY-001. `--ignore` adds to the config's `ignore` and wins over the config's `select`, so it mutes a rule even when the config selects it. A command line that selects and ignores the same rule (`--select X --ignore X`) is an error, as it is in the config file. This is how ruff behaves.
 
 ## Suppressing findings inline
 
@@ -82,4 +82,3 @@ config:
 ```
 
 In Python files, charmlint only considers `# charmlint:` directives; `# noqa` is for ruff.
-
