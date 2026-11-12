@@ -483,6 +483,8 @@ class CharmObservesNoEvents(Rule):
       observes a list of events.
     * A charm class is built on a framework base class or a mixin, or no
       plain ``ops.CharmBase`` subclass was found in the charm's own source.
+    * ``ops.main()`` is handed a charm class that isn't a plain one defined
+      in the charm's own source, such as one imported from a shared package.
     * A charm class hands ``self`` to a collaborator in ``__init__``
       (a charm library, say), which can observe the charm's events itself,
       or reconciles unconditionally in ``__init__``.
@@ -492,7 +494,7 @@ class CharmObservesNoEvents(Rule):
     number = 8
     name = "charm-observes-no-events"
     description = "Charm class never observes any event"
-    default_severity = models.Severity.ERROR
+    default_severity = models.Severity.WARNING
     reference_url = (
         "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Framework.observe"
     )
@@ -500,6 +502,8 @@ class CharmObservesNoEvents(Rule):
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         first_path: str | None = None
         first_line: int | None = None
+        plain_names: set[str] = set()
+        entry_points: set[str] = set()
         for module in context.charm_sources():
             if _ast.observers(module) or _has_opaque_observe(module):
                 return []
@@ -508,7 +512,12 @@ class CharmObservesNoEvents(Rule):
                 return []
             if classes.first_line is not None and first_path is None:
                 first_path, first_line = module.path, classes.first_line
-        if first_path is None:
+            plain_names |= classes.plain_names
+            entry_points |= {name.rpartition(".")[2] for name in classes.entry_points}
+        # A charm handed to ops.main() that isn't one of the plain classes,
+        # such as one imported from a shared package, is the real charm, and
+        # charmlint can't see what it observes.
+        if first_path is None or entry_points - plain_names:
             return []
         return [
             self.diagnostic(
@@ -602,6 +611,10 @@ class _Classes:
     delegating: bool = False
     # The line of the first plain charm class, if there is one.
     first_line: int | None = None
+    # The names of the plain charm classes, and of everything handed to
+    # ``ops.main()``.
+    plain_names: set[str] = dataclasses.field(default_factory=set)
+    entry_points: set[str] = dataclasses.field(default_factory=set)
 
 
 def _classes(module: models.Module) -> _Classes:
@@ -613,12 +626,13 @@ def _classes(module: models.Module) -> _Classes:
     """
     imports = _ast.Imports.of(module)
     entry_points = _main_arguments(module, imports)
-    result = _Classes()
+    result = _Classes(entry_points=entry_points)
     for node in module.walk(ast.ClassDef):
         bases = {name for name in (imports.resolve(base) for base in node.bases) if name}
         ops_bases = bases & _ast.CHARM_BASES
         if ops_bases and not bases - ops_bases:
             result.plain += 1
+            result.plain_names.add(node.name)
             if result.first_line is None:
                 result.first_line = node.lineno
             result.holistic = (

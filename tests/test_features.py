@@ -821,9 +821,35 @@ class TestCharmObservesNoEvents:
             """,
         )
         assert len(hits) == 1
-        assert hits[0].severity == Severity.ERROR
+        assert hits[0].severity == Severity.WARNING
         assert hits[0].path == "src/charm.py"
         assert hits[0].line == 4
+
+    def test_imported_charm_handed_to_main_suppresses(self, tmp_charm: pathlib.Path):
+        # The mysql-operators shape: a local fallback class, but the charm
+        # that usually runs comes from a shared package.
+        hits = self._hits(
+            tmp_charm,
+            """\
+            from ops.charm import CharmBase
+            from ops.main import main
+            from single_kernel.charm import VMCharm, check_architecture
+
+
+            class WrongArchitectureCharm(CharmBase):
+                def __init__(self, *args):
+                    super().__init__(*args)
+                    raise RuntimeError("wrong architecture")
+
+
+            if __name__ == "__main__":
+                if check_architecture():
+                    main(VMCharm)
+                else:
+                    main(WrongArchitectureCharm)
+            """,
+        )
+        assert hits == []
 
     def test_observer_in_a_later_module_suppresses(self, tmp_charm: pathlib.Path):
         # Modules are read in sorted order, so charm.py records the plain

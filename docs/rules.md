@@ -53,7 +53,7 @@ config file overrides it per rule.
 | [FEATURES-005](#features-005-no-set-workload-version) | `no-set-workload-version` | Info | Charm never calls set_workload_version() |
 | [FEATURES-006](#features-006-hardcoded-workload-version) | `hardcoded-workload-version` | Warning | Workload version is a hardcoded constant, not read from the workload |
 | [FEATURES-007](#features-007-no-config-changed-observer) | `no-config-changed-observer` | Warning | Charm declares config options but does not observe config-changed |
-| [FEATURES-008](#features-008-charm-observes-no-events) | `charm-observes-no-events` | Error | Charm class never observes any event |
+| [FEATURES-008](#features-008-charm-observes-no-events) | `charm-observes-no-events` | Warning | Charm class never observes any event |
 | [LIBRARY-001](#library-001-fetch-libs-has-pypi) | `fetch-libs-has-pypi` | Warning | Deprecated Charmhub library has PyPI replacement |
 | [METADATA-001](#metadata-001-missing-name) | `missing-name` | Error | Empty or missing 'name' field in charm metadata |
 | [METADATA-002](#metadata-002-missing-display-name) | `missing-display-name` | Warning | Empty or missing 'display-name'/'title' field |
@@ -679,7 +679,7 @@ Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-configuratio
 
 ### FEATURES-008 charm-observes-no-events
 
-**Error** — Charm class never observes any event
+**Warning** — Charm class never observes any event
 
 Flag a charm class that never observes an event.
 
@@ -696,6 +696,8 @@ observing on the charm's behalf:
   observes a list of events.
 * A charm class is built on a framework base class or a mixin, or no
   plain `ops.CharmBase` subclass was found in the charm's own source.
+* `ops.main()` is handed a charm class that isn't a plain one defined
+  in the charm's own source, such as one imported from a shared package.
 * A charm class hands `self` to a collaborator in `__init__`
   (a charm library, say), which can observe the charm's events itself,
   or reconciles unconditionally in `__init__`.
