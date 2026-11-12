@@ -1,6 +1,7 @@
 """Tests for charmcraft-compatible rules."""
 
 import pathlib
+import re
 
 import pytest
 
@@ -1525,6 +1526,14 @@ class TestInvalidStorage:
         assert len(diags) == 1
         assert diags[0].severity == Severity.ERROR
         assert "'multiple'" in diags[0].message
+
+    def test_multiple_hint_only_suggests_ranges_juju_accepts(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "multiple": 3}})
+        hint = diags[0].fix_hint
+        assert hint is not None
+        forms = ["1-3", *re.findall(r"'([^']+)'", hint.split("(or", 1)[1])]
+        # The grammar of Juju's storage-count parser: m, m-n, m+ or m-.
+        assert all(re.fullmatch(r"[0-9]+(?:[-+]|-[0-9]+)?", form) for form in forms), forms
 
     def test_unknown_key_without_close_match(self, tmp_charm: pathlib.Path):
         diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "colour": "blue"}})

@@ -368,7 +368,8 @@ class InvalidStorage(Rule):
                         f"Storage '{storage_name}' has a 'multiple' that isn't a mapping with a 'range'",
                         path=multiple.source,
                         line=multiple.line,
-                        fix_hint="Write it as 'multiple: {range: 1-3}' (or '1', '1+', '-3')",
+                        # Juju's storage schema accepts m, m-n, m+ and m-.
+                        fix_hint="Write it as 'multiple: {range: 1-3}' (or '1', '1+', '1-')",
                     )
                 )
             for key, field in storage.items():
