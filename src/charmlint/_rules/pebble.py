@@ -89,10 +89,6 @@ class PebbleEnvNonString(Rule):
             name = _ast.dict_key(key)
             described = f"'{name}'" if name is not None else "an environment variable"
             severity: models.Severity | None = None
-            # Pebble accepts these values (``null`` becomes "" and ``true``
-            # becomes "true"), but ``ops.pebble.Layer`` keeps the raw Python
-            # value, so the layer never compares equal to the plan Pebble
-            # returns and a charm that diffs them replans on every hook.
             if value.value is None:
                 message = (
                     f"Pebble layer environment value for {described} is None "
