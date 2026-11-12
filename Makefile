@@ -11,7 +11,7 @@ PYTEST_ARGS ?=
 # --exit-non-zero-on-fix, so that a commit stops when something was fixed.
 RUFF_FIX_ARGS ?=
 
-lint: ruff-check ruff-format-check typecheck  ## Lint with ruff and type-check with ty
+lint: ruff-check ruff-format-check typecheck docs-check lock-check  ## Everything CI's lint job runs: ruff, ty, and the docs and lock checks
 
 ruff-check:  ## Check for lint errors with ruff
 	uv run --group dev ruff check

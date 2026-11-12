@@ -23,7 +23,7 @@ Tests that need the network (the reference-URL checks) are deselected by default
 ## Lint
 
 ```bash
-make lint      # ruff check, ruff format --check, ty check
+make lint      # ruff check, ruff format --check, ty check, docs-check, lock-check
 make format    # apply ruff formatting and safe fixes
 ```
 
