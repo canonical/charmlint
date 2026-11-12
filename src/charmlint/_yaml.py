@@ -139,7 +139,11 @@ def part_plugin(part_name: object, part: models.Yaml) -> str | None:
     """The plugin a ``parts`` entry builds with, or ``None`` if it names none.
 
     craft-parts uses the part's name as its plugin when ``plugin`` is
-    empty, so a bare ``uv:`` part builds with the uv plugin. A plugin
+    empty, so a bare ``uv:`` part builds with the uv plugin. Charmcraft
+    itself only fills in a *missing* ``plugin``, and refuses to pack a
+    part with ``plugin: ""``; treating empty as missing here is
+    deliberately lenient, since the pack failure is the real problem.
+    A plugin
     (or, with no plugin, a part name) that isn't a string names no
     plugin, and a list or mapping there is unhashable, so a rule testing
     membership of a set of plugin names would raise rather than report.
