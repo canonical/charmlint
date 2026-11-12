@@ -990,6 +990,8 @@ _KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset({
 
 # Storage types Juju accepts, and the keys recognised inside ``storage.<name>``.
 _STORAGE_TYPES: frozenset[str] = frozenset({"filesystem", "block"})
+#: Follows Juju's storage schema, not the charmcraft reference page, which
+#: leaves out ``shared``.
 _KNOWN_STORAGE_FIELDS: frozenset[str] = frozenset({
     "type",
     "description",
