@@ -1519,6 +1519,12 @@ class TestSnapcraftScriptlet:
         )
         assert len(diags) == 2
 
+    def test_earliest_spelling_is_quoted(self, tmp_charm: pathlib.Path):
+        script = "cp a $SNAPCRAFT_PART_INSTALL/a\nsnapcraftctl pull\n"
+        diags = self._lint(tmp_charm, {"x": {"plugin": "nil", "override-pull": script}})
+        assert len(diags) == 1
+        assert "'$SNAPCRAFT_PART_INSTALL'" in diags[0].message
+
     def test_craftctl_is_fine(self, tmp_charm: pathlib.Path):
         diags = self._lint(
             tmp_charm,

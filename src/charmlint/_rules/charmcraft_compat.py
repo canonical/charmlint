@@ -731,7 +731,7 @@ class SnapcraftScriptlet(Rule):
                 if not isinstance(field.value, str):
                     continue
                 script = _strip_shell_comments(field.value)
-                match = _SNAPCRAFTCTL.search(script) or _SNAPCRAFT_VARIABLE.search(script)
+                match = _SNAPCRAFT_SPELLING.search(script)
                 if match is None:
                     continue
                 diagnostics.append(
@@ -1022,7 +1022,8 @@ _PYTHON_PLUGINS: frozenset[str] = frozenset({"charm", "python", "uv", "poetry"})
 # ``(?:\s|\\)+`` spans a backslash line continuation as well as spaces.
 _CRAFTCTL_DEFAULT = re.compile(r"\bcraftctl(?:\s|\\)+default\b")
 _SNAPCRAFTCTL = re.compile(r"\bsnapcraftctl\b")
-_SNAPCRAFT_VARIABLE = re.compile(r"\$(?:\{SNAPCRAFT_\w+\}|SNAPCRAFT_\w+)")
+# One pattern, so ``search`` finds whichever snapcraft spelling comes first.
+_SNAPCRAFT_SPELLING = re.compile(r"\bsnapcraftctl\b|\$(?:\{SNAPCRAFT_\w+\}|SNAPCRAFT_\w+)")
 
 #: The part scriptlets craft-parts runs, each of which holds shell code.
 _SCRIPTLETS = ("override-pull", "override-build", "override-stage", "override-prime")
