@@ -1509,7 +1509,7 @@ class TestSnapcraftScriptlet:
             {"x": {"plugin": "nil", "override-stage": "cp a ${SNAPCRAFT_PROJECT_DIR}/a"}},
         )
         assert len(diags) == 1
-        assert "'${SNAPCRAFT_PROJECT_DIR'" in diags[0].message
+        assert "'${SNAPCRAFT_PROJECT_DIR}'" in diags[0].message
 
     def test_one_finding_per_scriptlet(self, tmp_charm: pathlib.Path):
         script = "snapcraftctl pull\ncp a $SNAPCRAFT_PART_INSTALL\n"

@@ -1022,7 +1022,7 @@ _PYTHON_PLUGINS: frozenset[str] = frozenset({"charm", "python", "uv", "poetry"})
 # ``(?:\s|\\)+`` spans a backslash line continuation as well as spaces.
 _CRAFTCTL_DEFAULT = re.compile(r"\bcraftctl(?:\s|\\)+default\b")
 _SNAPCRAFTCTL = re.compile(r"\bsnapcraftctl\b")
-_SNAPCRAFT_VARIABLE = re.compile(r"\$\{?SNAPCRAFT_\w+")
+_SNAPCRAFT_VARIABLE = re.compile(r"\$(?:\{SNAPCRAFT_\w+\}|SNAPCRAFT_\w+)")
 
 #: The part scriptlets craft-parts runs, each of which holds shell code.
 _SCRIPTLETS = ("override-pull", "override-build", "override-stage", "override-prime")
