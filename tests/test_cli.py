@@ -84,6 +84,7 @@ class TestCLI:
         # --strict findings exit 1, so 2 still means charmlint couldn't run,
         # even on a charm whose warnings would otherwise fail the run.
         make_full_charm(tmp_charm)
+        assert main(["/nonexistent/path", "--strict"]) == 2
         assert main([str(tmp_charm), "--strict", "--select", "NOT-A-RULE"]) == 2
         bad_config = tmp_charm / "bad.toml"
         bad_config.write_text("this is not toml = = =\n")
