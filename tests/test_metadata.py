@@ -278,7 +278,7 @@ class TestDiscourseDocsLink:
         report = lint(tmp_charm)
         hits = [d for d in list(report) if d.rule_id == "METADATA-011"]
         assert len(hits) == 1
-        assert hits[0].severity == Severity.WARNING
+        assert hits[0].severity == Severity.INFO
         assert "https://x.readthedocs.io/" in (hits[0].fix_hint or "")
 
     def test_fires_without_suggestion(self, tmp_charm: pathlib.Path):

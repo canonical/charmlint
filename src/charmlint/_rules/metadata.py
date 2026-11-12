@@ -377,7 +377,7 @@ class DiscourseDocsLink(Rule):
     number = 11
     name = "discourse-docs-link"
     description = "Documentation link points at Discourse although the charm has a docs project"
-    default_severity = models.Severity.WARNING
+    default_severity = models.Severity.INFO
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:

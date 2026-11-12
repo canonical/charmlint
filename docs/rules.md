@@ -64,7 +64,7 @@ config file overrides it per rule.
 | [METADATA-008](#metadata-008-requires-missing-optional) | `requires-missing-optional` | Info | requires endpoint missing explicit `optional` field |
 | [METADATA-009](#metadata-009-provides-missing-optional) | `provides-missing-optional` | Info | provides endpoint missing explicit `optional` field |
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
-| [METADATA-011](#metadata-011-discourse-docs-link) | `discourse-docs-link` | Warning | Documentation link points at Discourse although the charm has a docs project |
+| [METADATA-011](#metadata-011-discourse-docs-link) | `discourse-docs-link` | Info | Documentation link points at Discourse although the charm has a docs project |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
 | [PEBBLE-006](#pebble-006-pebble-check-level-alive) | `pebble-check-level-alive` | Info | Pebble check uses level 'alive', which drives the Kubernetes liveness probe |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
@@ -838,7 +838,7 @@ Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/ch
 
 ### METADATA-011 discourse-docs-link
 
-**Warning** — Documentation link points at Discourse although the charm has a docs project
+**Info** — Documentation link points at Discourse although the charm has a docs project
 
 Flag a documentation link that still points at Charmhub Discourse.
 
