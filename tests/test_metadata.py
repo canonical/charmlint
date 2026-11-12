@@ -291,6 +291,20 @@ class TestDiscourseDocsLink:
         report = lint(tmp_charm)
         assert [d for d in list(report) if d.rule_id == "METADATA-011"]
 
+    def test_fires_on_split_metadata(self, tmp_charm: pathlib.Path):
+        # Build config in charmcraft.yaml, metadata (and so ``docs``) in
+        # metadata.yaml.
+        write_charmcraft_yaml(tmp_charm, {"type": "charm"})
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: x\ndocs: https://discourse.charmhub.io/t/x/123\n"
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text('ogp_site_url = "https://x.readthedocs.io/"\n')
+        hits = [d for d in list(lint(tmp_charm)) if d.rule_id == "METADATA-011"]
+        assert len(hits) == 1
+        assert hits[0].path == "metadata.yaml"
+        assert "'docs'" in hits[0].message
+
     def test_silent_without_docs_project(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(
             tmp_charm,

@@ -383,33 +383,43 @@ class DiscourseDocsLink(Rule):
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         if _is_bundle(context):
             return []
-        key = "links.documentation" if _is_charmcraft(context) else "docs"
-        node = _resolve(context.metadata, key)
-        # Both files accept a single URL or a list of them.
-        links = node.elements if node.elements is not None else [node]
-        discourse = [
-            link for link in links if isinstance(link.value, str) and _is_discourse_url(link.value)
-        ]
+        discourse: list[tuple[str, models.Yaml]] = []
+        for top_level_key, key, spelt_in in (
+            ("links", "links.documentation", "charmcraft.yaml"),
+            ("docs", "docs", "metadata.yaml"),
+        ):
+            field = context.metadata.get(top_level_key)
+            # As in METADATA-010: a charm may split its metadata across both
+            # files, so each spelling is judged against the file it came from.
+            if not field.present or field.source != spelt_in:
+                continue
+            node = _resolve(context.metadata, key)
+            # Both files accept a single URL or a list of them.
+            links = node.elements if node.elements is not None else [node]
+            discourse.extend(
+                (key, link)
+                for link in links
+                if isinstance(link.value, str) and _is_discourse_url(link.value)
+            )
         if not discourse:
             return []
         conf = _find_docs_conf(context.charm_dir)
         if conf is None:
             return []
         suggestion = _published_url(conf)
-        hint = (
-            f"Point '{key}' at the published docs: {suggestion}"
-            if suggestion
-            else f"Point '{key}' at the docs project's published URL"
-        )
         return [
             self.diagnostic(
                 f"'{key}' still points at Discourse ({link.value}), but the charm has a "
                 "Sphinx docs project",
                 path=link.source,
                 line=link.line,
-                fix_hint=hint,
+                fix_hint=(
+                    f"Point '{key}' at the published docs: {suggestion}"
+                    if suggestion
+                    else f"Point '{key}' at the docs project's published URL"
+                ),
             )
-            for link in discourse
+            for key, link in discourse
         ]
 
 
