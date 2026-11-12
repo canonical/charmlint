@@ -66,6 +66,14 @@ class TestCLI:
         assert exit_code == 2
         assert "select and ignore both cover: METADATA-001" in capsys.readouterr().err
 
+    def test_ignore_beats_a_category_select(self, tmp_charm: pathlib.Path, capsys):
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        argv = [str(tmp_charm), "--format", "json", "--select", "METADATA"]
+        main([*argv, "--ignore", "METADATA-001"])
+        rule_ids = {d["rule_id"] for d in json.loads(capsys.readouterr().out)["diagnostics"]}
+        assert "METADATA-001" not in rule_ids
+        assert "METADATA-002" in rule_ids
+
     def test_ignore_mutes_a_config_select(self, tmp_charm: pathlib.Path, capsys):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         (tmp_charm / "pyproject.toml").write_text(

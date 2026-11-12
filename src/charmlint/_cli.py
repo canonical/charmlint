@@ -232,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     cli_ignore = [s.strip() for s in args.ignore.split(",")] if args.ignore else []
     if cli_select:
         _config.replace_select(config, cli_select)
+    # Added after replace_select, so --select doesn't drop it.
     config.ignore.extend(cli_ignore)
     if args.min_severity:
         config.min_severity = models.Severity(args.min_severity)
