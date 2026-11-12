@@ -100,13 +100,13 @@ def _validate(config: "LintConfig", path: pathlib.Path) -> None:
             f"not a known rule ID, rule name or category: {', '.join(unknown)}",
         )
 
-    overlap = contradictions(config)
+    overlap = contradictions(config.select, config.ignore)
     if overlap:
         raise ConfigError(path, f"select and ignore both cover: {', '.join(overlap)}")
 
 
-def contradictions(config: "LintConfig") -> list[str]:
-    """The rule IDs that *config* both selects and ignores at the same specificity.
+def contradictions(select: list[str], ignore: list[str]) -> list[str]:
+    """The rule IDs that *select* and *ignore* both cover at the same specificity.
 
     Only tokens of the same specificity can contradict each other: a
     rule named in ``select`` and its category named in ``ignore`` is
@@ -114,7 +114,7 @@ def contradictions(config: "LintConfig") -> list[str]:
     """
     overlap: set[str] = set()
     for covered in (_rules_covered, _categories_covered):
-        overlap |= covered(config.select) & covered(config.ignore)
+        overlap |= covered(select) & covered(ignore)
     return sorted(overlap)
 
 
