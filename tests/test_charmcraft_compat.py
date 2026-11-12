@@ -1504,12 +1504,6 @@ class TestInvalidStorage:
         assert len(diags) == 1
         assert diags[0].severity == Severity.ERROR
 
-    def test_directory_key_suggests_location(self, tmp_charm: pathlib.Path):
-        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "directory": "/d"}})
-        assert len(diags) == 1
-        assert diags[0].severity == Severity.WARNING
-        assert diags[0].fix_hint == "Did you mean 'location'?"
-
     def test_no_storage(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         assert "CHARMCRAFT-012" not in {d.rule_id for d in list(lint(tmp_charm))}
@@ -1535,12 +1529,6 @@ class TestInvalidStorage:
         # The grammar of Juju's storage-count parser: m, m-n, m+ or m-.
         assert all(re.fullmatch(r"[0-9]+(?:[-+]|-[0-9]+)?", form) for form in forms), forms
 
-    def test_unknown_key_without_close_match(self, tmp_charm: pathlib.Path):
-        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "colour": "blue"}})
-        assert len(diags) == 1
-        assert diags[0].severity == Severity.WARNING
-        assert "'colour'" in diags[0].message
-
     @pytest.mark.parametrize("value", [["filesystem"], "filesystem"])
     def test_storage_that_is_not_a_mapping(self, tmp_charm: pathlib.Path, value: object):
         diags = self._diags(tmp_charm, {"data": value})
@@ -1553,3 +1541,47 @@ class TestInvalidStorage:
             "name: test\nstorage:\n  config:\n    type: file  # noqa: CHARMCRAFT-012\n"
         )
         assert "CHARMCRAFT-012" not in {d.rule_id for d in list(lint(tmp_charm))}
+
+
+class TestUnknownStorageField:
+    """Tests for CHARMCRAFT-014 — unrecognised keys in a storage definition."""
+
+    def _diags(self, tmp_charm: pathlib.Path, storage: dict) -> list[Diagnostic]:
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "storage": storage})
+        return [d for d in list(lint(tmp_charm)) if d.rule_id == "CHARMCRAFT-014"]
+
+    def test_known_keys_are_clean(self, tmp_charm: pathlib.Path):
+        storage = {
+            "data": {"type": "filesystem", "location": "/data", "minimum-size": "1G"},
+            "disk": {"type": "block", "multiple": {"range": "1-3"}, "shared": False},
+        }
+        assert self._diags(tmp_charm, storage) == []
+
+    def test_directory_key_suggests_location(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "directory": "/d"}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert diags[0].fix_hint == "Did you mean 'location'?"
+
+    def test_unknown_key_without_close_match(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "colour": "blue"}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.WARNING
+        assert "'colour'" in diags[0].message
+
+    def test_unknown_key_is_not_an_invalid_storage_error(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "storage": {"data": {"type": "filesystem", "colour": "blue"}}},
+        )
+        assert "CHARMCRAFT-012" not in {d.rule_id for d in list(lint(tmp_charm))}
+
+    def test_not_a_mapping_is_left_to_invalid_storage(self, tmp_charm: pathlib.Path):
+        assert self._diags(tmp_charm, {"data": ["filesystem"]}) == []
+
+    def test_noqa(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nstorage:\n  data:\n    type: filesystem\n"
+            "    directory: /d  # noqa: CHARMCRAFT-014\n"
+        )
+        assert "CHARMCRAFT-014" not in {d.rule_id for d in list(lint(tmp_charm))}

@@ -315,10 +315,8 @@ class InvalidStorage(Rule):
     a definition that isn't a mapping, one with a missing ``type`` or a
     ``type`` other than ``filesystem`` or ``block``, a ``location`` on
     ``block`` storage, and a ``multiple`` that isn't a mapping with a
-    ``range``. Juju silently
-    ignores a key it doesn't know (so ``directory:`` instead of
-    ``location:`` deploys, but mounts somewhere else), which is reported
-    as a warning, as CHARMCRAFT-005 does for resources.
+    ``range``. A key Juju doesn't know is reported by CHARMCRAFT-014
+    instead.
     """
 
     category = "CHARMCRAFT"
@@ -381,6 +379,28 @@ class InvalidStorage(Rule):
                         fix_hint="Write it as 'multiple: {range: 1-3}' (or '1', '1+', '1-')",
                     )
                 )
+        return diagnostics
+
+
+class UnknownStorageField(Rule):
+    """Flag unrecognised keys inside storage definitions.
+
+    Juju silently ignores a key it doesn't know, so ``directory:`` instead
+    of ``location:`` deploys, but mounts somewhere else.
+    """
+
+    category = "CHARMCRAFT"
+    number = 14
+    name = "unknown-storage-field"
+    description = "Unrecognised field inside a storage definition (possible typo)"
+    default_severity = models.Severity.WARNING
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-storage"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        diagnostics: list[models.Diagnostic] = []
+        for storage_name, storage in context.metadata.get("storage").items():
+            if not isinstance(storage.value, dict):
+                continue
             for key, field in storage.items():
                 if key in _KNOWN_STORAGE_FIELDS:
                     continue
@@ -391,8 +411,7 @@ class InvalidStorage(Rule):
                 )
                 diagnostics.append(
                     self.diagnostic(
-                        f"Unrecognised field '{key}' in storage '{storage_name}', which Juju ignores",
-                        severity=models.Severity.WARNING,
+                        f"Unrecognised field '{key}' in storage '{storage_name}' — possible typo",
                         path=field.source,
                         line=field.line,
                         fix_hint=hint,
