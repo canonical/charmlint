@@ -1488,7 +1488,7 @@ class TestInvalidStorage:
     def test_valid_storage(self, tmp_charm: pathlib.Path):
         storage = {
             "data": {"type": "filesystem", "location": "/data", "minimum-size": "1G"},
-            "disk": {"type": "block", "multiple": {"range": "0-3"}, "properties": ["transient"]},
+            "disk": {"type": "block", "multiple": {"range": "1-3"}, "properties": ["transient"]},
         }
         assert self._diags(tmp_charm, storage) == []
 
