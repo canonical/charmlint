@@ -66,7 +66,7 @@ repos:
 
       - id: format
         name: ruff format and fix
-        entry: make format RUFF_FIX_ARGS=--exit-non-zero-on-fix
+        entry: make format
         language: system
         files: \.py$
         pass_filenames: false

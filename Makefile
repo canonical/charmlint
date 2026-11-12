@@ -7,9 +7,6 @@ help:  ## Show this help
 
 # Extra arguments for pytest, for example: make test PYTEST_ARGS="--maxfail=1 -q"
 PYTEST_ARGS ?=
-# Extra arguments for ruff check --fix in `make format`. pre-commit passes
-# --exit-non-zero-on-fix, so that a commit stops when something was fixed.
-RUFF_FIX_ARGS ?=
 
 lint: ruff-check ruff-format-check typecheck docs-check lock-check  ## Everything CI's lint job runs: ruff, ty, and the docs and lock checks
 
@@ -23,7 +20,7 @@ typecheck:  ## Type-check with ty
 	uv run --group dev ty check
 
 format:  ## Apply safe lint fixes, then format code with ruff
-	uv run --group dev ruff check --fix $(RUFF_FIX_ARGS)
+	uv run --group dev ruff check --fix
 	uv run --group dev ruff format
 
 test:  ## Run unit tests
