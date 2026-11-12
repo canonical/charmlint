@@ -22,7 +22,7 @@ ruff-format-check:  ## Check formatting with ruff
 typecheck:  ## Type-check with ty
 	uv run --group dev ty check
 
-format:  ## Format code with ruff and apply safe lint fixes
+format:  ## Apply safe lint fixes, then format code with ruff
 	uv run --group dev ruff check --fix $(RUFF_FIX_ARGS)
 	uv run --group dev ruff format
 
