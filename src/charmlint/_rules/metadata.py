@@ -445,7 +445,8 @@ def _find_docs_conf(charm_dir: pathlib.Path) -> pathlib.Path | None:
     repository only the charm directory is checked, so an unrelated
     ``docs/`` higher up the file system is never picked up.
     """
-    directories = [charm_dir.resolve(), *charm_dir.resolve().parents]
+    base = charm_dir.resolve()
+    directories = [base, *base.parents]
     root = next((i for i, d in enumerate(directories) if (d / ".git").exists()), 0)
     for directory in directories[: root + 1]:
         conf = directory / "docs" / "conf.py"
