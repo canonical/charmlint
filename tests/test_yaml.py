@@ -254,7 +254,7 @@ class TestPartPlugin:
 
     def _part(self, tmp_path: pathlib.Path, part: str) -> Yaml:
         loaded = _yaml.load(_write(tmp_path, "charmcraft.yaml", f"parts:\n  {part}\n"))
-        ((name, value),) = loaded.get("parts").items()
+        ((_, value),) = loaded.get("parts").items()
         return value
 
     def test_named_plugin(self, tmp_path: pathlib.Path):

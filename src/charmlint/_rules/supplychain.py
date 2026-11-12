@@ -211,7 +211,8 @@ def _dependency_part(metadata: models.Yaml) -> tuple[str, models.Yaml] | None:
 
     A charm has at most one. Across the corpus, 587 of 915 charms
     declare exactly one part using a dependency-resolving plugin and
-    **none declares two** (``charm`` 280, ``uv`` 207, ``poetry`` 100).
+    **none declares two**; the sets are disjoint as well as unique
+    (``charm`` 280, ``uv`` 207, ``poetry`` 100).
     That counts a part with no ``plugin``, which craft-parts builds with
     the plugin named after the part: 222 charms have a bare ``charm:``
     part. The remaining 328 either declare ``parts`` using only ``nil``,
