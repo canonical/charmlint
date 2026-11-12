@@ -330,9 +330,10 @@ Flag storage definitions that `juju deploy` will reject.
 
 `charmcraft pack` does not validate the `storage` block, so a bad
 definition packs cleanly and only fails at deploy time. Juju rejects
-a definition with a missing `type` or a `type` other than
-`filesystem` or `block`, a `location` on `block` storage, and
-a `multiple` that isn't a mapping with a `range`. Juju silently
+a definition that isn't a mapping, one with a missing `type` or a
+`type` other than `filesystem` or `block`, a `location` on
+`block` storage, and a `multiple` that isn't a mapping with a
+`range`. Juju silently
 ignores a key it doesn't know (so `directory:` instead of
 `location:` deploys, but mounts somewhere else), which is reported
 as a warning, as CHARMCRAFT-005 does for resources.

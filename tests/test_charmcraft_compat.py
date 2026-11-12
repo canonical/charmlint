@@ -1541,9 +1541,12 @@ class TestInvalidStorage:
         assert diags[0].severity == Severity.WARNING
         assert "'colour'" in diags[0].message
 
-    def test_storage_written_as_a_list_is_ignored(self, tmp_charm: pathlib.Path):
-        write_charmcraft_yaml(tmp_charm, {"name": "test", "storage": {"data": ["filesystem"]}})
-        assert "CHARMCRAFT-012" not in {d.rule_id for d in list(lint(tmp_charm))}
+    @pytest.mark.parametrize("value", [["filesystem"], "filesystem"])
+    def test_storage_that_is_not_a_mapping(self, tmp_charm: pathlib.Path, value: object):
+        diags = self._diags(tmp_charm, {"data": value})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "not a mapping" in diags[0].message
 
     def test_noqa(self, tmp_charm: pathlib.Path):
         (tmp_charm / "charmcraft.yaml").write_text(

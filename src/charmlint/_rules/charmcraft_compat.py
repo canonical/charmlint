@@ -312,9 +312,10 @@ class InvalidStorage(Rule):
 
     ``charmcraft pack`` does not validate the ``storage`` block, so a bad
     definition packs cleanly and only fails at deploy time. Juju rejects
-    a definition with a missing ``type`` or a ``type`` other than
-    ``filesystem`` or ``block``, a ``location`` on ``block`` storage, and
-    a ``multiple`` that isn't a mapping with a ``range``. Juju silently
+    a definition that isn't a mapping, one with a missing ``type`` or a
+    ``type`` other than ``filesystem`` or ``block``, a ``location`` on
+    ``block`` storage, and a ``multiple`` that isn't a mapping with a
+    ``range``. Juju silently
     ignores a key it doesn't know (so ``directory:`` instead of
     ``location:`` deploys, but mounts somewhere else), which is reported
     as a warning, as CHARMCRAFT-005 does for resources.
@@ -331,6 +332,14 @@ class InvalidStorage(Rule):
         diagnostics: list[models.Diagnostic] = []
         for storage_name, storage in context.metadata.get("storage").items():
             if not isinstance(storage.value, dict):
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Storage '{storage_name}' is not a mapping, so Juju can't read it",
+                        path=storage.source,
+                        line=storage.line,
+                        fix_hint="Write it as a mapping, e.g. 'type: filesystem'",
+                    )
+                )
                 continue
             storage_type = storage.get("type")
             if not storage_type.present:
