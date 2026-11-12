@@ -11,6 +11,7 @@ import ast
 import pathlib
 import urllib.parse
 
+from .. import _discovery
 from .. import _models as models
 from ._base import Rule
 
@@ -447,14 +448,13 @@ def _find_docs_conf(charm_dir: pathlib.Path) -> pathlib.Path | None:
     ``docs/`` higher up the file system is never picked up.
     """
     base = charm_dir.resolve()
-    directories = [base, *base.parents]
-    # 0 covers both "the charm dir is the repository root" and "no
-    # repository": either way, only the charm dir is checked.
-    root = next((i for i, d in enumerate(directories) if (d / ".git").exists()), 0)
-    for directory in directories[: root + 1]:
+    root = _discovery.repo_root(base)
+    for directory in (base, *base.parents):
         conf = directory / "docs" / "conf.py"
         if conf.is_file():
             return conf
+        if directory == root:
+            break
     return None
 
 
