@@ -825,6 +825,49 @@ class TestCharmObservesNoEvents:
         assert hits[0].path == "src/charm.py"
         assert hits[0].line == 4
 
+    def test_reconciling_in_init_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self._reconcile()
+
+                def _reconcile(self):
+                    pass
+
+
+            ops.main(C)
+            """,
+        )
+        assert hits == []
+
+    def test_reconciler_collaborator_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+            from ops.manifests import Reconciler
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self.reconciler = Reconciler(self, self.reconcile)
+
+                def reconcile(self, event):
+                    pass
+
+
+            ops.main(C)
+            """,
+        )
+        assert hits == []
+
     def test_two_argument_super_does_not_suppress(self, tmp_charm: pathlib.Path):
         hits = self._hits(
             tmp_charm,
