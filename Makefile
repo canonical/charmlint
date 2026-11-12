@@ -3,7 +3,7 @@
 .PHONY: help lint ruff-check ruff-format-check typecheck format test test-network docs docs-check lock lock-check
 
 help:  ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 # Extra arguments for pytest, for example: make test PYTEST_ARGS="--maxfail=1 -q"
 PYTEST_ARGS ?=
