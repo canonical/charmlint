@@ -16,6 +16,11 @@ from ._base import Rule
 # as a service's, so the same coercion trap applies to it.
 _SERVICE_MARKERS = frozenset({"override", "command"})
 
+# The consequence every PEBBLE-005 message ends with, whatever the value.
+_PLAN_MISMATCH = (
+    "the layer will not match the plan Pebble returns, so comparing them always differs"
+)
+
 
 def _environment_dicts(module: models.Module) -> list[ast.Dict]:
     """Return every ``environment`` dict literal of a Pebble service or check.
@@ -93,8 +98,7 @@ class PebbleEnvNonString(Rule):
                 message = (
                     f"Pebble layer environment value for {described} is None "
                     f"— Pebble turns it into '', so the variable is set but empty "
-                    f"rather than absent, and the layer will not match the plan "
-                    f"Pebble returns, so comparing them always differs"
+                    f"rather than absent, and {_PLAN_MISMATCH}"
                 )
                 severity = models.Severity.WARNING
                 fix_hint = "Use a string, or omit the variable when it has no value"
@@ -104,8 +108,7 @@ class PebbleEnvNonString(Rule):
                 message = (
                     f"Pebble layer environment value for {described} is a bool "
                     f"— Pebble turns it into '{literal.lower()}', where workloads "
-                    f"often expect '{int(value.value)}', and the layer will not match "
-                    f"the plan Pebble returns, so comparing them always differs"
+                    f"often expect '{int(value.value)}', and {_PLAN_MISMATCH}"
                 )
                 fix_hint = (
                     f"Write the value the workload expects, "
@@ -114,8 +117,7 @@ class PebbleEnvNonString(Rule):
             else:
                 message = (
                     f"Pebble layer environment value for {described} is not a string "
-                    f"— Pebble converts it, but the layer will not match the plan "
-                    f"Pebble returns, so comparing them always differs"
+                    f"— Pebble converts it, but {_PLAN_MISMATCH}"
                 )
                 fix_hint = f"Use a string literal, e.g. '{value.value}'"
             diagnostics.append(
