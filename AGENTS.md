@@ -56,6 +56,19 @@ out top-down and let the reader follow the call graph without scrolling back:
   rule modules belongs in `_ast.py` or `_yaml.py` instead — check there before
   writing a new walker or parser.
 
+## What a rule may look at
+
+A lint should give the same answer for the same charm, so keep what a rule reads
+close to the charm:
+
+- The charm directory, and upwards to the root of the git repository that holds
+  it (a monorepo's shared docs or rocks), but no further. Outside a repository,
+  only the charm directory.
+- git, for tracked state that ends up in the packed charm, such as a file's
+  recorded mode. Fall back to the filesystem when there's no repository or no
+  `git`.
+- Never the network, and nothing outside the repository.
+
 ## Security
 
 See [SECURITY.md](SECURITY.md).

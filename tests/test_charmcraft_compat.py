@@ -1,6 +1,8 @@
 """Tests for charmcraft-compatible rules."""
 
 import pathlib
+import shutil
+import subprocess
 
 import pytest
 
@@ -8,6 +10,8 @@ from charmlint._linter import lint
 from charmlint._models import CharmContext, Diagnostic, LintReport, Severity
 from charmlint._rules.charmcraft_compat import Entrypoint
 from tests.conftest import write_charm_source, write_charmcraft_yaml
+
+_OPS_MAIN = "import ops\n\nops.main(ops.CharmBase)\n"
 
 
 class TestDeprecatedSeries:
@@ -237,10 +241,167 @@ class TestEntrypoint:
         assert len(diags) == 1
         assert "does not exist" in diags[0].message
 
-    def test_no_dispatch(self, tmp_charm: pathlib.Path):
+    @staticmethod
+    def _ids(tmp_charm: pathlib.Path) -> list[Diagnostic]:
+        return [d for d in list(lint(tmp_charm)) if d.rule_id == "CHARMCRAFT-003"]
+
+    def test_no_dispatch_with_executable_entrypoint(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
-        report = lint(tmp_charm)
-        assert "CHARMCRAFT-003" not in {d.rule_id for d in list(report)}
+        write_charm_source(tmp_charm, "import ops\n")
+        assert self._ids(tmp_charm) == []
+
+    def test_no_dispatch_and_no_charm_code(self, tmp_charm: pathlib.Path):
+        # A charmcraft.yaml that only publishes libraries, or a charm whose
+        # code is copied in at build time.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        assert self._ids(tmp_charm) == []
+
+    def test_no_dispatch_and_no_entrypoint(self, tmp_charm: pathlib.Path):
+        # The charm part charmcraft adds when there are no parts.
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
+        [diag] = self._ids(tmp_charm)
+        assert diag.severity == Severity.WARNING
+        assert "'src/charm.py' does not exist" in diag.message
+
+    def test_no_dispatch_entrypoint_in_a_package(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "parts": {"charm": {}}})
+        (tmp_charm / "src" / "charm").mkdir()
+        (tmp_charm / "src" / "charm" / "charm.py").write_text(_OPS_MAIN)
+        [diag] = self._ids(tmp_charm)
+        assert "does not exist" in diag.message
+
+    def test_charm_entrypoint_setting(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "parts": {"charm": {"charm-entrypoint": "src/main.py"}}},
+        )
+        write_charm_source(tmp_charm, "import ops\n", filename="main.py")
+        assert self._ids(tmp_charm) == []
+
+    def test_missing_configured_entrypoint_points_at_the_setting(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nparts:\n  charm:\n    charm-entrypoint: src/missing.py\n"
+        )
+        write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
+        [diag] = self._ids(tmp_charm)
+        assert "does not exist" in diag.message
+        assert diag.severity == Severity.WARNING
+        assert (diag.path, diag.line) == ("charmcraft.yaml", 4)
+
+    @pytest.mark.parametrize("entrypoint", ["../shared/charm.py", "/opt/charm.py"])
+    def test_entrypoint_outside_the_charm_is_skipped(
+        self, tmp_charm: pathlib.Path, entrypoint: str
+    ):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "parts": {"charm": {"charm-entrypoint": entrypoint}}},
+        )
+        write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
+        assert self._ids(tmp_charm) == []
+
+    def test_charm_plugin_entrypoint_not_executable(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "parts": {"charm": {}}})
+        write_charm_source(tmp_charm, "import ops\n", executable=False)
+        [diag] = self._ids(tmp_charm)
+        assert "not executable" in diag.message
+        # charmcraft's own Entrypoint linter fails the pack on this.
+        assert diag.severity == Severity.ERROR
+
+    @pytest.mark.parametrize("parts", [{}, None])
+    def test_empty_parts_get_the_charm_plugin(self, tmp_charm: pathlib.Path, parts: object):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "parts": parts})
+        write_charm_source(tmp_charm, "import ops\n", executable=False)
+        [diag] = self._ids(tmp_charm)
+        assert "not executable" in diag.message
+
+    @pytest.mark.parametrize("plugin", ["uv", "poetry", "python"])
+    def test_venv_plugin_entrypoint_need_not_be_executable(
+        self, tmp_charm: pathlib.Path, plugin: str
+    ):
+        write_charmcraft_yaml(
+            tmp_charm, {"name": "test", "parts": {"charm": {"plugin": plugin, "source": "."}}}
+        )
+        write_charm_source(tmp_charm, "import ops\n", executable=False)
+        assert self._ids(tmp_charm) == []
+
+    def test_part_built_from_elsewhere_is_skipped(self, tmp_charm: pathlib.Path):
+        # The part may put src/charm.py in the prime directory itself.
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "parts": {"my-charm": {"plugin": "uv", "source": "./charm"}}},
+        )
+        write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
+        assert self._ids(tmp_charm) == []
+
+    @pytest.mark.parametrize("plugin", ["uv", "dump"])
+    def test_generated_dispatch_entrypoint_missing(self, tmp_charm: pathlib.Path, plugin: str):
+        # charmcraft generates the python-run dispatch whatever the plugin.
+        write_charmcraft_yaml(
+            tmp_charm, {"name": "test", "parts": {"my-charm": {"plugin": plugin, "source": "."}}}
+        )
+        write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
+        [diag] = self._ids(tmp_charm)
+        assert "'src/charm.py' does not exist" in diag.message
+        assert diag.severity == Severity.WARNING
+
+    @pytest.mark.parametrize(
+        "setup",
+        [
+            pytest.param(lambda d: (d / "hooks").mkdir(), id="hooks"),
+            pytest.param(lambda d: (d / "layer.yaml").write_text("includes: []\n"), id="layer"),
+            pytest.param(
+                lambda d: (d / "src" / "layer.yaml").write_text("includes: []\n"), id="src-layer"
+            ),
+        ],
+    )
+    def test_hook_charms_skipped(self, tmp_charm: pathlib.Path, setup):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        setup(tmp_charm)
+        assert self._ids(tmp_charm) == []
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {"type": "bundle"},
+            {"name": "test", "parts": {"charm": {"plugin": "reactive", "source": "."}}},
+        ],
+        ids=["bundle", "reactive"],
+    )
+    def test_not_built_with_a_generated_dispatch(self, tmp_charm: pathlib.Path, data: dict):
+        write_charmcraft_yaml(tmp_charm, data)
+        assert self._ids(tmp_charm) == []
+
+    def test_git_mode_beats_working_tree(self, tmp_charm: pathlib.Path):
+        git = shutil.which("git")
+        if git is None:
+            pytest.skip("needs git")
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n")
+        for args in (
+            ["init", "-q"],
+            ["add", "src/charm.py"],
+            ["update-index", "--chmod=-x", "src/charm.py"],
+        ):
+            subprocess.run(  # ruff: ignore[S603]
+                [git, *args], cwd=tmp_charm, check=True, capture_output=True
+            )
+        # Executable on disk, but not in what git would commit.
+        [diag] = self._ids(tmp_charm)
+        assert "not executable" in diag.message
+
+    def test_symlinked_entrypoint_follows_its_target(self, tmp_charm: pathlib.Path):
+        git = shutil.which("git")
+        if git is None:
+            pytest.skip("needs git")
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n", filename="real.py")
+        (tmp_charm / "src" / "charm.py").symlink_to("real.py")
+        for args in (["init", "-q"], ["add", "src/charm.py", "src/real.py"]):
+            subprocess.run(  # ruff: ignore[S603]
+                [git, *args], cwd=tmp_charm, check=True, capture_output=True
+            )
+        assert self._ids(tmp_charm) == []
 
     def test_dispatch_without_exec(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
