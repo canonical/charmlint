@@ -148,7 +148,9 @@ _VERSION_CALLS = frozenset({"set_workload_version", "application_version_set"})
 # ``charms_openstack.charm`` is the base-class module for the OpenStack
 # charms: ``OpenStackCharm.assess_status()`` calls
 # ``hookenv.application_version_set``. ``ops_sunbeam`` and ``charm_refresh``
-# do not set a version, so they are deliberately absent.
+# do not set a version, so they are deliberately absent. The
+# ``from charms_openstack import charm`` spelling isn't matched, and no corpus
+# charm uses it.
 _WORKLOAD_VERSION_SETTERS = frozenset({
     "coordinated_workers.worker",
     "cosl.coordinated_workers.worker",

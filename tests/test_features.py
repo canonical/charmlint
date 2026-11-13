@@ -4,6 +4,8 @@ import pathlib
 import textwrap
 from typing import Any
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from tests.conftest import write_charm_source, write_charmcraft_yaml
@@ -316,13 +318,24 @@ class TestNoSetWorkloadVersion:
         """
         assert len(_lint(tmp_charm, {"containers": _CONTAINERS}, source)) == 1
 
-    def test_charms_openstack_charm_suppresses(self, tmp_charm: pathlib.Path):
-        source = """\
+    @pytest.mark.parametrize(
+        "source",
+        [
+            """\
             import charms_openstack.charm
 
             class C(charms_openstack.charm.OpenStackCharm):
                 pass
-        """
+            """,
+            """\
+            from charms_openstack.charm import OpenStackCharm
+
+            class C(OpenStackCharm):
+                pass
+            """,
+        ],
+    )
+    def test_charms_openstack_charm_suppresses(self, tmp_charm: pathlib.Path, source: str):
         assert _lint(tmp_charm, {"containers": _CONTAINERS}, source) == []
 
     def test_ops_sunbeam_does_not_suppress(self, tmp_charm: pathlib.Path):
