@@ -334,13 +334,20 @@ class TestNoSetWorkloadVersion:
     def test_charms_openstack_charm_suppresses(self, tmp_charm: pathlib.Path, source: str):
         assert _lint(tmp_charm, {"containers": _CONTAINERS}, source) == []
 
-    def test_ops_sunbeam_does_not_suppress(self, tmp_charm: pathlib.Path):
-        source = """\
+    @pytest.mark.parametrize(
+        "source",
+        [
+            """\
             import ops_sunbeam.charm
 
             class C(ops_sunbeam.charm.OSBaseOperatorCharm):
                 pass
-        """
+            """,
+            # Full of workload_version names, but never sets the version.
+            "import charm_refresh\n",
+        ],
+    )
+    def test_non_setting_framework_does_not_suppress(self, tmp_charm: pathlib.Path, source: str):
         assert len(_lint(tmp_charm, {"containers": _CONTAINERS}, source)) == 1
 
     def test_charm_with_no_source_not_flagged(self, tmp_charm: pathlib.Path):
