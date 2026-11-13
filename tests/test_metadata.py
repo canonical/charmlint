@@ -263,3 +263,162 @@ class TestCircularWebsiteLink:
         write_charmcraft_yaml(tmp_charm, {"links": {"website": "https://charmhub.io/test-charm"}})
         report = lint(tmp_charm)
         assert "METADATA-010" not in {d.rule_id for d in report}
+
+
+class TestDiscourseDocsLink:
+    """Tests for METADATA-011 — documentation link still on Discourse."""
+
+    def test_fires_with_docs_project(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "links": {"documentation": "https://discourse.charmhub.io/t/x/123"}},
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text('ogp_site_url = "https://x.readthedocs.io/"\n')
+        report = lint(tmp_charm)
+        hits = [d for d in list(report) if d.rule_id == "METADATA-011"]
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.INFO
+        assert "https://x.readthedocs.io/" in (hits[0].fix_hint or "")
+
+    def test_fires_without_suggestion(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "links": {"documentation": "https://discourse.charmhub.io/t/x/123"}},
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text("project = 'x'\n")
+        report = lint(tmp_charm)
+        assert [d for d in list(report) if d.rule_id == "METADATA-011"]
+
+    def test_fires_on_split_metadata(self, tmp_charm: pathlib.Path):
+        # Build config in charmcraft.yaml, metadata (and so ``docs``) in
+        # metadata.yaml.
+        write_charmcraft_yaml(tmp_charm, {"type": "charm"})
+        (tmp_charm / "metadata.yaml").write_text(
+            "name: x\ndocs: https://discourse.charmhub.io/t/x/123\n"
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text('ogp_site_url = "https://x.readthedocs.io/"\n')
+        hits = [d for d in list(lint(tmp_charm)) if d.rule_id == "METADATA-011"]
+        assert len(hits) == 1
+        assert hits[0].path == "metadata.yaml"
+        assert "'docs'" in hits[0].message
+
+    def test_silent_without_docs_project(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "links": {"documentation": "https://discourse.charmhub.io/t/x/123"}},
+        )
+        report = lint(tmp_charm)
+        assert "METADATA-011" not in {d.rule_id for d in report}
+
+    def test_silent_for_published_docs(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "x", "links": {"documentation": "https://x.readthedocs.io/"}},
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text("project = 'x'\n")
+        report = lint(tmp_charm)
+        assert "METADATA-011" not in {d.rule_id for d in report}
+
+    def _discourse_charm(self, charm_dir: pathlib.Path) -> None:
+        write_charmcraft_yaml(
+            charm_dir,
+            {"name": "x", "links": {"documentation": "https://discourse.charmhub.io/t/x/123"}},
+        )
+
+    def test_noqa_on_the_link_line(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: x\nlinks:\n"
+            "  documentation: https://discourse.charmhub.io/t/x/123  # noqa: METADATA-011\n"
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text("project = 'x'\n")
+        assert "METADATA-011" not in {d.rule_id for d in lint(tmp_charm)}
+
+    def test_fires_for_docs_project_at_monorepo_root(self, tmp_path: pathlib.Path):
+        charm_dir = tmp_path / "repo" / "charms" / "x"
+        charm_dir.mkdir(parents=True)
+        (tmp_path / "repo" / ".git").mkdir()
+        (tmp_path / "repo" / "docs").mkdir()
+        (tmp_path / "repo" / "docs" / "conf.py").write_text("html_baseurl = 'https://x.io/'\n")
+        self._discourse_charm(charm_dir)
+        hits = [d for d in list(lint(charm_dir)) if d.rule_id == "METADATA-011"]
+        assert len(hits) == 1
+        assert "https://x.io/" in (hits[0].fix_hint or "")
+
+    def test_ignores_docs_project_above_the_repository(self, tmp_path: pathlib.Path):
+        charm_dir = tmp_path / "repo"
+        charm_dir.mkdir()
+        (charm_dir / ".git").mkdir()
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "conf.py").write_text("project = 'other'\n")
+        self._discourse_charm(charm_dir)
+        assert "METADATA-011" not in {d.rule_id for d in lint(charm_dir)}
+
+    def test_ignores_parent_docs_project_outside_a_repository(self, tmp_charm: pathlib.Path):
+        (tmp_charm.parent / "docs").mkdir()
+        (tmp_charm.parent / "docs" / "conf.py").write_text("project = 'other'\n")
+        self._discourse_charm(tmp_charm)
+        assert "METADATA-011" not in {d.rule_id for d in lint(tmp_charm)}
+
+    def test_list_of_links(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {
+                "name": "x",
+                "links": {
+                    "documentation": [
+                        "https://x.readthedocs.io/",
+                        "https://discourse.charmhub.io/t/x/123",
+                    ]
+                },
+            },
+        )
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text("project = 'x'\n")
+        hits = [d for d in list(lint(tmp_charm)) if d.rule_id == "METADATA-011"]
+        assert len(hits) == 1
+        assert "discourse" in hits[0].message
+
+    @pytest.mark.parametrize(
+        ("conf", "expected"),
+        [
+            (
+                "ogp_site_url = 'https://x.readthedocs.io/'\nhtml_baseurl = 'https://x.io/'\n",
+                "https://x.io/",
+            ),
+            (
+                "ogp_site_url = 'https://canonical-starter-pack.readthedocs-hosted.com/'\n",
+                None,
+            ),
+            (
+                "ogp_site_url = 'https://x.io/'\n"
+                "html_baseurl = os.environ.get('READTHEDOCS_CANONICAL_URL', '/')\n",
+                "https://x.io/",
+            ),
+            # A conditional can't be read without running conf.py.
+            ("html_baseurl = 'https://x.io/' if rtd else 'https://old.io/'\n", None),
+            # The last assignment is the one Sphinx sees.
+            (
+                "html_baseurl = 'https://old.io/'\nhtml_baseurl = 'https://x.io/'\n",
+                "https://x.io/",
+            ),
+            ("html_baseurl: str = 'https://x.io/'\n", "https://x.io/"),
+            # A Charmhub page isn't the published docs.
+            ("ogp_site_url = 'https://charmhub.io/x/'\n", None),
+            # A conf.py that doesn't parse gives no suggestion, not a crash.
+            ("html_baseurl = 'https://x.io/'\nprint 'x'\n", None),
+        ],
+    )
+    def test_suggestion(self, tmp_charm: pathlib.Path, conf: str, expected: str | None):
+        self._discourse_charm(tmp_charm)
+        (tmp_charm / "docs").mkdir()
+        (tmp_charm / "docs" / "conf.py").write_text(conf)
+        [hit] = [d for d in list(lint(tmp_charm)) if d.rule_id == "METADATA-011"]
+        if expected:
+            assert expected in (hit.fix_hint or "")
+        else:
+            assert "published URL" in (hit.fix_hint or "")

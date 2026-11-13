@@ -64,6 +64,7 @@ config file overrides it per rule.
 | [METADATA-008](#metadata-008-requires-missing-optional) | `requires-missing-optional` | Info | requires endpoint missing explicit `optional` field |
 | [METADATA-009](#metadata-009-provides-missing-optional) | `provides-missing-optional` | Info | provides endpoint missing explicit `optional` field |
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
+| [METADATA-011](#metadata-011-discourse-docs-link) | `discourse-docs-link` | Info | Documentation link points at Discourse although the charm has a docs project |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
 | [PEBBLE-006](#pebble-006-pebble-check-level-alive) | `pebble-check-level-alive` | Info | Pebble check uses level 'alive', which drives the Kubernetes liveness probe |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
@@ -832,6 +833,25 @@ search, so a `website` field pointing back at it renders a link from
 the page to itself. Sub-pages (`/<charm>/docs`, `/<charm>/configure`)
 are left alone: those carry content the top-level page does not, so
 they are a deliberate destination rather than a circular link.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links>
+
+### METADATA-011 discourse-docs-link
+
+**Info** — Documentation link points at Discourse although the charm has a docs project
+
+Flag a documentation link that still points at Charmhub Discourse.
+
+Charm documentation has moved from Discourse topics to Sphinx projects
+published on Read the Docs. When the charm or its repository has a
+`docs/conf.py`, the documentation link should follow it: the docs
+pull request touches only `docs/`, so the link is easy to leave
+behind. When `conf.py` sets `html_baseurl` or `ogp_site_url` to
+a plain string, the fix hint suggests that URL.
+
+A docs project that exists but is not published yet is a false positive;
+silence it with `# noqa: METADATA-011` on the documentation link's
+line until it is.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links>
 

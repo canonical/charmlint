@@ -12,7 +12,7 @@ import pathlib
 import re
 from typing import Any
 
-from .. import _dependencies, _yaml
+from .. import _dependencies, _discovery, _yaml
 from .. import _models as models
 from ._base import Rule
 
@@ -408,7 +408,7 @@ def _locally_built_images(charm_dir: pathlib.Path) -> set[str]:
     """
     charm_dir = charm_dir.resolve()
     names: set[str] = set()
-    for root in {charm_dir, _repo_root(charm_dir)}:
+    for root in {charm_dir, _discovery.repo_root(charm_dir)}:
         for depth in ("", "*/", "*/*/"):
             for rockcraft in root.glob(f"{depth}rockcraft.yaml"):
                 try:
@@ -425,15 +425,3 @@ def _locally_built_images(charm_dir: pathlib.Path) -> set[str]:
             for dockerfile in root.glob(f"{depth}Dockerfile"):
                 names.add(_normalise_image_name(dockerfile.parent.name))
     return names
-
-
-def _repo_root(charm_dir: pathlib.Path) -> pathlib.Path:
-    """Return the root of the git repository holding the charm.
-
-    Falls back to the charm directory itself when it is not in a git
-    repository, so the search never wanders further than it would have.
-    """
-    for directory in (charm_dir, *charm_dir.parents):
-        if (directory / ".git").exists():
-            return directory
-    return charm_dir
