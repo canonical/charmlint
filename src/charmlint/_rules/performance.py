@@ -140,17 +140,14 @@ def _nested_scopes(loop: ast.For | ast.AsyncFor) -> list[ast.AST]:
     scopes: list[ast.AST] = []
 
     def visit(node: ast.AST) -> None:
+        if isinstance(node, _SCOPES):
+            scopes.append(node)
+            return
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, _SCOPES):
-                scopes.append(child)
-            else:
-                visit(child)
+            visit(child)
 
     for statement in loop.body:
-        if isinstance(statement, _SCOPES):
-            scopes.append(statement)
-        else:
-            visit(statement)
+        visit(statement)
     return scopes
 
 
