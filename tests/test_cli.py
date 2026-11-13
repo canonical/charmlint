@@ -11,6 +11,7 @@ import pytest
 
 import charmlint
 from charmlint._cli import main
+from charmlint._linter import lint
 from tests.conftest import make_full_charm, write_charmcraft_yaml
 
 
@@ -69,10 +70,27 @@ class TestCLI:
 
     def test_strict_mode(self, tmp_charm: pathlib.Path):
         make_full_charm(tmp_charm)
+        # --strict only changes the exit code when there are warnings and no
+        # errors, so check the fixture still gives that before relying on it.
+        report = lint(tmp_charm)
+        assert report.error_count == 0
+        assert report.warning_count > 0
         exit_code_normal = main([str(tmp_charm)])
         assert exit_code_normal == 0
         exit_code_strict = main([str(tmp_charm), "--strict"])
-        assert exit_code_strict in (0, 2)
+        assert exit_code_strict == 1
+
+    def test_strict_mode_keeps_2_for_failing_to_run(
+        self, tmp_path: pathlib.Path, tmp_charm: pathlib.Path
+    ):
+        # --strict findings exit 1, so 2 still means charmlint couldn't run,
+        # even on a charm whose warnings would otherwise fail the run.
+        make_full_charm(tmp_charm)
+        assert main(["/nonexistent/path", "--strict"]) == 2
+        assert main([str(tmp_charm), "--strict", "--select", "NOT-A-RULE"]) == 2
+        bad_config = tmp_path / "bad.toml"
+        bad_config.write_text("this is not toml = = =\n")
+        assert main([str(tmp_charm), "--strict", "--config", str(bad_config)]) == 2
 
     def test_version(self, capsys: pytest.CaptureFixture[str]):
         with pytest.raises(SystemExit) as exc_info:

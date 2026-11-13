@@ -170,7 +170,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--strict",
         action="store_true",
         help=(
-            "Exit with code 2 if warnings are found. Errors always exit "
+            "Exit with code 1 if warnings are found. Errors always exit "
             "with code 1 regardless of --strict."
         ),
     )
@@ -278,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     if report.error_count > 0:
         return 1
     if args.strict and report.warning_count > 0:
-        return 2
+        return 1
     return 0
 
 
