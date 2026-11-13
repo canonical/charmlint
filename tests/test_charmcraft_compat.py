@@ -1475,3 +1475,62 @@ class TestOverrideBuildSkipsDefault:
             "  charm:\n    override-build: |  # noqa: CHARMCRAFT-010\n      ./build.sh\n",
         )
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
+
+
+class TestRedeclaredExtensionRelation:
+    """Tests for CHARMCRAFT-013 — relation re-declared over a framework extension."""
+
+    @staticmethod
+    def _lint(charm_dir: pathlib.Path, body: str, extension: str = "flask-framework"):
+        (charm_dir / "charmcraft.yaml").write_text(
+            f"name: test\nextensions:\n  - {extension}\n{body}"
+        )
+        return _diags(lint(charm_dir), "CHARMCRAFT-013")
+
+    @pytest.mark.parametrize(
+        ("section", "name"),
+        [
+            ("requires", "ingress"),
+            ("requires", "logging"),
+            ("provides", "metrics-endpoint"),
+            ("provides", "grafana-dashboard"),
+        ],
+    )
+    def test_redeclared_relation_is_an_error(
+        self, tmp_charm: pathlib.Path, section: str, name: str
+    ):
+        [diag] = self._lint(tmp_charm, f"{section}:\n  {name}:\n    optional: true\n")
+        assert diag.severity == Severity.ERROR
+        assert diag.line == 5
+        assert "overlapping keys" in diag.message
+        assert "flask-framework" in diag.message
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # charmcraft checks the key, not the value, so an identical
+            # restatement fails the pack too.
+            "requires:\n  ingress:\n    interface: ingress\n    limit: 1\n",
+            "provides:\n  grafana-dashboard: {}\n",
+        ],
+    )
+    def test_identical_restatement_is_an_error_too(self, tmp_charm: pathlib.Path, body: str):
+        [diag] = self._lint(tmp_charm, body, extension="django-framework")
+        assert diag.severity == Severity.ERROR
+        assert "django-framework" in diag.message
+
+    def test_no_extension_is_clean(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "name: test\nrequires:\n  ingress:\n    interface: other\n"
+        )
+        assert not _diags(lint(tmp_charm), "CHARMCRAFT-013")
+
+    def test_other_relation_is_clean(self, tmp_charm: pathlib.Path):
+        assert not self._lint(
+            tmp_charm, "requires:\n  database:\n    interface: postgresql_client\n"
+        )
+
+    def test_noqa_suppresses(self, tmp_charm: pathlib.Path):
+        assert not self._lint(
+            tmp_charm, "requires:\n  ingress:  # noqa: CHARMCRAFT-013\n    interface: other\n"
+        )

@@ -36,6 +36,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-008](#charmcraft-008-charm-user) | `charm-user` | Warning | Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user' |
 | [CHARMCRAFT-009](#charmcraft-009-container-runs-as-root) | `container-runs-as-root` | Warning | Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity |
 | [CHARMCRAFT-010](#charmcraft-010-override-build-skips-default) | `override-build-skips-default` | Warning | override-build never runs 'craftctl default' for a Python plugin |
+| [CHARMCRAFT-013](#charmcraft-013-redeclared-extension-relation) | `redeclared-extension-relation` | Error | 12-factor charm re-declares a relation its extension already provides |
 | [CONFIG-001](#config-001-config-missing-type) | `config-missing-type` | Warning | Config option is missing a type |
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
@@ -320,6 +321,22 @@ plugin as a shell around `charm build`, should be suppressed with a
 `noqa` on the `override-build` line.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build>
+
+### CHARMCRAFT-013 redeclared-extension-relation
+
+**Error** — 12-factor charm re-declares a relation its extension already provides
+
+Flag a 12-factor charm that re-declares a relation its extension provides.
+
+The `*-framework` extensions declare `ingress` and `logging` in
+`requires`, and `metrics-endpoint` and `grafana-dashboard` in
+`provides`. charmcraft refuses to pack a `charmcraft.yaml` that
+declares any of them again, whatever the value, because the
+extension's `requires` and `provides` may not overlap the charm's.
+Reporting it here names the problem before a pack rather than partway
+through one.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/extensions/>
 
 ## CONFIG
 
