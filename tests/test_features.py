@@ -794,3 +794,243 @@ class TestNoConfigChangedObserver:
             tmp_charm, _charm("framework.observe(self.on.start, self._handler)")
         )
         assert len(findings) == 1
+
+
+class TestCharmObservesNoEvents:
+    """Tests for FEATURES-008 — charm class that observes no events."""
+
+    @staticmethod
+    def _hits(charm_dir: pathlib.Path, source: str):
+        write_charmcraft_yaml(charm_dir, {"name": "test"})
+        write_charm_source(charm_dir, textwrap.dedent(source))
+        return [d for d in lint(charm_dir) if d.rule_id == "FEATURES-008"]
+
+    def test_no_observers_flagged(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+
+
+            ops.main(C)
+            """,
+        )
+        assert len(hits) == 1
+        assert hits[0].severity == Severity.WARNING
+        assert hits[0].path == "src/charm.py"
+        assert hits[0].line == 4
+
+    def test_imported_charm_handed_to_main_suppresses(self, tmp_charm: pathlib.Path):
+        # The mysql-operators shape: a local fallback class, but the charm
+        # that usually runs comes from a shared package.
+        hits = self._hits(
+            tmp_charm,
+            """\
+            from ops.charm import CharmBase
+            from ops.main import main
+            from single_kernel.charm import VMCharm, check_architecture
+
+
+            class WrongArchitectureCharm(CharmBase):
+                def __init__(self, *args):
+                    super().__init__(*args)
+                    raise RuntimeError("wrong architecture")
+
+
+            if __name__ == "__main__":
+                if check_architecture():
+                    main(VMCharm)
+                else:
+                    main(WrongArchitectureCharm)
+            """,
+        )
+        assert hits == []
+
+    def test_observer_in_a_later_module_suppresses(self, tmp_charm: pathlib.Path):
+        # Modules are read in sorted order, so charm.py records the plain
+        # class before handlers.py turns out to observe for it.
+        (tmp_charm / "src" / "handlers.py").write_text(
+            textwrap.dedent(
+                """\
+                def wire_up(charm):
+                    charm.framework.observe(charm.on.start, charm._on_start)
+                """
+            )
+        )
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+
+
+            ops.main(C)
+            """,
+        )
+        assert hits == []
+
+    def test_reconciling_in_init_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self._reconcile()
+
+                def _reconcile(self):
+                    pass
+
+
+            ops.main(C)
+            """,
+        )
+        assert hits == []
+
+    def test_reconciler_collaborator_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+            from ops.manifests import Reconciler
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self.reconciler = Reconciler(self, self.reconcile)
+
+                def reconcile(self, event):
+                    pass
+
+
+            ops.main(C)
+            """,
+        )
+        assert hits == []
+
+    def test_two_argument_super_does_not_suppress(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super(C, self).__init__(framework)
+
+
+            ops.main(C)
+            """,
+        )
+        assert len(hits) == 1
+
+    def test_self_passed_outside_the_charm_class_does_not_suppress(self, tmp_charm: pathlib.Path):
+        # Only a charm class handing itself to a collaborator counts; a
+        # helper class in another module doing the same says nothing.
+        (tmp_charm / "src" / "workload.py").write_text(
+            textwrap.dedent(
+                """\
+                class Workload:
+                    def __init__(self, container):
+                        self.manager = Manager(self)
+                """
+            )
+        )
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+
+
+            ops.main(C)
+            """,
+        )
+        assert len(hits) == 1
+        assert hits[0].path == "src/charm.py"
+
+    def test_observer_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    framework.observe(self.on.start, self._on_start)
+
+                def _on_start(self, event):
+                    pass
+            """,
+        )
+        assert not hits
+
+    def test_opaque_observe_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    observe_events(self, EVENTS, self._reconcile)
+            """,
+        )
+        assert not hits
+
+    def test_library_given_self_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+
+
+            class C(ops.CharmBase):
+                def __init__(self, framework):
+                    super().__init__(framework)
+                    self.tracing = TracingEndpointRequirer(self)
+            """,
+        )
+        assert not hits
+
+    def test_framework_base_suppresses(self, tmp_charm: pathlib.Path):
+        hits = self._hits(
+            tmp_charm,
+            """\
+            import ops
+            from somewhere import BaseCharm
+
+
+            class C(BaseCharm):
+                pass
+
+
+            ops.main(C)
+            """,
+        )
+        assert not hits
+
+    def test_no_charm_class_not_flagged(self, tmp_charm: pathlib.Path):
+        assert not self._hits(tmp_charm, "x = 1\n")
