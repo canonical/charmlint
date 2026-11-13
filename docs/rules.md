@@ -209,11 +209,13 @@ builds it:
 A charm with `hooks/` or a `layer.yaml` (at the top or in
 `src/`), a part using the `reactive` plugin, and a bundle are
 passed over: their hooks don't come from a generated `dispatch`.
-A missing entrypoint is only reported
-when the charm calls `ops.main()` somewhere else, such as
-`src/charm/charm.py`. Without that, it's a `charmcraft.yaml` that
-only publishes libraries, or a charm whose code is copied in at build
-time.
+A missing entrypoint is only reported when the charm calls
+`ops.main()` somewhere else, such as `src/charm/charm.py`. Without
+that, it's a `charmcraft.yaml` that only publishes libraries, or a
+charm whose code is copied in at build time. Even then the build may
+copy the entrypoint in, as a charm with `k8s_charm.py` and
+`machine_charm.py` does, so a missing entrypoint for a generated
+`dispatch` is a warning rather than an error.
 
 Anything the script does not spell out statically is left alone: a
 command built from a shell variable, a path leading outside the

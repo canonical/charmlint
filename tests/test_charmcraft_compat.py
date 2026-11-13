@@ -261,7 +261,7 @@ class TestEntrypoint:
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
         [diag] = self._ids(tmp_charm)
-        assert diag.severity == Severity.ERROR
+        assert diag.severity == Severity.WARNING
         assert "'src/charm.py' does not exist" in diag.message
 
     def test_no_dispatch_entrypoint_in_a_package(self, tmp_charm: pathlib.Path):
@@ -286,6 +286,7 @@ class TestEntrypoint:
         write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
         [diag] = self._ids(tmp_charm)
         assert "does not exist" in diag.message
+        assert diag.severity == Severity.WARNING
         assert (diag.path, diag.line) == ("charmcraft.yaml", 4)
 
     @pytest.mark.parametrize("entrypoint", ["../shared/charm.py", "/opt/charm.py"])
@@ -304,6 +305,8 @@ class TestEntrypoint:
         write_charm_source(tmp_charm, "import ops\n", executable=False)
         [diag] = self._ids(tmp_charm)
         assert "not executable" in diag.message
+        # charmcraft's own Entrypoint linter fails the pack on this.
+        assert diag.severity == Severity.ERROR
 
     @pytest.mark.parametrize("parts", [{}, None])
     def test_empty_parts_get_the_charm_plugin(self, tmp_charm: pathlib.Path, parts: object):
@@ -340,6 +343,7 @@ class TestEntrypoint:
         write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
         [diag] = self._ids(tmp_charm)
         assert "'src/charm.py' does not exist" in diag.message
+        assert diag.severity == Severity.WARNING
 
     @pytest.mark.parametrize(
         "setup",
