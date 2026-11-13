@@ -46,7 +46,8 @@ class LoggingInLoop(Rule):
     the first logging call in its body, and says how many calls there are.
     It recognises calls on a receiver named like a logger (``logger``,
     ``log``, ``logging``, ``self._logger``, ...) using the standard level
-    methods. Calls in a nested function, class or lambda defined in the
+    methods; a call on an inline ``logging.getLogger(...)`` isn't
+    recognised. Calls in a nested function, class or lambda defined in the
     loop are not counted, because they don't necessarily run once per
     iteration, and nor are calls in an ``except`` handler, since logging a
     failure for one relation is the unusual path. A comprehension isn't
