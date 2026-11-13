@@ -60,7 +60,9 @@ class LoggingInLoop(Rule):
     category = "PERFORMANCE"
     number = 1
     name = "logging-in-loop"
-    description = "Logging inside a loop over relations or units runs juju-log once per iteration"
+    description = (
+        "Logging inside a loop over relations or units runs juju-log at least once per iteration"
+    )
     default_severity = models.Severity.WARNING
     reference_url = "https://canonical.com/juju/docs/juju-cli/latest/reference/hook-command/list-of-hook-commands/juju-log/"
 
@@ -76,7 +78,7 @@ class LoggingInLoop(Rule):
                 diagnostics.append(
                     self.diagnostic(
                         f"{count} logging {noun} inside a loop over relations or units; each "
-                        "one runs juju-log as a subprocess on every iteration",
+                        "one runs juju-log as a subprocess at least once per iteration",
                         path=module.path,
                         line=calls[0].lineno,
                         fix_hint="Log once before or after the loop, or only on the unusual path",
