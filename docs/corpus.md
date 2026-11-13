@@ -70,6 +70,8 @@ for charm in charm_dirs():
 
 `lint` raises nothing for a broken charm: an unreadable file becomes a `FATAL` diagnostic in the report. Count those separately — they are neither true nor false positives, and they are usually pre-existing.
 
+Run the measurement on the newest Python release. `ast` parses with the grammar of the interpreter that runs it, so a charm that uses newer syntax is a `FATAL` on an older Python. For example, a charm using 3.14's unparenthesised `except A, B:` can't be parsed on 3.12.
+
 ## Reporting
 
 Two numbers matter, and they answer different questions.
