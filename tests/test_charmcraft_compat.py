@@ -277,13 +277,11 @@ class TestEntrypoint:
             {"name": "test", "parts": {"charm": {"charm-entrypoint": "src/main.py"}}},
         )
         write_charm_source(tmp_charm, "import ops\n", filename="main.py")
-        (tmp_charm / "src" / "main.py").chmod(0o755)
         assert self._ids(tmp_charm) == []
 
     def test_charm_plugin_entrypoint_not_executable(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test", "parts": {"charm": {}}})
-        write_charm_source(tmp_charm, "import ops\n")
-        (tmp_charm / "src" / "charm.py").chmod(0o644)
+        write_charm_source(tmp_charm, "import ops\n", executable=False)
         [diag] = self._ids(tmp_charm)
         assert "not executable" in diag.message
 
@@ -294,8 +292,7 @@ class TestEntrypoint:
         write_charmcraft_yaml(
             tmp_charm, {"name": "test", "parts": {"charm": {"plugin": plugin, "source": "."}}}
         )
-        write_charm_source(tmp_charm, "import ops\n")
-        (tmp_charm / "src" / "charm.py").chmod(0o644)
+        write_charm_source(tmp_charm, "import ops\n", executable=False)
         assert self._ids(tmp_charm) == []
 
     def test_part_built_from_elsewhere_is_skipped(self, tmp_charm: pathlib.Path):
