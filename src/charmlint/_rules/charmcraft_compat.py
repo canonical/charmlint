@@ -778,8 +778,9 @@ def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | No
     ):
         return None
     parts = context.metadata.get("parts")
-    if not parts.present:
-        # charmcraft adds a ``charm`` part when a charm has none.
+    if not parts:
+        # charmcraft adds a ``charm`` part when a charm has none, including
+        # an empty or null ``parts``.
         return ("src/charm.py", True)
     plugins: dict[str, models.Yaml] = {}
     for part_name, part in parts.items():

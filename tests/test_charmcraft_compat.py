@@ -285,6 +285,13 @@ class TestEntrypoint:
         [diag] = self._ids(tmp_charm)
         assert "not executable" in diag.message
 
+    @pytest.mark.parametrize("parts", [{}, None])
+    def test_empty_parts_get_the_charm_plugin(self, tmp_charm: pathlib.Path, parts: object):
+        write_charmcraft_yaml(tmp_charm, {"name": "test", "parts": parts})
+        write_charm_source(tmp_charm, "import ops\n", executable=False)
+        [diag] = self._ids(tmp_charm)
+        assert "not executable" in diag.message
+
     @pytest.mark.parametrize("plugin", ["uv", "poetry", "python"])
     def test_venv_plugin_entrypoint_need_not_be_executable(
         self, tmp_charm: pathlib.Path, plugin: str
