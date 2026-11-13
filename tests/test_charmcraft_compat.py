@@ -357,6 +357,17 @@ class TestEntrypoint:
         [diag] = self._ids(tmp_charm)
         assert "not executable" in diag.message
 
+    def test_symlinked_entrypoint_follows_its_target(self, tmp_charm: pathlib.Path):
+        git = shutil.which("git")
+        if git is None:
+            pytest.skip("needs git")
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        write_charm_source(tmp_charm, "import ops\n", filename="real.py")
+        (tmp_charm / "src" / "charm.py").symlink_to("real.py")
+        for args in (["init", "-q"], ["add", "src/charm.py", "src/real.py"]):
+            subprocess.run([git, *args], cwd=tmp_charm, check=True)  # ruff: ignore[S603]
+        assert self._ids(tmp_charm) == []
+
     def test_dispatch_without_exec(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         (tmp_charm / "dispatch").write_text("#!/bin/sh\necho nothing to do\n")

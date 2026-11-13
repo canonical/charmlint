@@ -839,7 +839,11 @@ def _is_executable(charm_dir: pathlib.Path, relative: str) -> bool:
     except (OSError, subprocess.SubprocessError):
         result = None
     if result is not None and result.returncode == 0 and result.stdout.strip():
-        return result.stdout.split()[0] == "100755"
+        mode = result.stdout.split()[0]
+        # A symlink (120000) runs if its target does, which git doesn't
+        # record, so that falls through to the filesystem.
+        if mode != "120000":
+            return mode == "100755"
     return os.access(charm_dir / relative, os.X_OK)
 
 
