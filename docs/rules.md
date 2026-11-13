@@ -66,7 +66,7 @@ config file overrides it per rule.
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
 | [PEBBLE-006](#pebble-006-pebble-check-level-alive) | `pebble-check-level-alive` | Info | Pebble check uses level 'alive', which drives the Kubernetes liveness probe |
-| [PERFORMANCE-001](#performance-001-logging-in-loop) | `logging-in-loop` | Warning | Logging inside a loop over relations or units runs juju-log at least once per iteration |
+| [PERFORMANCE-001](#performance-001-logging-in-loop) | `logging-in-loop` | Info | Logging inside a loop over relations or units runs juju-log at least once per iteration |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
@@ -883,7 +883,7 @@ Performance.
 
 ### PERFORMANCE-001 logging-in-loop
 
-**Warning** — Logging inside a loop over relations or units runs juju-log at least once per iteration
+**Info** — Logging inside a loop over relations or units runs juju-log at least once per iteration
 
 Check for logging calls inside a loop over relations or units.
 

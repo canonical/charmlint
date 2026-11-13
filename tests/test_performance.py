@@ -36,7 +36,7 @@ class TestLoggingInLoop:
             """,
         )
         assert len(found) == 1
-        assert found[0].severity == Severity.WARNING
+        assert found[0].severity == Severity.INFO
         assert found[0].line == 8
         assert "1 logging call" in found[0].message
 
