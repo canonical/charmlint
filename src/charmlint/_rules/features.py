@@ -144,9 +144,17 @@ _VERSION_CALLS = frozenset({"set_workload_version", "application_version_set"})
 # the COS worker charms do one each. ``coordinated_workers.coordinator`` is
 # *not* listed: ``Coordinator`` does not set a version, and the coordinator
 # charms are real findings.
+#
+# ``charms_openstack.charm`` is the base-class module for the OpenStack
+# charms: ``OpenStackCharm._assess_status()``, which ``assess_status()``
+# defers to the end of every hook, calls ``hookenv.application_version_set``. ``ops_sunbeam`` and ``charm_refresh``
+# do not set a version, so they are deliberately absent. The
+# ``from charms_openstack import charm`` spelling isn't matched, and no corpus
+# charm uses it.
 _WORKLOAD_VERSION_SETTERS = frozenset({
     "coordinated_workers.worker",
     "cosl.coordinated_workers.worker",
+    "charms_openstack.charm",
 })
 
 # Charm-name suffixes that say the charm has no workload of its own. By
