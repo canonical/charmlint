@@ -578,9 +578,6 @@ class ContainerRunsAsRoot(Rule):
         return None
 
 
-# --- Helpers ---------------------------------------------------------------
-
-
 class RedeclaredExtensionRelation(Rule):
     """Flag a 12-factor charm that re-declares a relation its extension provides.
 
@@ -739,6 +736,9 @@ class OverrideBuildSkipsDefault(Rule):
                 )
             )
         return diagnostics
+
+
+# --- Helpers ---------------------------------------------------------------
 
 
 def _entrypoint(context: models.CharmContext) -> str:
