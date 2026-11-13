@@ -321,12 +321,8 @@ class TestNoSetWorkloadVersion:
     @pytest.mark.parametrize(
         "source",
         [
-            """\
-            import charms_openstack.charm
-
-            class C(charms_openstack.charm.OpenStackCharm):
-                pass
-            """,
+            # The import alone is what counts, not subclassing.
+            "import charms_openstack.charm\n",
             """\
             from charms_openstack.charm import OpenStackCharm
 
