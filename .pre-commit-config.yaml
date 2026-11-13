@@ -64,17 +64,9 @@ repos:
         language: system
         types: [text]
 
-      - id: ruff-check
-        name: ruff check
-        entry: uv run --group dev -- ruff check --fix --exit-non-zero-on-fix
-        language: system
-        files: \.py$
-        pass_filenames: false
-        require_serial: true
-
-      - id: ruff-format
-        name: ruff format
-        entry: uv run --group dev -- ruff format
+      - id: ruff
+        name: ruff fix and format
+        entry: make format
         language: system
         files: \.py$
         pass_filenames: false
@@ -82,7 +74,7 @@ repos:
 
       - id: ty
         name: ty
-        entry: uv run --group dev -- ty check
+        entry: make typecheck
         language: system
         files: \.py$
         pass_filenames: false
@@ -90,7 +82,7 @@ repos:
 
       - id: pytest
         name: pytest
-        entry: uv run --group dev -- pytest --maxfail=1 -q
+        entry: make test PYTEST_ARGS="--maxfail=1 -q"
         language: system
         files: \.py$
         pass_filenames: false
@@ -98,7 +90,7 @@ repos:
 
       - id: uv-lock-check
         name: uv lock --check
-        entry: uv lock --check
+        entry: make lock-check
         language: system
         files: ^(pyproject\.toml|uv\.lock)$
         pass_filenames: false
