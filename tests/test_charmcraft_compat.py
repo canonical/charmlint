@@ -379,7 +379,9 @@ class TestEntrypoint:
             ["add", "src/charm.py"],
             ["update-index", "--chmod=-x", "src/charm.py"],
         ):
-            subprocess.run([git, *args], cwd=tmp_charm, check=True)  # ruff: ignore[S603]
+            subprocess.run(  # ruff: ignore[S603]
+                [git, *args], cwd=tmp_charm, check=True, capture_output=True
+            )
         # Executable on disk, but not in what git would commit.
         [diag] = self._ids(tmp_charm)
         assert "not executable" in diag.message
@@ -392,7 +394,9 @@ class TestEntrypoint:
         write_charm_source(tmp_charm, "import ops\n", filename="real.py")
         (tmp_charm / "src" / "charm.py").symlink_to("real.py")
         for args in (["init", "-q"], ["add", "src/charm.py", "src/real.py"]):
-            subprocess.run([git, *args], cwd=tmp_charm, check=True)  # ruff: ignore[S603]
+            subprocess.run(  # ruff: ignore[S603]
+                [git, *args], cwd=tmp_charm, check=True, capture_output=True
+            )
         assert self._ids(tmp_charm) == []
 
     def test_dispatch_without_exec(self, tmp_charm: pathlib.Path):
