@@ -584,79 +584,52 @@ class ContainerRunsAsRoot(Rule):
 class RedeclaredExtensionRelation(Rule):
     """Flag a 12-factor charm that re-declares a relation its extension provides.
 
-    The ``*-framework`` extensions declare ``ingress`` (with ``limit: 1``),
-    ``logging``, ``metrics-endpoint`` and ``grafana-dashboard`` for the
-    charm. charmcraft doesn't warn when ``charmcraft.yaml`` declares one of
-    them again: its merge keeps the charm's value for every scalar key, so
-    a different ``interface``, ``limit`` or ``optional`` silently changes
-    the packed charm from what paas-charm expects. The extension doesn't
-    set ``optional``, so Juju's default (``false``) is what it declares.
-
-    A re-declaration that changes any of these is a warning. An identical
-    restatement is only redundant, so it's info, but it hides the next
-    change.
+    The ``*-framework`` extensions declare ``ingress`` and ``logging`` in
+    ``requires``, and ``metrics-endpoint`` and ``grafana-dashboard`` in
+    ``provides``. charmcraft refuses to pack a ``charmcraft.yaml`` that
+    declares any of them again, whatever the value, because the
+    extension's ``requires`` and ``provides`` may not overlap the charm's.
+    Reporting it here names the problem before a pack rather than partway
+    through one.
     """
 
     category = "CHARMCRAFT"
     number = 13
     name = "redeclared-extension-relation"
     description = "12-factor charm re-declares a relation its extension already provides"
-    default_severity = models.Severity.WARNING
+    default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/extensions/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
-        extensions = context.metadata.get("extensions")
-        if not any(
-            isinstance(element.value, str) and element.value in _FRAMEWORK_EXTENSIONS
-            for element in extensions.elements or ()
-        ):
+        extension = next(
+            (
+                element.value
+                for element in context.metadata.get("extensions").elements or ()
+                if isinstance(element.value, str) and element.value in _FRAMEWORK_EXTENSIONS
+            ),
+            None,
+        )
+        if extension is None:
             return []
         diagnostics: list[models.Diagnostic] = []
-        for section, relations in _EXTENSION_RELATIONS.items():
+        for section, names in _EXTENSION_RELATIONS.items():
             declared = context.metadata.get(section)
-            for name, expected in relations.items():
+            for name in sorted(names):
                 relation = declared.get(name)
-                if not relation.present:
+                if not relation.present or relation.source != "charmcraft.yaml":
                     continue
-                changes = [
-                    f"'{key}' ({_yaml_scalar(relation.get(key).value)} rather than "
-                    f"{_yaml_scalar(value)})"
-                    for key, value in expected.items()
-                    if relation.get(key).present and relation.get(key).value != value
-                ]
-                if changes:
-                    message = (
-                        f"{section}.{name} is declared by the framework extension, and "
-                        f"this changes {' and '.join(changes)}"
-                    )
-                    severity = models.Severity.WARNING
-                    fix_hint = f"Remove '{name}' from '{section}' and let the extension declare it"
-                else:
-                    message = (
-                        f"{section}.{name} is already declared by the framework extension, "
-                        "and this repeats it unchanged"
-                    )
-                    severity = models.Severity.INFO
-                    fix_hint = f"Remove '{name}' from '{section}'"
                 diagnostics.append(
                     self.diagnostic(
-                        message,
-                        severity=severity,
+                        f"{section}.{name} is already declared by the {extension} "
+                        'extension, so charmcraft pack will fail with "overlapping keys '
+                        f"{{'{name}'}} in {section} of charmcraft.yaml which conflict with "
+                        f'the {extension} extension"',
                         path=relation.source,
                         line=relation.line,
-                        fix_hint=fix_hint,
+                        fix_hint=f"Remove '{name}' from '{section}'",
                     )
                 )
         return diagnostics
-
-
-def _yaml_scalar(value: object) -> str:
-    """Spell *value* the way it's written in YAML, for a message."""
-    if isinstance(value, bool):
-        return str(value).lower()
-    if isinstance(value, str):
-        return f"'{value}'"
-    return str(value)
 
 
 class LegacyBases(Rule):
@@ -791,19 +764,11 @@ _FRAMEWORK_EXTENSIONS: frozenset[str] = frozenset({
     "spring-boot-framework",
 })
 
-# What the framework extensions declare (charmcraft's ``extensions/app.py``),
-# as ``{section: {relation: {key: value}}}``. The extensions don't set
-# ``optional``, so Juju's default, ``false``, is what they declare. Update
-# this when the extensions change.
-_EXTENSION_RELATIONS: dict[str, dict[str, dict[str, object]]] = {
-    "requires": {
-        "ingress": {"interface": "ingress", "limit": 1, "optional": False},
-        "logging": {"interface": "loki_push_api", "optional": False},
-    },
-    "provides": {
-        "metrics-endpoint": {"interface": "prometheus_scrape", "optional": False},
-        "grafana-dashboard": {"interface": "grafana_dashboard", "optional": False},
-    },
+# The relations the framework extensions declare (charmcraft's
+# ``extensions/app.py``). Update this when the extensions change.
+_EXTENSION_RELATIONS: dict[str, frozenset[str]] = {
+    "requires": frozenset({"ingress", "logging"}),
+    "provides": frozenset({"metrics-endpoint", "grafana-dashboard"}),
 }
 
 _VALID_CHARM_USERS: frozenset[str] = frozenset({"root", "sudoer", "non-root"})

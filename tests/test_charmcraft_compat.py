@@ -1487,34 +1487,37 @@ class TestRedeclaredExtensionRelation:
         )
         return _diags(lint(charm_dir), "CHARMCRAFT-013")
 
-    def test_changed_interface_is_warning(self, tmp_charm: pathlib.Path):
-        [diag] = self._lint(tmp_charm, "requires:\n  ingress:\n    interface: other\n")
-        assert diag.severity == Severity.WARNING
+    @pytest.mark.parametrize(
+        ("section", "name"),
+        [
+            ("requires", "ingress"),
+            ("requires", "logging"),
+            ("provides", "metrics-endpoint"),
+            ("provides", "grafana-dashboard"),
+        ],
+    )
+    def test_redeclared_relation_is_an_error(
+        self, tmp_charm: pathlib.Path, section: str, name: str
+    ):
+        [diag] = self._lint(tmp_charm, f"{section}:\n  {name}:\n    optional: true\n")
+        assert diag.severity == Severity.ERROR
         assert diag.line == 5
-        assert "'interface' ('other' rather than 'ingress')" in diag.message
-
-    def test_changed_limit_is_warning(self, tmp_charm: pathlib.Path):
-        [diag] = self._lint(tmp_charm, "requires:\n  ingress:\n    limit: 2\n")
-        assert diag.severity == Severity.WARNING
-        assert "'limit' (2 rather than 1)" in diag.message
-
-    @pytest.mark.parametrize("name", ["ingress", "logging"])
-    def test_optional_true_is_warning(self, tmp_charm: pathlib.Path, name: str):
-        [diag] = self._lint(tmp_charm, f"requires:\n  {name}:\n    optional: true\n")
-        assert diag.severity == Severity.WARNING
-        assert "'optional' (true rather than false)" in diag.message
+        assert "overlapping keys" in diag.message
+        assert "flask-framework" in diag.message
 
     @pytest.mark.parametrize(
         "body",
         [
-            "provides:\n  metrics-endpoint:\n    interface: prometheus_scrape\n",
-            "requires:\n  ingress:\n    interface: ingress\n    limit: 1\n    optional: false\n",
+            # charmcraft checks the key, not the value, so an identical
+            # restatement fails the pack too.
+            "requires:\n  ingress:\n    interface: ingress\n    limit: 1\n",
             "provides:\n  grafana-dashboard: {}\n",
         ],
     )
-    def test_identical_restatement_is_info(self, tmp_charm: pathlib.Path, body: str):
+    def test_identical_restatement_is_an_error_too(self, tmp_charm: pathlib.Path, body: str):
         [diag] = self._lint(tmp_charm, body, extension="django-framework")
-        assert diag.severity == Severity.INFO
+        assert diag.severity == Severity.ERROR
+        assert "django-framework" in diag.message
 
     def test_no_extension_is_clean(self, tmp_charm: pathlib.Path):
         (tmp_charm / "charmcraft.yaml").write_text(
