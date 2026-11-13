@@ -195,7 +195,7 @@ class Entrypoint(Rule):
         resolved = _generated_entrypoint(context)
         if resolved is None:
             return []
-        entrypoint_rel, runs_directly = resolved
+        entrypoint_rel, runs_directly, setting_line = resolved
         entrypoint = context.charm_dir / entrypoint_rel
         if not entrypoint.exists():
             # A charmcraft.yaml that only publishes libraries, or a charm
@@ -209,6 +209,7 @@ class Entrypoint(Rule):
                     f"Entrypoint '{entrypoint_rel}' does not exist, so the charm will "
                     "deploy but no hook will run",
                     path="charmcraft.yaml",
+                    line=setting_line,
                     fix_hint=(
                         f"Create {entrypoint_rel}, or set 'charm-entrypoint' in the charm part"
                         if runs_directly
@@ -762,8 +763,11 @@ class OverrideBuildSkipsDefault(Rule):
         return diagnostics
 
 
-def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | None:
+def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool, int | None] | None:
     """Return the entrypoint a generated ``dispatch`` runs, and whether it runs it directly.
+
+    The third item is the line of an explicit ``charm-entrypoint``, so a
+    finding about a missing entrypoint can point at the setting.
 
     ``None`` when the charm's hooks won't come from a generated
     ``dispatch``, or charmlint can't tell what will build the charm.
@@ -781,7 +785,7 @@ def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | No
     if not parts:
         # charmcraft adds a ``charm`` part when a charm has none, including
         # an empty or null ``parts``.
-        return ("src/charm.py", True)
+        return ("src/charm.py", True, None)
     plugins: dict[str, models.Yaml] = {}
     for part_name, part in parts.items():
         # craft-parts falls back to the part name for an empty plugin.
@@ -792,9 +796,11 @@ def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | No
         return None
     if "charm" in plugins:
         part = plugins["charm"]
-        configured = part.get("charm-entrypoint").value
+        setting = part.get("charm-entrypoint")
+        configured = setting.value
+        line = setting.line
         if not isinstance(configured, str) or not configured:
-            configured = "src/charm.py"
+            configured, line = "src/charm.py", None
         source = part.get("source").value
         if isinstance(source, str) and source not in (".", "./"):
             return None
@@ -803,7 +809,7 @@ def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | No
         # isn't something charmlint can check.
         if entrypoint.is_absolute() or ".." in entrypoint.parts:
             return None
-        return (entrypoint.as_posix(), True)
+        return (entrypoint.as_posix(), True, line)
     # Whatever the other plugins are, charmcraft generates a dispatch that
     # runs src/charm.py from the prime directory. A part that builds from
     # somewhere else may put it there, so the charm directory says nothing.
@@ -811,7 +817,7 @@ def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | No
         source = part.get("source").value
         if isinstance(source, str) and source not in (".", "./"):
             return None
-    return ("src/charm.py", False)
+    return ("src/charm.py", False, None)
 
 
 def _calls_ops_main(context: models.CharmContext) -> bool:
