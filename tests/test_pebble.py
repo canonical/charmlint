@@ -47,10 +47,12 @@ def _layer(environment: str) -> str:
 class TestPebbleEnvNonString:
     """PEBBLE-005 — environment values in a Pebble layer must be strings."""
 
-    def test_none_value_flagged_as_error(self, tmp_charm: pathlib.Path):
+    def test_none_value_flagged_as_warning(self, tmp_charm: pathlib.Path):
         findings = _lint_source(tmp_charm, _layer('"PROXY": None,'))
         assert len(findings) == 1
-        assert findings[0].severity == Severity.ERROR
+        assert findings[0].severity == Severity.WARNING
+        assert "set but empty rather than absent" in findings[0].message
+        assert "will not match the plan Pebble returns" in findings[0].message
         assert "PROXY" in findings[0].message
         assert findings[0].path is not None
         assert findings[0].line is not None
@@ -61,12 +63,15 @@ class TestPebbleEnvNonString:
         assert findings[0].severity == Severity.INFO
         assert "DEBUG" in findings[0].message
         assert "'true'" in findings[0].message
+        assert "often expect '1'" in findings[0].message
+        assert "will not match the plan Pebble returns" in findings[0].message
 
     def test_int_value_flagged_as_info(self, tmp_charm: pathlib.Path):
         findings = _lint_source(tmp_charm, _layer('"PORT": 8080,'))
         assert len(findings) == 1
         assert findings[0].severity == Severity.INFO
         assert "PORT" in findings[0].message
+        assert "will not match the plan Pebble returns" in findings[0].message
 
     def test_float_value_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_source(tmp_charm, _layer('"RATIO": 0.5,'))
@@ -102,7 +107,7 @@ class TestPebbleEnvNonString:
             _layer('"PROXY": None,\n"DEBUG": False,\n"OK": "yes",'),
         )
         assert len(findings) == 2
-        assert {d.severity for d in findings} == {Severity.ERROR, Severity.INFO}
+        assert {d.severity for d in findings} == {Severity.WARNING, Severity.INFO}
         assert findings[0].line != findings[1].line
 
     def test_add_layer_call_form_flagged(self, tmp_charm: pathlib.Path):
@@ -128,7 +133,7 @@ class TestPebbleEnvNonString:
             """,
         )
         assert len(findings) == 1
-        assert findings[0].severity == Severity.ERROR
+        assert findings[0].severity == Severity.WARNING
 
     def test_service_dict_built_separately_flagged(self, tmp_charm: pathlib.Path):
         findings = _lint_source(

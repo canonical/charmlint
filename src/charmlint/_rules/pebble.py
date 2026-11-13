@@ -16,6 +16,11 @@ from ._base import Rule
 # as a service's, so the same coercion trap applies to it.
 _SERVICE_MARKERS = frozenset({"override", "command"})
 
+# The consequence every PEBBLE-005 message ends with, whatever the value.
+_PLAN_MISMATCH = (
+    "the layer will not match the plan Pebble returns, so comparing them always differs"
+)
+
 
 def _environment_dicts(module: models.Module) -> list[ast.Dict]:
     """Return every ``environment`` dict literal of a Pebble service or check.
@@ -53,6 +58,14 @@ def _environment_dicts(module: models.Module) -> list[ast.Dict]:
 class PebbleEnvNonString(Rule):
     """Detect non-string literals in a Pebble layer's service ``environment``.
 
+    Pebble accepts non-string values (``None`` becomes ``""``, ``True`` becomes
+    ``"true"``), but ``ops.pebble.Layer`` keeps the Python value, so the layer
+    never equals the plan Pebble returns and a charm that compares them
+    replans on every hook. ``None`` is a warning rather than info: the
+    variable ends up set but empty rather than absent, so a workload that
+    checks whether it is set, or falls back to a default when it isn't,
+    behaves differently from what the charm meant.
+
     Only constant values are flagged. A value built by ``str(...)``, an
     f-string, or any other expression is left alone: the rule can't tell
     what it evaluates to, and the common cases are already strings.
@@ -84,23 +97,30 @@ class PebbleEnvNonString(Rule):
             if value.value is None:
                 message = (
                     f"Pebble layer environment value for {described} is None "
-                    f"— Pebble rejects the whole layer at runtime"
+                    f"— Pebble turns it into '', so the variable is set but empty "
+                    f"rather than absent, and {_PLAN_MISMATCH}"
                 )
-                severity = models.Severity.ERROR
-                fix_hint = "Use a string, or omit the variable when it has no value"
+                severity = models.Severity.WARNING
+                fix_hint = (
+                    "Omit the variable if it should be unset, "
+                    "or use '' if the workload should see it set and empty"
+                )
             elif isinstance(value.value, bool):
                 # bool is a subclass of int, so it has to be tested first.
                 literal = str(value.value)
                 message = (
                     f"Pebble layer environment value for {described} is a bool "
-                    f"— it serialises as '{literal}', where workloads usually "
-                    f"expect '{literal.lower()}' or '{int(value.value)}'"
+                    f"— Pebble turns it into '{literal.lower()}', where workloads "
+                    f"often expect '{int(value.value)}', and {_PLAN_MISMATCH}"
                 )
-                fix_hint = f"Write the value the workload expects, e.g. '{literal.lower()}'"
+                fix_hint = (
+                    f"Write the value the workload expects, "
+                    f"e.g. '{literal.lower()}' or '{int(value.value)}'"
+                )
             else:
                 message = (
                     f"Pebble layer environment value for {described} is not a string "
-                    f"— Pebble coerces it, but the coerced form is easy to get wrong"
+                    f"— Pebble converts it, but {_PLAN_MISMATCH}"
                 )
                 fix_hint = f"Use a string literal, e.g. '{value.value}'"
             diagnostics.append(
