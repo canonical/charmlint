@@ -99,6 +99,31 @@ class TestLoggingInLoop:
         )
         assert found == []
 
+    def test_async_for_loop_flagged(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            async def f(relations):
+                async for relation in relations:
+                    logger.debug("relation %s", relation)
+            """,
+        )
+        assert len(found) == 1
+        assert found[0].line == 3
+
+    def test_two_loops_give_two_findings(self, tmp_charm: pathlib.Path):
+        found = _lint_source(
+            tmp_charm,
+            """\
+            def f(relations, units):
+                for relation in relations:
+                    logger.debug("relation %s", relation)
+                for unit in units:
+                    logger.debug("unit %s", unit)
+            """,
+        )
+        assert [d.line for d in found] == [3, 5]
+
     @pytest.mark.parametrize("iterable", ["self.meta.relations", "RELATION_NAMES"])
     def test_fixed_size_iterable_not_flagged(self, tmp_charm: pathlib.Path, iterable: str):
         found = _lint_source(
