@@ -85,13 +85,13 @@ class LoggingInLoop(Rule):
         return diagnostics
 
 
-def _outermost_relation_loops(tree: ast.AST) -> list[ast.stmt]:
+def _outermost_relation_loops(tree: ast.AST) -> list[ast.For | ast.AsyncFor]:
     """Return the loops over relations or units not nested in another such loop.
 
     A loop inside a function that is itself inside a loop counts as
     outermost: the function body does not necessarily run per iteration.
     """
-    found: list[ast.stmt] = []
+    found: list[ast.For | ast.AsyncFor] = []
 
     def visit(node: ast.AST) -> None:
         for child in ast.iter_child_nodes(node):
@@ -135,7 +135,7 @@ def _iterates_relations(iterable: ast.expr) -> bool:
     return False
 
 
-def _nested_scopes(loop: ast.stmt) -> list[ast.AST]:
+def _nested_scopes(loop: ast.For | ast.AsyncFor) -> list[ast.AST]:
     """Return the function, class and lambda nodes reachable from *loop*'s body."""
     scopes: list[ast.AST] = []
 
@@ -146,7 +146,7 @@ def _nested_scopes(loop: ast.stmt) -> list[ast.AST]:
             else:
                 visit(child)
 
-    for statement in getattr(loop, "body", []):
+    for statement in loop.body:
         if isinstance(statement, _SCOPES):
             scopes.append(statement)
         else:
@@ -154,7 +154,7 @@ def _nested_scopes(loop: ast.stmt) -> list[ast.AST]:
     return scopes
 
 
-def _logging_calls(loop: ast.stmt) -> list[ast.Call]:
+def _logging_calls(loop: ast.For | ast.AsyncFor) -> list[ast.Call]:
     """Return the logging calls that run on each iteration of *loop*."""
     calls: list[ast.Call] = []
 
@@ -170,7 +170,7 @@ def _logging_calls(loop: ast.stmt) -> list[ast.Call]:
 
     # Only the body runs on every iteration: a ``for`` iterable is evaluated
     # once and an ``else`` clause runs at most once.
-    for statement in getattr(loop, "body", []):
+    for statement in loop.body:
         if not isinstance(statement, _SCOPES):
             visit(statement)
     return sorted(calls, key=lambda call: (call.lineno, call.col_offset))
