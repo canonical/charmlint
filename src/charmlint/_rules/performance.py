@@ -49,8 +49,9 @@ class LoggingInLoop(Rule):
     methods. Calls in a nested function, class or lambda defined in the
     loop are not counted, because they don't necessarily run once per
     iteration, and nor are calls in an ``except`` handler, since logging a
-    failure for one relation is the unusual path. Comprehensions and the
-    ``else`` clause of a loop are not examined.
+    failure for one relation is the unusual path. A comprehension isn't
+    treated as a loop, so one over relations isn't reported on its own, and
+    the ``else`` clause of a loop isn't examined.
 
     Move the logging out of the loop (log a summary afterwards), or limit it
     to the exceptional case.
