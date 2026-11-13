@@ -38,6 +38,8 @@ uv run ty check
 
 A new or changed rule needs a TP/FP table over the hyrum cache (`~/.cache/hyrum/charms`) before review. Enumerate charms and report results as described in [docs/corpus.md](docs/corpus.md) — the cache contains build trees and mirrored repos, so an ad-hoc `rglob` gives a different denominator every time (~1970 directories vs 655 charms).
 
+Label a finding by whether the reason for the rule holds in that charm, not by whether the code matches what the rule was written to find. For example, STATUS-001 is about handlers that never run again, so a finding on a handler that is also observed for `config-changed` would be a false positive, even though the handler is observed for `install` too.
+
 ## Conventions
 
 - Commits and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/); PR-title types enforced by `.github/workflows/validate-pr-title.yaml` (see [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) for the list).
@@ -55,6 +57,12 @@ out top-down and let the reader follow the call graph without scrolling back:
 - A helper used by one rule module stays private to it. A concern shared across
   rule modules belongs in `_ast.py` or `_yaml.py` instead — check there before
   writing a new walker or parser.
+
+## Writing a rule
+
+- Cover every way charms write the problem. Before writing the matcher, search the hyrum cache for the problem and its variants: a keyword argument as well as a dict key, the `ops` enum as well as the string, a constructor such as `CheckDict(...)` as well as a literal. `_ast.call_target()`, `_ast.keyword()` and `_ast.Imports` already resolve calls through imports and aliases. Only leave a variant for later if it needs a change outside the rule modules, `_ast.py` and `_yaml.py`, or another issue covers it. Say which in the PR.
+- Keep a rule about the size of its neighbours. Find the existing rule closest in shape and use its code and tests as the measure. Write a positive and a negative test for each case the docstring names, not one per spelling of it.
+- Report a finding on the line a `# noqa` for it would go on. For YAML, that is the `line` of the most specific node at fault, such as the list element that is wrong rather than the key that holds the list. `_yaml.load()` already records it.
 
 ## Security
 
