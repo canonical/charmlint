@@ -279,6 +279,17 @@ class TestEntrypoint:
         write_charm_source(tmp_charm, "import ops\n", filename="main.py")
         assert self._ids(tmp_charm) == []
 
+    @pytest.mark.parametrize("entrypoint", ["../shared/charm.py", "/opt/charm.py"])
+    def test_entrypoint_outside_the_charm_is_skipped(
+        self, tmp_charm: pathlib.Path, entrypoint: str
+    ):
+        write_charmcraft_yaml(
+            tmp_charm,
+            {"name": "test", "parts": {"charm": {"charm-entrypoint": entrypoint}}},
+        )
+        write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
+        assert self._ids(tmp_charm) == []
+
     def test_charm_plugin_entrypoint_not_executable(self, tmp_charm: pathlib.Path):
         write_charmcraft_yaml(tmp_charm, {"name": "test", "parts": {"charm": {}}})
         write_charm_source(tmp_charm, "import ops\n", executable=False)

@@ -798,7 +798,12 @@ def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | No
         source = part.get("source").value
         if isinstance(source, str) and source not in (".", "./"):
             return None
-        return (pathlib.PurePosixPath(configured).as_posix(), True)
+        entrypoint = pathlib.PurePosixPath(configured)
+        # As for a hand-written dispatch, a path leading outside the charm
+        # isn't something charmlint can check.
+        if entrypoint.is_absolute() or ".." in entrypoint.parts:
+            return None
+        return (entrypoint.as_posix(), True)
     # Whatever the other plugins are, charmcraft generates a dispatch that
     # runs src/charm.py from the prime directory. A part that builds from
     # somewhere else may put it there, so the charm directory says nothing.
