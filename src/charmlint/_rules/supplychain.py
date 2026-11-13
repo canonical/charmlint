@@ -206,22 +206,24 @@ _LOCKFILE_PLUGINS = frozenset({"poetry", "uv"})
 _DEPENDENCY_PLUGINS = _LOCKFILE_PLUGINS | frozenset({"charm", "python"})
 
 
-def _dependency_part(metadata: models.Yaml) -> models.Yaml | None:
-    """Return the ``parts`` entry that builds the charm's Python environment.
+def _dependency_part(metadata: models.Yaml) -> tuple[str, models.Yaml] | None:
+    """Return the plugin and ``parts`` entry that builds the charm's Python environment.
 
-    A charm has at most one. Across the corpus, 329 of 655 charms
+    A charm has at most one. Across the corpus, 587 of 915 charms
     declare exactly one part using a dependency-resolving plugin and
     **none declares two**; the sets are disjoint as well as unique
-    (``uv`` 198, ``poetry`` 79, ``charm`` 52). The remaining 326 either
-    declare ``parts`` using only ``nil``, ``dump`` or ``reactive``, or
-    declare no ``parts`` at all — so "no dependency-resolving part" is
-    the common case, not an error, and the caller falls back to the
-    default ``requirements.txt`` for it.
+    (``charm`` 280, ``uv`` 207, ``poetry`` 100).
+    That counts a part with no ``plugin``, which craft-parts builds with
+    the plugin named after the part: 222 charms have a bare ``charm:``
+    part. The remaining 328 either declare ``parts`` using only ``nil``,
+    ``dump`` or ``reactive``, or declare no ``parts`` at all, so "no
+    dependency-resolving part" is common, not an error, and the caller
+    falls back to the default ``requirements.txt`` for it.
     """
-    for _, part in metadata.get("parts").items():
-        plugin = part.get("plugin").value
-        if isinstance(plugin, str) and plugin in _DEPENDENCY_PLUGINS:
-            return part
+    for part_name, part in metadata.get("parts").items():
+        plugin = _yaml.part_plugin(part_name, part)
+        if plugin is not None and plugin in _DEPENDENCY_PLUGINS:
+            return plugin, part
     return None
 
 
@@ -233,11 +235,11 @@ def _requirements_files(context: models.CharmContext) -> tuple[tuple[pathlib.Pat
     from ``pyproject.toml`` and a lock file, so there is no hand-written
     requirements file to read at all.
     """
-    part = _dependency_part(context.metadata)
+    found = _dependency_part(context.metadata)
     default = ((context.charm_dir / "requirements.txt", "requirements.txt"),)
-    if part is None:
+    if found is None:
         return default
-    plugin = part.get("plugin").value
+    plugin, part = found
     if plugin in _LOCKFILE_PLUGINS:
         return ()
     if plugin == "python":
