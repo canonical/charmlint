@@ -36,6 +36,7 @@ config file overrides it per rule.
 | [CHARMCRAFT-008](#charmcraft-008-charm-user) | `charm-user` | Warning | Kubernetes charm runs its hooks as root, or declares an invalid 'charm-user' |
 | [CHARMCRAFT-009](#charmcraft-009-container-runs-as-root) | `container-runs-as-root` | Warning | Workload container runs as root, has mismatched uid/gid, or uses a nonstandard identity |
 | [CHARMCRAFT-010](#charmcraft-010-override-build-skips-default) | `override-build-skips-default` | Warning | override-build never runs 'craftctl default' for a Python plugin |
+| [CHARMCRAFT-011](#charmcraft-011-snapcraft-scriptlet) | `snapcraft-scriptlet` | Error | Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_* |
 | [CONFIG-001](#config-001-config-missing-type) | `config-missing-type` | Warning | Config option is missing a type |
 | [CONFIG-002](#config-002-config-missing-default) | `config-missing-default` | Info | Config option is missing a default value |
 | [CONFIG-003](#config-003-config-missing-description) | `config-missing-description` | Warning | Config option is missing a description |
@@ -314,10 +315,32 @@ metadata, so Juju has nothing to run for any hook.
 
 A script that uses `snapcraftctl` is left alone: there is no
 `snapcraftctl` in Charmcraft, so the build fails on that before the
-missing default matters. A deliberate reimplementation of the build,
+missing default matters, and CHARMCRAFT-011 reports it. A deliberate reimplementation of the build,
 such as the legacy way of building a reactive charm with the `charm`
 plugin as a shell around `charm build`, should be suppressed with a
 `noqa` on the `override-build` line.
+
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build>
+
+### CHARMCRAFT-011 snapcraft-scriptlet
+
+**Error** — Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_*
+
+Flag `snapcraftctl` and `$SNAPCRAFT_*` in a part scriptlet.
+
+Charmcraft part scriptlets (`override-pull`, `override-build`,
+`override-stage` and `override-prime`) run under craft-parts, where
+the control tool is `craftctl` and the variables are `$CRAFT_*`.
+`snapcraftctl` and `$SNAPCRAFT_*` are the spellings snapcraft used
+up to core22, and Charmcraft has neither. A scriptlet copied from an
+old snap either fails with "command not found" partway through
+`charmcraft pack`, or expands an unset `$SNAPCRAFT_PART_INSTALL` to
+an empty string and copies files somewhere other than the part's
+install directory. Naming it here saves finding out minutes into a
+pack.
+
+Comments are ignored, so a scriptlet that mentions `snapcraftctl` in
+a comment isn't flagged.
 
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build>
 

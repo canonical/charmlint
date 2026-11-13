@@ -644,7 +644,7 @@ class OverrideBuildSkipsDefault(Rule):
 
     A script that uses ``snapcraftctl`` is left alone: there is no
     ``snapcraftctl`` in Charmcraft, so the build fails on that before the
-    missing default matters. A deliberate reimplementation of the build,
+    missing default matters, and CHARMCRAFT-011 reports it. A deliberate reimplementation of the build,
     such as the legacy way of building a reactive charm with the ``charm``
     plugin as a shell around ``charm build``, should be suppressed with a
     ``noqa`` on the ``override-build`` line.
@@ -687,6 +687,63 @@ class OverrideBuildSkipsDefault(Rule):
                     "the extra commands",
                 )
             )
+        return diagnostics
+
+
+# No corpus charm has this, as expected for something that breaks packing.
+class SnapcraftScriptlet(Rule):
+    """Flag ``snapcraftctl`` and ``$SNAPCRAFT_*`` in a part scriptlet.
+
+    Charmcraft part scriptlets (``override-pull``, ``override-build``,
+    ``override-stage`` and ``override-prime``) run under craft-parts, where
+    the control tool is ``craftctl`` and the variables are ``$CRAFT_*``.
+    ``snapcraftctl`` and ``$SNAPCRAFT_*`` are the spellings snapcraft used
+    up to core22, and Charmcraft has neither. A scriptlet copied from an
+    old snap either fails with "command not found" partway through
+    ``charmcraft pack``, or expands an unset ``$SNAPCRAFT_PART_INSTALL`` to
+    an empty string and copies files somewhere other than the part's
+    install directory. Naming it here saves finding out minutes into a
+    pack.
+
+    Comments are ignored, so a scriptlet that mentions ``snapcraftctl`` in
+    a comment isn't flagged.
+    """
+
+    category = "CHARMCRAFT"
+    number = 11
+    name = "snapcraft-scriptlet"
+    description = (
+        "Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_*"
+    )
+    default_severity = models.Severity.ERROR
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        parts = context.metadata.get("parts")
+        if parts.source != "charmcraft.yaml":
+            return []
+        diagnostics: list[models.Diagnostic] = []
+        for part_name, part in parts.items():
+            # An unquoted ``on:`` key is the boolean ``True`` under YAML 1.1.
+            described = f"the '{part_name}' part" if isinstance(part_name, str) else "a part"
+            for scriptlet in _SCRIPTLETS:
+                field = part.get(scriptlet)
+                if not isinstance(field.value, str):
+                    continue
+                script = _strip_shell_comments(field.value)
+                match = _SNAPCRAFT_SPELLING.search(script)
+                if match is None:
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        f"{scriptlet} for {described} uses '{match.group()}', "
+                        f"which Charmcraft doesn't have",
+                        path=field.source,
+                        line=field.line,
+                        fix_hint="Use 'craftctl' instead of 'snapcraftctl', and $CRAFT_* "
+                        "instead of $SNAPCRAFT_* (for example, $CRAFT_PART_INSTALL)",
+                    )
+                )
         return diagnostics
 
 
@@ -965,6 +1022,11 @@ _PYTHON_PLUGINS: frozenset[str] = frozenset({"charm", "python", "uv", "poetry"})
 # ``(?:\s|\\)+`` spans a backslash line continuation as well as spaces.
 _CRAFTCTL_DEFAULT = re.compile(r"\bcraftctl(?:\s|\\)+default\b")
 _SNAPCRAFTCTL = re.compile(r"\bsnapcraftctl\b")
+# One pattern, so ``search`` finds whichever snapcraft spelling comes first.
+_SNAPCRAFT_SPELLING = re.compile(r"\bsnapcraftctl\b|\$(?:\{SNAPCRAFT_\w+\}|SNAPCRAFT_\w+)")
+
+#: The part scriptlets craft-parts runs, each of which holds shell code.
+_SCRIPTLETS = ("override-pull", "override-build", "override-stage", "override-prime")
 
 
 def _runs_default(script: str) -> bool:
