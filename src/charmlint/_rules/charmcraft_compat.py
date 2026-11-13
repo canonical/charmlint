@@ -109,15 +109,18 @@ class Entrypoint(Rule):
       must exist and be executable. Inside a git repository the
       executable bit is the mode git has recorded (``100755``), which
       is what gets packed, rather than the working tree's.
-    * A ``python``, ``poetry`` or ``uv`` plugin part gets a ``dispatch``
-      that runs ``src/charm.py`` with the charm's Python, so only that
-      file has to exist. charmcraft doesn't generate a ``dispatch`` at all
-      without it, so the charm deploys and no hook ever runs.
+    * Otherwise, whatever the plugins are, charmcraft generates a
+      ``dispatch`` that runs ``src/charm.py`` with the charm's Python, so
+      only that file has to exist. charmcraft doesn't generate a
+      ``dispatch`` at all without it, so the charm deploys and no hook
+      ever runs. A part that builds from a ``source`` other than the
+      charm directory may put ``src/charm.py`` in place itself, so such
+      a charm is passed over.
 
     A charm with ``hooks/`` or a ``layer.yaml`` (at the top or in
-    ``src/``), a part using the ``reactive`` plugin, a bundle, and a charm
-    built only by other plugins are passed over: their hooks don't come
-    from a generated ``dispatch``. A missing entrypoint is only reported
+    ``src/``), a part using the ``reactive`` plugin, and a bundle are
+    passed over: their hooks don't come from a generated ``dispatch``.
+    A missing entrypoint is only reported
     when the charm calls ``ops.main()`` somewhere else, such as
     ``src/charm/charm.py``. Without that, it's a ``charmcraft.yaml`` that
     only publishes libraries, or a charm whose code is copied in at build
@@ -759,10 +762,6 @@ class OverrideBuildSkipsDefault(Rule):
         return diagnostics
 
 
-# Plugins whose parts get charmcraft's python-run ``dispatch`` at prime.
-_VENV_DISPATCH_PLUGINS: frozenset[str] = frozenset({"python", "poetry", "uv"})
-
-
 def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | None:
     """Return the entrypoint a generated ``dispatch`` runs, and whether it runs it directly.
 
@@ -799,9 +798,14 @@ def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool] | No
         if isinstance(source, str) and source not in (".", "./"):
             return None
         return (pathlib.PurePosixPath(configured).as_posix(), True)
-    if plugins.keys() & _VENV_DISPATCH_PLUGINS:
-        return ("src/charm.py", False)
-    return None
+    # Whatever the other plugins are, charmcraft generates a dispatch that
+    # runs src/charm.py from the prime directory. A part that builds from
+    # somewhere else may put it there, so the charm directory says nothing.
+    for _, part in parts.items():
+        source = part.get("source").value
+        if isinstance(source, str) and source not in (".", "./"):
+            return None
+    return ("src/charm.py", False)
 
 
 def _calls_ops_main(context: models.CharmContext) -> bool:

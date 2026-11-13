@@ -298,9 +298,20 @@ class TestEntrypoint:
         (tmp_charm / "src" / "charm.py").chmod(0o644)
         assert self._ids(tmp_charm) == []
 
-    def test_venv_plugin_entrypoint_missing(self, tmp_charm: pathlib.Path):
+    def test_part_built_from_elsewhere_is_skipped(self, tmp_charm: pathlib.Path):
+        # The part may put src/charm.py in the prime directory itself.
         write_charmcraft_yaml(
-            tmp_charm, {"name": "test", "parts": {"my-charm": {"plugin": "uv", "source": "."}}}
+            tmp_charm,
+            {"name": "test", "parts": {"my-charm": {"plugin": "uv", "source": "./charm"}}},
+        )
+        write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
+        assert self._ids(tmp_charm) == []
+
+    @pytest.mark.parametrize("plugin", ["uv", "dump"])
+    def test_generated_dispatch_entrypoint_missing(self, tmp_charm: pathlib.Path, plugin: str):
+        # charmcraft generates the python-run dispatch whatever the plugin.
+        write_charmcraft_yaml(
+            tmp_charm, {"name": "test", "parts": {"my-charm": {"plugin": plugin, "source": "."}}}
         )
         write_charm_source(tmp_charm, _OPS_MAIN, filename="main.py")
         [diag] = self._ids(tmp_charm)
@@ -326,9 +337,8 @@ class TestEntrypoint:
         [
             {"type": "bundle"},
             {"name": "test", "parts": {"charm": {"plugin": "reactive", "source": "."}}},
-            {"name": "test", "parts": {"files": {"plugin": "dump", "source": "."}}},
         ],
-        ids=["bundle", "reactive", "other-plugin"],
+        ids=["bundle", "reactive"],
     )
     def test_not_built_with_a_generated_dispatch(self, tmp_charm: pathlib.Path, data: dict):
         write_charmcraft_yaml(tmp_charm, data)
