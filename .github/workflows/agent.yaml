@@ -173,6 +173,8 @@ jobs:
       # this, `agent` can only reach the proxy.
       - name: Prepare the agent's Python environments
         run: |
+          # The runner's home, and so the workspace, is closed to `agent` now.
+          cd /srv/agent
           as_agent() { sudo -u agent -H env -i PATH="$PATH" HOME=/home/agent LANG=C.UTF-8 "$@"; }
           as_agent bash -c 'cd /srv/agent/repo && uv sync --group dev --frozen && uv python install 3.14'
           as_agent uv run --no-project --python 3.14 --with pyyaml python -c pass
@@ -196,6 +198,7 @@ jobs:
           MODELS: ${{ vars.AGENT_MODELS || 'z-ai/glm-5.3,moonshotai/kimi-k2.7-code' }}
       - name: Run the pipeline
         run: |
+          cd /srv/agent
           args=()
           case "$MODE" in
             plan-only) args+=(--plan-only) ;;
