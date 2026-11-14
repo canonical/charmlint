@@ -38,12 +38,17 @@ jobs:
     if: >-
       (github.event_name != 'issues' || startsWith(github.event.label.name, 'agent'))
       && (github.event_name != 'pull_request_review'
-          || startsWith(github.event.pull_request.head.ref, 'agent/issue-'))
+          || (startsWith(github.event.pull_request.head.ref, 'agent/issue-')
+              && github.event.review.state == 'changes_requested'
+              && (contains(format(',{0},', vars.AGENT_ALLOWLIST), format(',{0},', github.event.review.user.login))
+                  || contains(format(',{0},', vars.AGENT_ALLOWLIST), format(' {0},', github.event.review.user.login)))))
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # One triage at a time, so two events can't both claim the same issue.
+    # One triage at a time, so two events can't both claim the same issue. A
+    # review only starts a run that comes back through here, so it waits in a
+    # group of its own and can't replace a pending label or drain.
     concurrency:
-      group: agent-triage
+      group: ${{ github.event_name == 'pull_request_review' && format('agent-review-{0}', github.event.pull_request.number) || 'agent-triage' }}
       cancel-in-progress: false
     permissions:
       contents: read
