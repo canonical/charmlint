@@ -1321,7 +1321,7 @@ def forbidden_uses(
     Rule code may only import ``RULE_IMPORTS``; tests may not import
     ``TEST_FORBIDDEN_MODULES``. Uses already in ``base`` (the file before the
     change) aren't reported, so editing an existing test that runs a
-    subprocess is fine.
+    subprocess is fine. Source that doesn't parse is reported too.
     """
 
     def under(name: str, modules: set[str]) -> bool:
@@ -1330,8 +1330,10 @@ def forbidden_uses(
     def uses(text: str) -> dict[str, int]:
         try:
             tree = ast.parse(text)
-        except SyntaxError:
-            return {}  # `make lint` reports it
+        except SyntaxError as e:
+            # charmlint supports 3.12, so its code must parse there; checking
+            # nothing would let newer syntax carry any import past the checks.
+            return {"source that doesn't parse on this Python": e.lineno or 0}
         found: dict[str, int] = {}
         for node in ast.walk(tree):
             names: list[str] = []
