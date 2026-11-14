@@ -254,8 +254,6 @@ jobs:
             -p KillMode=control-group -p RuntimeMaxSec=170min \
             --setenv=PATH="$PATH" --setenv=HOME=/home/agent --setenv=LANG=C.UTF-8 \
             --setenv=UV_OFFLINE=1 --setenv=PI_OFFLINE=1 --setenv=PI_SKIP_VERSION_CHECK=1 \
-            --setenv=GIT_AUTHOR_NAME=agent --setenv=GIT_AUTHOR_EMAIL=agent@localhost \
-            --setenv=GIT_COMMITTER_NAME=agent --setenv=GIT_COMMITTER_EMAIL=agent@localhost \
             --setenv=CLA_CORPUS=/srv/agent/corpus \
             --setenv=CLA_OPENROUTER_BASE_URL=http://127.0.0.1:8787/api/v1 \
             --setenv=OPENROUTER_API_KEY=held-by-proxy \

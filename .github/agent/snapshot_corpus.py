@@ -1,8 +1,8 @@
 """Freeze a slim copy of the hyrum charm cache for reproducible corpus runs.
 
 The live cache (``~/.cache/hyrum/charms``) changes whenever hyrum refreshes,
-so two backtest configurations run a week apart would be scored against
-different corpora. A snapshot fixes that, and is the shape the GitHub
+so two pipeline runs a week apart would be scored against different
+corpora. A snapshot fixes that, and is the shape the GitHub
 Actions corpus cache needs too.
 
 Kept: every file outside the noise directories, as is if it's at most
@@ -17,7 +17,7 @@ name can't be read), and dropped when they point outside it.
 
 Usage::
 
-    python3 snapshot_corpus.py --dest /w/charmlint-agent-backtest/corpus-2026-11-13
+    python3 snapshot_corpus.py --dest corpus
 """
 
 from __future__ import annotations
