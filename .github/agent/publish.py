@@ -57,9 +57,8 @@ OUTCOMES = {
 }
 LINK_HOSTS = {
     "github.com",
-    "documentation.ubuntu.com",
+    "ubuntu.com",
     "canonical.com",
-    "juju.is",
     "charmhub.io",
     "discourse.charmhub.io",
     "docs.python.org",
