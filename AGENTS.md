@@ -61,7 +61,7 @@ out top-down and let the reader follow the call graph without scrolling back:
 ## Writing a rule
 
 - Cover every way charms write the problem. Before writing the matcher, search the hyrum cache for the problem and its variants: a keyword argument as well as a dict key, the `ops` enum as well as the string, a constructor such as `CheckDict(...)` as well as a literal. `_ast.call_target()` and `_ast.Imports` already resolve calls through imports and aliases, and `_ast.keyword()` finds a keyword argument. Only leave a variant for later if it needs a change outside the rule modules, `_ast.py`, `_yaml.py` and `_toml.py`, or another issue covers it. Say which in the PR.
-- Keep a rule about the size of its neighbours. Find the existing rule closest in shape and use its code and tests as the measure. Write a positive and a negative test for each case the docstring names, not one per spelling of it.
+- Find the existing rule closest in shape and keep the new rule about its size, using its code and tests as the measure. Write a positive and a negative test for each case the docstring names, not one per spelling of it.
 - Report a finding on the line a suppression comment for it would go on. For YAML, that is the `line` of the most specific node at fault, such as the list element that is wrong rather than the key that holds the list. `_yaml.load()` already records it.
 
 ## Security
