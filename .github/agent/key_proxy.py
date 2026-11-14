@@ -8,8 +8,12 @@ running as its own user:
 
 - only the listed models, each pinned to its first-party provider;
 - no fallback models, plugins (such as web search) or routing overrides;
-- a spending cap, from the cost OpenRouter reports for each response;
-- a few requests at a time.
+- a spending cap, from the cost OpenRouter reports for each response. Each
+  request reserves a worst-case cost before it is sent, and a response that
+  doesn't finish is charged that reservation, so cutting streams short or
+  sending many requests at once doesn't get past the cap;
+- a few requests at a time;
+- only paths on openrouter.ai, with the Host header the proxy sets.
 
     echo "$KEY" | python3 key_proxy.py --port 8787 --budget 9 --models a/b,c/d &
 """
@@ -50,6 +54,11 @@ ROUTING = {
 # When a response carries token counts but no cost, assume a price above any
 # allowed model's, so the cap errs towards stopping early.
 FALLBACK_USD_PER_TOKEN = 10 / 1_000_000
+# The reservation for a request: its body length as an upper bound on input
+# tokens, and the output cap, both at prices above any allowed model's.
+RESERVE_USD_PER_INPUT_BYTE = 2 / 1_000_000
+RESERVE_USD_PER_OUTPUT_TOKEN = 10 / 1_000_000
+MAX_OUTPUT_TOKENS = 32768
 
 
 class State:
@@ -57,6 +66,7 @@ class State:
     budget = 0.0
     models: frozenset[str] = frozenset()
     spent = 0.0
+    reserved = 0.0
     lock = threading.Lock()
     slots = threading.BoundedSemaphore(4)
 
@@ -91,36 +101,68 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if model not in State.models:
             self.send_error(403, "model not allowed")
             return
-        for field in ("models", "plugins", "route", "provider"):
+        for field in ("models", "plugins", "route", "provider", "usage"):
             body.pop(field, None)
         routing = next((r for prefix, r in ROUTING.items() if model.startswith(prefix)), None)
         if routing:
             body["provider"] = routing
-        with State.lock:
-            if State.spent >= State.budget:
-                self.send_error(402, f"budget of ${State.budget:.2f} spent")
-                return
-        self.forward(json.dumps(body).encode())
+        # Always report the cost, so the cap can count it.
+        body["usage"] = {"include": True}
+        requested = body.pop("max_completion_tokens", None) or body.get("max_tokens")
+        if not isinstance(requested, int) or not 0 < requested <= MAX_OUTPUT_TOKENS:
+            requested = MAX_OUTPUT_TOKENS
+        body["max_tokens"] = requested
+        data = json.dumps(body).encode()
+        reserve = len(data) * RESERVE_USD_PER_INPUT_BYTE + requested * RESERVE_USD_PER_OUTPUT_TOKEN
+        self.forward(data, reserve)
 
     def clean_path(self) -> str | None:
-        """The path without its query, or None if it tries to escape."""
-        path = urllib.parse.urlsplit(self.path).path
-        if ".." in path or "%" in path or "//" in path:
+        """The path and query to send upstream, or None if it tries to escape.
+
+        Only an origin-form target (``/path?query``) is accepted: an absolute
+        URL would name another host for the request that carries the key.
+        """
+        if not self.path.startswith("/") or self.path.startswith("//"):
+            return None
+        parts = urllib.parse.urlsplit(self.path)
+        if parts.scheme or parts.netloc:
+            return None
+        path = parts.path
+        if ".." in path or "%" in path or "//" in path or "\\" in path:
             return None
         return path
 
-    def forward(self, body: bytes | None) -> None:
+    def target(self) -> str:
+        """The upstream request target: the checked path, and the query re-encoded."""
+        path = self.clean_path()
+        if path is None:
+            raise ValueError("the path was not checked")
+        query = urllib.parse.urlencode(
+            urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query)
+        )
+        return f"{path}?{query}" if query else path
+
+    def forward(self, body: bytes | None, reserve: float = 0.0) -> None:
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP_BY_HOP}
+        headers["Host"] = UPSTREAM
         headers["Authorization"] = f"Bearer {State.key}"
         headers["Accept-Encoding"] = "identity"
         if body is not None:
             headers["Content-Type"] = "application/json"
         with State.slots:
+            # Check and reserve once this request holds a slot, so requests
+            # queued while nothing was spent can't all get through.
+            with State.lock:
+                if State.spent + State.reserved >= State.budget:
+                    self.send_error(402, f"budget of ${State.budget:.2f} spent")
+                    return
+                State.reserved += reserve
+            cost: float | None = None
             conn = http.client.HTTPSConnection(
                 UPSTREAM, timeout=900, context=ssl.create_default_context()
             )
             try:
-                conn.request(self.command, self.path, body=body, headers=headers)
+                conn.request(self.command, self.target(), body=body, headers=headers)
                 resp = conn.getresponse()
                 self.send_response(resp.status, resp.reason)
                 for k, v in resp.getheaders():
@@ -135,15 +177,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
                     self.wfile.flush()
                 self.wfile.write(b"0\r\n\r\n")
-                self.charge(bytes(seen))
+                cost = self.cost_in(bytes(seen))
+                if not cost and resp.status < 400 and body is not None:
+                    # A completed request that reported no usage may still
+                    # have been billed.
+                    cost = reserve
             except (OSError, http.client.HTTPException) as e:
                 self.log_error("upstream error: %s", e)
                 self.close_connection = True
             finally:
                 conn.close()
+                # A response that didn't finish may still have been billed:
+                # charge what was reserved for it.
+                self.charge(reserve if cost is None else cost, reserve)
 
-    def charge(self, data: bytes) -> None:
-        """Add the cost of a response: plain JSON, or the usage in an SSE stream."""
+    @staticmethod
+    def cost_in(data: bytes) -> float:
+        """The cost of a response: plain JSON, or the usage in an SSE stream."""
         cost = 0.0
         texts = [data]
         if b"data:" in data:
@@ -155,7 +205,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 continue
             if isinstance(usage, dict):
                 cost += cost_of(usage)
+        return cost
+
+    def charge(self, cost: float, reserve: float) -> None:
         with State.lock:
+            State.reserved -= reserve
             State.spent += cost
             spent = State.spent
         if cost:
