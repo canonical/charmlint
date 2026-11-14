@@ -71,22 +71,63 @@ ALLOWED_PREFIXES = (
     "docs/rules.md",
     "RULES_TRACKER.md",
 )
-# Rule code only parses charm files. Checked on the parsed source, not the
-# text: a rule matching Pebble's `exec` check key has to be able to say "exec".
-FORBIDDEN_MODULES = {
+# Rule code only parses charm files, so it may only import these (and
+# charmlint itself). Tests get a list of modules they may not newly import
+# instead, because they run in CI on the bot's PR. Both are checked on the
+# parsed source, not the text: a rule matching Pebble's `exec` check key has
+# to be able to say "exec". This catches the obvious; a maintainer's review is
+# still the boundary.
+RULE_IMPORTS = {
+    "__future__",
+    "abc",
+    "ast",
+    "collections",
+    "copy",
+    "dataclasses",
+    "difflib",
+    "enum",
+    "fnmatch",
+    "functools",
+    "itertools",
+    "json",
+    "keyword",
+    "math",
+    "operator",
+    "pathlib",
+    "re",
+    "string",
+    "textwrap",
+    "tomllib",
+    "types",
+    "typing",
+    "urllib.parse",
+    "warnings",
+    "yaml",
+    "charmlint",
+}
+TEST_FORBIDDEN_MODULES = {
     "subprocess",
+    "os",
+    "sys",
+    "pty",
+    "asyncio",
+    "builtins",
     "importlib",
+    "runpy",
+    "multiprocessing",
+    "socket",
+    "ssl",
+    "http.client",
     "urllib.request",
     "requests",
     "httpx",
-    "socket",
-    "http.client",
     "ctypes",
     "shutil",
-    "runpy",
-    "multiprocessing",
+    "signal",
 }
-FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__"}
+FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "globals", "vars", "breakpoint"}
+FORBIDDEN_NAMES = {"__builtins__"}
+FORBIDDEN_ATTRS = {"__subclasses__", "__globals__", "__builtins__", "__code__", "__import__"}
 RULE_CODE = ("src/charmlint/_rules/", "src/charmlint/_ast.py", "src/charmlint/_yaml.py")
 
 
@@ -862,7 +903,7 @@ class Pipeline:
                 else "none checked\n"
             )
         )
-        blocking = deterministic_review(diff.read_text(), self.repo)
+        blocking = deterministic_review(diff.read_text(), self.repo, self.start_sha)
         for focus, checklist in (
             ("correctness", "checklist-correctness"),
             ("tests and conventions", "checklist-conventions"),
@@ -934,7 +975,7 @@ class Pipeline:
             log("reviewer edited the repository; restoring")
             git(self.repo, "checkout", "--", ".")
             git(self.repo, "clean", "-fdq")
-        blocking = deterministic_review(diff.read_text(), self.repo)
+        blocking = deterministic_review(diff.read_text(), self.repo, self.start_sha)
         try:
             result = self.read_json(stage, out)
         except (OSError, json.JSONDecodeError):
@@ -1235,7 +1276,7 @@ def counts_block(summary: dict, classified: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def deterministic_review(diff: str, repo: pathlib.Path) -> list[dict]:
+def deterministic_review(diff: str, repo: pathlib.Path, base: str = "HEAD") -> list[dict]:
     findings = []
     files = re.findall(r"^diff --git a/(\S+)", diff, re.MULTILINE)
     for f in files:
@@ -1247,43 +1288,79 @@ def deterministic_review(diff: str, repo: pathlib.Path) -> list[dict]:
                 "problem": "file outside the bot's allowlist",
                 "fix": "revert it",
             })
-        elif f.startswith(RULE_CODE) and (repo / f).exists():
-            for line, what in forbidden_uses((repo / f).read_text()):
+        elif f.endswith(".py") and (repo / f).exists():
+            rule_code = f.startswith(RULE_CODE)
+            old = subprocess.run(
+                ["git", "show", f"{base}:{f}"],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout
+            for line, what in forbidden_uses((repo / f).read_text(), old, rule_code=rule_code):
                 findings.append({
                     "severity": "blocking",
                     "file": f,
                     "line": line,
-                    "problem": f"rule code uses {what}: rules only parse charm files",
+                    "problem": f"{'rule code' if rule_code else 'a test'} uses {what}"
+                    + (
+                        ": rules only parse charm files"
+                        if rule_code
+                        else ": tests run in CI on the bot's PR"
+                    ),
                     "fix": "remove it",
                 })
     return findings
 
 
-def forbidden_uses(source: str) -> list[tuple[int, str]]:
-    """Imports of modules that run or fetch things, and calls that execute code."""
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []  # `make lint` reports it
-    uses = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names = [a.name for a in node.names]
-        elif isinstance(node, ast.ImportFrom) and not node.level:
-            names = [node.module or ""]
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id in FORBIDDEN_CALLS
-        ):
-            uses.append((node.lineno, f"`{node.func.id}()`"))
-            continue
-        else:
-            continue
-        for name in names:
-            if any(name == m or name.startswith(m + ".") for m in FORBIDDEN_MODULES):
-                uses.append((node.lineno, f"`import {name}`"))
-    return uses
+def forbidden_uses(
+    source: str, base: str = "", *, rule_code: bool = True
+) -> list[tuple[int, str]]:
+    """Imports and calls that run, fetch or reach around things, that ``base`` didn't have.
+
+    Rule code may only import ``RULE_IMPORTS``; tests may not import
+    ``TEST_FORBIDDEN_MODULES``. Uses already in ``base`` (the file before the
+    change) aren't reported, so editing an existing test that runs a
+    subprocess is fine.
+    """
+
+    def under(name: str, modules: set[str]) -> bool:
+        return any(name == m or name.startswith(m + ".") for m in modules)
+
+    def uses(text: str) -> dict[str, int]:
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            return {}  # `make lint` reports it
+        found: dict[str, int] = {}
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level:
+                names = [node.module or ""]
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in FORBIDDEN_CALLS
+            ):
+                found.setdefault(f"`{node.func.id}()`", node.lineno)
+            elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:
+                found.setdefault(f"`{node.id}`", node.lineno)
+            elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_ATTRS:
+                found.setdefault(f"`.{node.attr}`", node.lineno)
+            for name in names:
+                bad = (
+                    not under(name, RULE_IMPORTS)
+                    if rule_code
+                    else under(name, TEST_FORBIDDEN_MODULES)
+                )
+                if bad:
+                    found.setdefault(f"`import {name}`", getattr(node, "lineno", 0))
+        return found
+
+    old = uses(base) if base else {}
+    return sorted((line, what) for what, line in uses(source).items() if what not in old)
 
 
 def corpus_feedback(fps: list[dict], misses: list[dict]) -> str:
