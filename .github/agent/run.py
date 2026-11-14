@@ -48,13 +48,8 @@ from typing import Any
 
 HERE = pathlib.Path(__file__).resolve().parent
 PROMPTS = HERE / "prompts"
-# Next to this file in charmlint; in the backtest's staging copy, in ../backtest.
-CORPUS_RUN = next(
-    p for p in (HERE / "corpus_run.py", HERE.parent / "backtest" / "corpus_run.py") if p.exists()
-)
-RECALL_GREP = next(
-    p for p in (HERE / "recall_grep.py", HERE.parent / "backtest" / "recall_grep.py") if p.exists()
-)
+CORPUS_RUN = HERE / "corpus_run.py"
+RECALL_GREP = HERE / "recall_grep.py"
 LOOSE_PREFIX = "(?i)(?=.*\\b"  # how a loosened pattern starts
 
 
@@ -69,7 +64,6 @@ ALLOWED_PREFIXES = (
     "src/charmlint/_yaml.py",
     "tests/",
     "docs/rules.md",
-    "RULES_TRACKER.md",
 )
 # Rule code only parses charm files, so it may only import these (and
 # charmlint itself). Tests get a list of modules they may not newly import
@@ -162,7 +156,6 @@ class Config:
 ROUTING = {
     "z-ai/": {"only": ["z-ai"], "allow_fallbacks": False},
     "moonshotai/": {"only": ["moonshotai"], "allow_fallbacks": False},
-    "deepseek/": {"only": ["deepseek"], "allow_fallbacks": False},
 }
 
 

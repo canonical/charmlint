@@ -49,7 +49,6 @@ HOP_BY_HOP = {
 ROUTING = {
     "z-ai/": {"only": ["z-ai"], "allow_fallbacks": False},
     "moonshotai/": {"only": ["moonshotai"], "allow_fallbacks": False},
-    "deepseek/": {"only": ["deepseek"], "allow_fallbacks": False},
 }
 # When a response carries token counts but no cost, assume a price above any
 # allowed model's, so the cap errs towards stopping early.
@@ -214,10 +213,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             spent = State.spent
         if cost:
             self.log_message("cost $%.4f, spent $%.4f of $%.2f", cost, spent, State.budget)
-
-    def log_message(self, format: str, *args: object) -> None:  # ruff: ignore[A002]
-        # Method, path, status and spend only; never headers.
-        super().log_message(format, *args)
 
 
 def main() -> None:
