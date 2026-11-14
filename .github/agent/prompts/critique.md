@@ -18,7 +18,10 @@ is the most expensive mistake the pipeline can make.
   code has the problem the issue says matters, and the rule could see it
   in the flagged code, the rule should flag it. Leaving it out is fine
   only when it needs code outside the files the change may touch, or
-  another issue covers it.
+  another issue covers it. Don't widen the rule onto a different API or
+  kind of charm than the issue is about (charmhelpers and reactive charms,
+  say, when the issue is about ops): those work differently, and belong in
+  their own issue.
 - **Too broad.** Something under "What it matches" that the issue's
   Detection section or examples don't ask for, and where the issue's
   reason doesn't hold.

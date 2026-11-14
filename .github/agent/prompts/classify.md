@@ -15,7 +15,9 @@ For each finding, decide:
 - `EXPECTED` - the rule is technically right, but this is a deliberate
   choice the author would suppress (say why).
 - `FP` - the rule is wrong: the code doesn't have the problem, or the rule
-  misread it (say exactly what it misread).
+  misread it (say exactly what it misread). This includes code that is
+  fine because of something the rule can't see, such as an option
+  declared by an included layer or a file generated at build time.
 - `UNK` - you can't tell, even after opening the file.
 
 Work in two passes. First read all the findings and group them into a
