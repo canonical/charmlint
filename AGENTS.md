@@ -38,7 +38,7 @@ uv run ty check
 
 A new or changed rule needs a TP/FP table over the hyrum cache (`~/.cache/hyrum/charms`) before review. Enumerate charms and report results as described in [docs/corpus.md](docs/corpus.md) — the cache contains build trees and mirrored repos, so an ad-hoc `rglob` gives a different denominator every time (~1970 directories vs 655 charms).
 
-Label a finding by whether the reason for the rule holds in that charm, not by whether the code matches what the rule was written to find. For example, STATUS-001 is about handlers that never run again, so a finding on a handler that is also observed for `config-changed` would be a false positive, even though the handler is observed for `install` too.
+Label a finding by whether the reason for the rule holds in that charm, not by whether the code matches what the rule was written to find. For example, STATUS-001 is about handlers that never run again. It leaves out a handler that is also observed for `config-changed`, but it only sees the observe calls in the module that defines the handler. If a base class in `src/base.py` observes `install` for `_on_setup` and `charm.py` also observes `config_changed` for it, STATUS-001 reports `_on_setup`. That finding is a false positive, because `config-changed` runs the handler again, even though the code in `src/base.py` matches what the rule looks for.
 
 ## Conventions
 
