@@ -1,0 +1,9 @@
+# hyrum for the weekly corpus job, with hashes. Regenerate with:
+#   echo hyrum==X.Y.Z | uv pip compile --universal --generate-hashes --python-version 3.12 --no-header -
+hyrum==1.0.0 \
+    --hash=sha256:79c920eb79a9f540bef95c6729e89c6c91453e2c0ff0b0fa6cfe73f16cce2b99 \
+    --hash=sha256:c9271611c82baefb3576049c1acf505fb0f93d47b2dd322f129214bdcb0928b4
+packaging==26.3 \
+    --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+    # via hyrum

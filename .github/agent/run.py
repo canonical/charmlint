@@ -147,7 +147,7 @@ class Config:
     corpus: pathlib.Path = pathlib.Path(
         os.environ.get("CLA_CORPUS", pathlib.Path.home() / ".cache/hyrum/charms")
     )
-    budget_usd: float = float(os.environ.get("CLA_BUDGET_USD", "6"))
+    budget_usd: float = float(os.environ.get("CLA_BUDGET_USD", "8"))
     check_rounds: int = 3
     fp_rounds: int = 2
     review_rounds: int = 2

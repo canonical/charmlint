@@ -40,7 +40,7 @@ Because the agent could write any of the agent job's output, the publish job che
 | Permissions | Agent job: `contents: read` and the OpenRouter key through a proxy. Publish job: the bot's token, scoped to this repository |
 | Data boundary | Public only: charmlint, its public issues, and the public charm corpus |
 | Models | GLM 5.3 and Kimi K2.7 through OpenRouter, pinned to their first-party providers |
-| Spending limit | The OpenRouter key's credit limit, and `AGENT_BUDGET_USD` per run (default $6), enforced by the key proxy |
+| Spending limit | The OpenRouter key's credit limit, and `AGENT_BUDGET_USD` per run (default $8), enforced by the key proxy |
 | Timeout | `timeout-minutes` on each job, and bounded fix rounds in the pipeline |
 | Failure behaviour | A comment on the issue with the run link, and the `agent:failed` label. Nothing else is blocked |
 | Audit trail | The Actions log, every stage's outputs as artefacts, and a link to the run in each PR |
@@ -61,7 +61,7 @@ The agent measures every rule over the same charm corpus that [corpus.md](corpus
    - `AGENT_ALLOWLIST`: GitHub logins whose labels and reviews count, separated by commas.
    - `AGENT_BOT`: the bot's login (`prints-charming-bot`).
    - `AGENT_BOT_NAME` and `AGENT_BOT_EMAIL`: the commit author for the bot's commits. Use the bot's `noreply` address.
-   - `AGENT_MAX_OPEN_PRS` (optional, default 2), `AGENT_BUDGET_USD` (optional, default 6) and `AGENT_MODELS` (optional, the OpenRouter models the proxy forwards, separated by commas).
+   - `AGENT_MAX_OPEN_PRS` (optional, default 2), `AGENT_BUDGET_USD` (optional, default 8; a hard issue costs $6-8) and `AGENT_MODELS` (optional, the OpenRouter models the proxy forwards, separated by commas).
 5. Create the labels `agent`, `agent:plan-only`, `agent:running` and `agent:failed`.
 6. Check that the branch rules for the default branch require a review that the bot can't give, so its PRs can't be merged without a maintainer.
 7. Run the "Agent upkeep" workflow by hand once, to build the corpus.
