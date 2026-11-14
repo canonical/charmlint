@@ -46,18 +46,6 @@ Label a finding by whether the reason for the rule holds in that charm, not by w
 - Rule IDs follow `CATEGORY-###` (`SECURITY-001`, `METADATA-003`) — see [docs/id-scheme.md](docs/id-scheme.md) for the category catalogue.
 - Runtime dependencies are kept minimal (PyYAML only); the `_pypi_attest.py` helper is stdlib-only by design.
 
-## Rule module layout
-
-Rule modules are read far more often in review than they are written, so lay one
-out top-down and let the reader follow the call graph without scrolling back:
-
-- Rule classes first, in rule-ID order.
-- Then the helpers, in the order they are first called: a helper is defined below
-  its caller, and two helpers appear in the order the caller reaches them.
-- A helper used by one rule module stays private to it. A concern shared across
-  rule modules belongs in `_ast.py`, `_yaml.py` or `_toml.py` instead — check
-  there before writing a new walker or parser.
-
 ## Writing a rule
 
 - Cover every way charms write the problem. Before writing the matcher, search
@@ -75,6 +63,18 @@ out top-down and let the reader follow the call graph without scrolling back:
   YAML, that is the `line` of the most specific node at fault, such as the list
   element that is wrong rather than the key that holds the list. `_yaml.load()`
   already records it.
+
+### Module layout
+
+Rule modules are read far more often in review than they are written, so lay one
+out top-down and let the reader follow the call graph without scrolling back:
+
+- Rule classes first, in rule-ID order.
+- Then the helpers, in the order they are first called: a helper is defined below
+  its caller, and two helpers appear in the order the caller reaches them.
+- A helper used by one rule module stays private to it. A concern shared across
+  rule modules belongs in `_ast.py`, `_yaml.py` or `_toml.py` instead — check
+  there before writing a new walker or parser.
 
 ## Security
 
