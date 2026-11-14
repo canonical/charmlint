@@ -11,8 +11,9 @@ on:
   pull_request_review:
     types: [submitted]
   schedule:
-    # The drain: the oldest approved issue, if fewer than AGENT_MAX_OPEN_PRS
-    # agent PRs are open. 08:17 and 20:17 UTC.
+    # The drain: the oldest approved issue that hasn't run (a plan-only one, or
+    # a full one if fewer than AGENT_MAX_OPEN_PRS agent PRs are open). 08:17
+    # and 20:17 UTC.
     - cron: "17 8,20 * * *"
   workflow_dispatch:
     inputs:
@@ -35,8 +36,12 @@ permissions: {}
 
 jobs:
   triage:
+    # Only the labels that start work, so the bot adding agent:failed doesn't
+    # take a place in the queue. The allowlist is matched as ",login," or
+    # " login," so that "a, b" works as well as "a,b".
     if: >-
-      (github.event_name != 'issues' || startsWith(github.event.label.name, 'agent'))
+      (github.event_name != 'issues'
+       || github.event.label.name == 'agent' || github.event.label.name == 'agent:plan-only')
       && (github.event_name != 'pull_request_review'
           || (startsWith(github.event.pull_request.head.ref, 'agent/issue-')
               && github.event.review.state == 'changes_requested'
@@ -44,9 +49,11 @@ jobs:
                   || contains(format(',{0},', vars.AGENT_ALLOWLIST), format(' {0},', github.event.review.user.login)))))
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # One triage at a time, so two events can't both claim the same issue. A
-    # review only starts a run that comes back through here, so it waits in a
-    # group of its own and can't replace a pending label or drain.
+    # One triage at a time, so two events can't both claim the same issue.
+    # GitHub keeps only the newest pending run in a group and cancels the one
+    # it replaces; the drain picks that issue up later. A review only starts a
+    # run that comes back through here, so it waits in a group of its own and
+    # can't replace a pending label or drain.
     concurrency:
       group: ${{ github.event_name == 'pull_request_review' && format('agent-review-{0}', github.event.pull_request.number) || 'agent-triage' }}
       cancel-in-progress: false

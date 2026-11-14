@@ -12,11 +12,11 @@ To revise a PR, submit a review that requests changes. The agent addresses the r
 
 Only labels and reviews from users in the `AGENT_ALLOWLIST` variable count. If someone else edits the issue after it's labelled, the agent doesn't run, and comments to say so.
 
-At most `AGENT_MAX_OPEN_PRS` agent PRs are open at a time. An issue labelled while that many are open waits. A scheduled run twice a day picks up the oldest waiting issue.
+At most `AGENT_MAX_OPEN_PRS` agent PRs are open at a time. An issue labelled while that many are open waits. A scheduled run twice a day picks up the oldest waiting issue, including a plan-only one. It also catches labels that GitHub dropped: only one triage runs at a time, and GitHub keeps only the newest one waiting, so labelling several issues at once can leave some for the scheduled run.
 
 The workflow can also be run by hand, with an issue number, from the Actions tab.
 
-When a run fails, the agent comments on the issue with a link to the run, removes `agent` and adds `agent:failed`. Every stage's prompt, transcript and output is kept as an artefact of the run for 90 days.
+When a run fails, the agent comments on the issue with a link to the run, removes `agent` and adds `agent:failed`. Every stage's prompt, transcript and output is kept as an artefact of the run for 90 days. If the publish job itself is cancelled or times out, `agent:running` stays on the issue and nothing will run it again; remove that label by hand.
 
 ## How it runs
 
