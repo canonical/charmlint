@@ -47,7 +47,9 @@ jobs:
         run: |
           curl -fsSL -o "$RUNNER_TEMP/charms.csv" \
             "https://raw.githubusercontent.com/canonical/hyrum/${HYRUM_LIST_SHA}/charm-list/charms.csv"
-          uvx --from hyrum==1.0.0 hyrum get-charms --source "$RUNNER_TEMP/charms.csv" --dest "$RUNNER_TEMP/charms" --workers 16
+          uv venv --python 3.12 "$RUNNER_TEMP/hyrum"
+          uv pip install --python "$RUNNER_TEMP/hyrum" --require-hashes -r .github/agent/hyrum-requirements.txt
+          "$RUNNER_TEMP/hyrum/bin/hyrum" get-charms --source "$RUNNER_TEMP/charms.csv" --dest "$RUNNER_TEMP/charms" --workers 16
         env:
           HYRUM_LIST_SHA: 592b85093a6331a96617c707f2e2e3fe652ad262
       - name: Snapshot and pack

@@ -226,7 +226,7 @@ jobs:
           exit 1
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          BUDGET: ${{ vars.AGENT_BUDGET_USD || '6' }}
+          BUDGET: ${{ vars.AGENT_BUDGET_USD || '8' }}
           MODELS: ${{ vars.AGENT_MODELS || 'z-ai/glm-5.3,moonshotai/kimi-k2.7-code' }}
       - name: Run the pipeline
         run: |
@@ -252,7 +252,7 @@ jobs:
             --setenv=CLA_CORPUS=/srv/agent/corpus \
             --setenv=CLA_OPENROUTER_BASE_URL=http://127.0.0.1:8787/api/v1 \
             --setenv=OPENROUTER_API_KEY=held-by-proxy \
-            --setenv=CLA_BUDGET_USD="${BUDGET:-6}" \
+            --setenv=CLA_BUDGET_USD="${BUDGET:-8}" \
             python3 /opt/agent/pipeline/run.py /srv/agent/repo /srv/agent/in/task.json /srv/agent/work "${args[@]}" \
             || rc=$?
           # 3 is a plan to post (plan-only, out of scope, needs design), not a failure.
