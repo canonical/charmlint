@@ -66,3 +66,36 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  # The pi version the agent workflow runs (.github/agent/pi/package-lock.json).
+  - package-ecosystem: "npm"
+    directory: "/.github/agent/pi"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
+    labels:
+      - "dependencies"
+    groups:
+      agent-pi:
+        patterns:
+          - "*"
+  # The hyrum version the agent's weekly corpus job installs, with hashes
+  # (.github/agent/hyrum-requirements.txt).
+  - package-ecosystem: "pip"
+    directory: "/.github/agent"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: "chore"  # The PR-title check rejects the "(deps)" scope Dependabot infers.
+    labels:
+      - "dependencies"
+    groups:
+      agent-hyrum:
+        patterns:
+          - "*"
