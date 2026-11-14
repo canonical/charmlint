@@ -178,11 +178,36 @@ jobs:
           as_agent() { sudo -u agent -H env -i PATH="$PATH" HOME=/home/agent LANG=C.UTF-8 "$@"; }
           as_agent bash -c 'cd /srv/agent/repo && uv sync --group dev --frozen && uv python install 3.14'
           as_agent uv run --no-project --python 3.14 --with pyyaml python -c pass
+          # A chain of our own, jumped to first, so no ACCEPT that harden-runner
+          # (or anything else) put in OUTPUT applies to `agent`. Loopback only to
+          # the proxy's port: the local DNS resolver would be a way out.
           agent_uid=$(id -u agent)
           for t in iptables ip6tables; do
-            sudo "$t" -A OUTPUT -o lo -m owner --uid-owner "$agent_uid" -j ACCEPT
-            sudo "$t" -A OUTPUT -m owner --uid-owner "$agent_uid" -j REJECT
+            sudo "$t" -N AGENT_OUT
+            sudo "$t" -I OUTPUT 1 -m owner --uid-owner "$agent_uid" -j AGENT_OUT
           done
+          sudo iptables -A AGENT_OUT -o lo -d 127.0.0.1 -p tcp --dport 8787 -j ACCEPT
+          sudo iptables -A AGENT_OUT -j REJECT
+          sudo ip6tables -A AGENT_OUT -j REJECT
+      - name: Check that the agent can only reach the proxy
+        run: |
+          cd /srv/agent
+          fail=0
+          # By address, since `agent` can't resolve names: that's checked separately.
+          for fam in 4 6; do
+            addr=$(getent "ahostsv$fam" api.github.com | awk 'NR == 1 {print $1}') || true
+            [ -n "$addr" ] || continue
+            [ "$fam" = 4 ] || addr="[$addr]"
+            if sudo -u agent curl -sS -m 5 -o /dev/null --resolve "api.github.com:443:$addr" https://api.github.com/zen; then
+              echo "::error::agent reached api.github.com over IPv$fam"
+              fail=1
+            fi
+          done
+          if sudo -u agent getent hosts example.com; then
+            echo "::error::agent can resolve names"
+            fail=1
+          fi
+          exit "$fail"
       - name: Start the key proxy
         run: |
           # The pipeline stops itself at the budget; the proxy is the hard stop, with
