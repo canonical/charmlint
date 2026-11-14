@@ -82,9 +82,11 @@ CLOSING = re.compile(
 # as links to evil.example), a scheme-relative //host, or a bare www. host.
 URL = re.compile(r"\bhttps?:[^\s)>\]]*|(?<![\w:])//[^\s)>\]]+|\bwww\.[^\s)>\]]+", re.I)
 # Fenced code blocks (to the end of the text if unclosed, as CommonMark does)
-# and inline code spans: GitHub renders these literally.
+# and inline code spans: GitHub renders these literally. A span can't cross a
+# blank line, which ends the paragraph it's in.
 CODE = re.compile(
-    r"^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^ {0,3}\1[`~]*[ \t]*$|\Z)|(`+)(?!`).+?(?<!`)\2(?!`)",
+    r"^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^ {0,3}\1[`~]*[ \t]*$|\Z)"
+    r"|(`+)(?!`)(?:(?!\n[ \t]*\n).)+?(?<!`)\2(?!`)",
     re.M | re.S,
 )
 MODEL = re.compile(r"[a-z0-9.-]+/[a-z0-9.:-]+")
@@ -189,11 +191,16 @@ def plan_comment(agent: pathlib.Path, intro: str) -> str:
     # The plan is posted in a fence, which GitHub renders literally, so only
     # secrets need removing; anything more would change what is read back.
     plan = SECRET.sub("(removed)", (agent / "plan.md").read_text().strip())
-    fence = "`" * max(4, max((len(m) for m in re.findall(r"`{3,}", plan)), default=0) + 1)
     return (
         f"{PLAN_MARKER}\n{intro}\n\n<details><summary>Plan</summary>\n\n"
-        f"<!-- plan-start -->\n{fence}markdown\n{plan}\n{fence}\n<!-- plan-end -->\n\n</details>\n"
+        f"<!-- plan-start -->\n{fenced(plan, 'markdown')}\n<!-- plan-end -->\n\n</details>\n"
     )
+
+
+def fenced(text: str, info: str = "") -> str:
+    """TEXT in a backtick fence longer than any backtick run inside it, so it can't close early."""
+    fence = "`" * max(4, max((len(m) for m in re.findall(r"`{3,}", text)), default=0) + 1)
+    return f"{fence}{info}\n{text}\n{fence}"
 
 
 def check_tree(repo: pathlib.Path, start: str) -> list[str]:
@@ -280,15 +287,13 @@ def commit_message(title: str, meta: dict, issue: int | None) -> str:
 
 
 def pr_title(agent: pathlib.Path) -> str:
-    title = (
-        (agent / "title.txt").read_text().strip().splitlines()[0]
-        if (agent / "title.txt").exists()
-        else ""
-    )
+    text = (agent / "title.txt").read_text() if (agent / "title.txt").exists() else ""
+    title = next(iter(text.strip().splitlines()), "")
+    # No "!" either: a rule PR from an issue isn't a breaking change.
     title = re.sub(r"[^\w\s:().,`'/-]", "", clean_text(title, markdown=False))[:100].strip()
     # The repository's PR title check: a known type, no scope.
     types = r"(?:chore|ci|docs|feat|fix|perf|refactor|revert|test)"
-    return title if re.match(rf"^{types}!?: \S", title) else f"feat: {title or 'new rule'}"
+    return title if re.match(rf"^{types}: \S", title) else f"feat: {title or 'new rule'}"
 
 
 def pr_body(agent: pathlib.Path, meta: dict, issue: int) -> str:
@@ -400,8 +405,9 @@ def main() -> int:
         detail = e.stderr if isinstance(e, subprocess.CalledProcessError) else str(e)
         print(f"publish failed: {type(e).__name__}: {detail}", file=sys.stderr)
         try:
-            why = clean_text(str(detail)).strip()[:1500]
-            fail(target, f"publishing failed.\n\n```\n{why}\n```\n", issue=not revising)
+            # In a fence, which GitHub renders literally, so only secrets need removing.
+            why = SECRET.sub("(removed)", str(detail)).strip()[:1500]
+            fail(target, f"publishing failed.\n\n{fenced(why)}\n", issue=not revising)
         except Exception as e2:  # ruff: ignore[BLE001]
             print(f"couldn't report the failure: {e2}", file=sys.stderr)
         return 1
