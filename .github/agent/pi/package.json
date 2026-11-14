@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Pins the pi version the agent workflow runs, with a lockfile.",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0"
+  }
+}

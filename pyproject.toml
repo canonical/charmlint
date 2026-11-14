@@ -100,6 +100,14 @@ ignore = [
     "missing-return-type-private-function",  # ANN202
 ]
 
+# The agent pipeline's scripts drive git, gh, uv and pi; running fixed
+# commands is what they're for.
+".github/agent/**" = [
+    "suspicious-subprocess-import",  # S404
+    "subprocess-without-shell-equals-true",  # S603
+    "start-process-with-partial-path",  # S607
+]
+
 [tool.ruff.lint.flake8-annotations]
 allow-star-arg-any = true
 

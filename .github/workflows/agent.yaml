@@ -1,0 +1,294 @@
+name: Agent
+
+# Turns approved issues into PRs, and revises those PRs after review. See
+# docs/agent-workflow.md. Three jobs: triage (no model, decides what to run),
+# agent (the models, with no GitHub write access and no readable key), and
+# publish (the bot's token, no model, and every check that matters).
+
+on:
+  issues:
+    types: [labeled]
+  pull_request_review:
+    types: [submitted]
+  schedule:
+    # The drain: the oldest approved issue, if fewer than AGENT_MAX_OPEN_PRS
+    # agent PRs are open. 08:17 and 20:17 UTC.
+    - cron: "17 8,20 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "full, plan-only (post the plan and stop), or revise (used by review events)"
+        type: choice
+        options: [full, plan-only, revise]
+        default: full
+      issue:
+        description: Issue number (full and plan-only)
+        type: string
+      pr:
+        description: PR number (revise)
+        type: string
+      review:
+        description: Review ID (revise)
+        type: string
+
+permissions: {}
+
+jobs:
+  triage:
+    if: >-
+      (github.event_name != 'issues' || startsWith(github.event.label.name, 'agent'))
+      && (github.event_name != 'pull_request_review'
+          || startsWith(github.event.pull_request.head.ref, 'agent/issue-'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One triage at a time, so two events can't both claim the same issue.
+    concurrency:
+      group: agent-triage
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write  # to add agent:running
+      pull-requests: read
+      actions: write  # a review event starts a revision run on the default branch
+    outputs:
+      run: ${{ steps.trigger.outputs.run }}
+      notice: ${{ steps.trigger.outputs.notice }}
+      issue: ${{ steps.trigger.outputs.issue }}
+      mode: ${{ steps.trigger.outputs.mode }}
+      start_sha: ${{ steps.trigger.outputs.start_sha }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            results-receiver.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+      # The scripts always come from the default branch, never from the
+      # branch a review was left on.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/agent
+      - id: trigger
+        run: python3 .github/agent/trigger.py --out "$RUNNER_TEMP/trigger"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          AGENT_ALLOWLIST: ${{ vars.AGENT_ALLOWLIST }}
+          AGENT_BOT: ${{ vars.AGENT_BOT }}
+          AGENT_MAX_OPEN_PRS: ${{ vars.AGENT_MAX_OPEN_PRS }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: trigger
+          path: ${{ runner.temp }}/trigger
+          retention-days: 90
+
+  agent:
+    needs: triage
+    if: needs.triage.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: agent-llm
+    permissions:
+      contents: read
+    concurrency:
+      group: agent-issue-${{ needs.triage.outputs.issue }}
+      cancel-in-progress: false
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            openrouter.ai:443
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.astral.sh:443
+            results-receiver.actions.githubusercontent.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            registry.npmjs.org:443
+            nodejs.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/agent
+          path: pipeline
+      # Exactly the commit triage recorded; the publish job builds on it too.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.triage.outputs.start_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+          path: repo
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: trigger
+          path: ${{ runner.temp }}/trigger
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/agent-corpus.tar.zst
+          key: agent-corpus-none
+          restore-keys: agent-corpus-
+          fail-on-cache-miss: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+        with:
+          enable-cache: false
+      # Three users: `runner` (this job's steps and tokens), `keyproxy` (holds
+      # the OpenRouter key), and `agent` (the pipeline and every tool the models
+      # use). `agent` has no sudo, can't see the other users' processes, can't
+      # read the runner's home, and can only reach the proxy on localhost.
+      - name: Set up the agent's user and workspace
+        run: |
+          sudo useradd --create-home --shell /bin/bash agent
+          sudo useradd --system --no-create-home --shell /usr/sbin/nologin keyproxy
+          sudo mount -o remount,hidepid=invisible /proc
+          sudo install -d -o root -g root -m 755 /srv/agent /srv/agent/in /opt/agent
+          sudo install -d -o agent -g agent -m 755 /srv/agent/work /srv/agent/corpus
+          # The corpus as `agent`, without owners, modes or anything outside corpus/.
+          sudo cat "$HOME/agent-corpus.tar.zst" | sudo -u agent tar -C /srv/agent -I zstd -xf - \
+            --no-same-owner --no-same-permissions --no-overwrite-dir corpus
+          sudo cp -r pipeline/.github/agent /opt/agent/pipeline
+          sudo env PATH="$PATH" npm ci --prefix /opt/agent/pipeline/pi --no-fund --no-audit --ignore-scripts
+          sudo ln -s /opt/agent/pipeline/pi/node_modules/.bin/pi /usr/local/bin/pi
+          sudo install -m 755 "$(command -v uv)" /usr/local/bin/uv
+          sudo cp -r repo /srv/agent/repo
+          sudo cp -r "$RUNNER_TEMP/trigger/." /srv/agent/in/
+          sudo chown -R agent:agent /srv/agent/repo
+          sudo chmod -R a+rX /opt/agent /srv/agent/in
+          sudo chmod 700 "$HOME"
+      # Everything the pipeline needs from the network is fetched now; after
+      # this, `agent` can only reach the proxy.
+      - name: Prepare the agent's Python environments
+        run: |
+          as_agent() { sudo -u agent -H env -i PATH="$PATH" HOME=/home/agent LANG=C.UTF-8 "$@"; }
+          as_agent bash -c 'cd /srv/agent/repo && uv sync --group dev --frozen && uv python install 3.14'
+          as_agent uv run --no-project --python 3.14 --with pyyaml python -c pass
+          agent_uid=$(id -u agent)
+          for t in iptables ip6tables; do
+            sudo "$t" -A OUTPUT -o lo -m owner --uid-owner "$agent_uid" -j ACCEPT
+            sudo "$t" -A OUTPUT -m owner --uid-owner "$agent_uid" -j REJECT
+          done
+      - name: Start the key proxy
+        run: |
+          # The pipeline stops itself at the budget; the proxy is the hard stop, with
+          # room for the call in flight when the pipeline's own check passed.
+          cap=$(python3 -c 'import os; print(float(os.environ["BUDGET"]) * 1.5)')
+          printf '%s\n' "$OPENROUTER_API_KEY" | sudo -u keyproxy python3 /opt/agent/pipeline/key_proxy.py \
+            --port 8787 --budget "$cap" --models "$MODELS" > "$RUNNER_TEMP/proxy.log" 2>&1 &
+          for _ in $(seq 20); do curl -fsS -o /dev/null http://127.0.0.1:8787/api/v1/models && exit 0; sleep 1; done
+          exit 1
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BUDGET: ${{ vars.AGENT_BUDGET_USD || '6' }}
+          MODELS: ${{ vars.AGENT_MODELS || 'z-ai/glm-5.3,moonshotai/kimi-k2.7-code' }}
+      - name: Run the pipeline
+        run: |
+          args=()
+          case "$MODE" in
+            plan-only) args+=(--plan-only) ;;
+            revise)
+              base=$(sudo -u agent git -C /srv/agent/repo merge-base "origin/$DEFAULT_BRANCH" HEAD)
+              args+=(--revise /srv/agent/in/feedback.md --plan /srv/agent/in/plan.md --base "$base") ;;
+            *) if [ -f /srv/agent/in/plan.md ]; then args+=(--plan /srv/agent/in/plan.md); fi ;;
+          esac
+          rc=0
+          sudo -u agent -H env -i \
+            PATH="$PATH" HOME=/home/agent LANG=C.UTF-8 \
+            UV_OFFLINE=1 PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 \
+            GIT_AUTHOR_NAME=agent GIT_AUTHOR_EMAIL=agent@localhost \
+            GIT_COMMITTER_NAME=agent GIT_COMMITTER_EMAIL=agent@localhost \
+            CLA_CORPUS=/srv/agent/corpus \
+            CLA_OPENROUTER_BASE_URL=http://127.0.0.1:8787/api/v1 \
+            OPENROUTER_API_KEY=held-by-proxy \
+            CLA_BUDGET_USD="${BUDGET:-6}" \
+            python3 /opt/agent/pipeline/run.py /srv/agent/repo /srv/agent/in/task.json /srv/agent/work "${args[@]}" \
+            || rc=$?
+          # 3 is a plan to post (plan-only, out of scope, needs design), not a failure.
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
+        env:
+          MODE: ${{ needs.triage.outputs.mode }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BUDGET: ${{ vars.AGENT_BUDGET_USD }}
+      # Nothing the agent started survives into the steps that hold Actions
+      # tokens, and only regular files are copied out.
+      - name: Collect the outputs
+        if: always()
+        run: |
+          sudo pkill -KILL -u keyproxy || true
+          sudo pkill -KILL -u agent || true
+          mkdir -p "$RUNNER_TEMP/out"
+          sudo rsync -rt --no-links --no-specials --no-devices --max-size=20m \
+            --exclude base-tree --exclude 'pi-agent/' /srv/agent/work/ "$RUNNER_TEMP/out/" || true
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/out"
+          find "$RUNNER_TEMP/out" ! -type f ! -type d -delete
+          cp "$RUNNER_TEMP/proxy.log" "$RUNNER_TEMP/out/" || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: always()
+        with:
+          name: agent-out
+          path: ${{ runner.temp }}/out
+          retention-days: 90
+
+  publish:
+    needs: [triage, agent]
+    if: >-
+      always()
+      && (needs.triage.outputs.run == 'true' || needs.triage.outputs.notice == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: agent-publish
+    permissions: {}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            results-receiver.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ secrets.AGENT_PAT }}
+          persist-credentials: true  # publish.py pushes the branch; nothing from the agent runs here
+          path: repo
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: trigger
+          path: ${{ runner.temp }}/trigger
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        if: needs.triage.outputs.run == 'true'
+        continue-on-error: true
+        with:
+          name: agent-out
+          path: ${{ runner.temp }}/agent
+      # The publish code is copied out of the checkout first, so the branch
+      # publish.py checks out and patches can't change what's running.
+      - name: Publish
+        run: |
+          cp -r repo/.github/agent "$RUNNER_TEMP/publish-code"
+          mkdir -p "$RUNNER_TEMP/agent"
+          python3 "$RUNNER_TEMP/publish-code/publish.py" \
+            --trigger "$RUNNER_TEMP/trigger" --agent "$RUNNER_TEMP/agent" \
+            --agent-result "$AGENT_RESULT" --repo-dir repo
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+          AGENT_RESULT: ${{ needs.agent.result }}
+          AGENT_BOT: ${{ vars.AGENT_BOT }}
+          AGENT_BOT_NAME: ${{ vars.AGENT_BOT_NAME }}
+          AGENT_BOT_EMAIL: ${{ vars.AGENT_BOT_EMAIL }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
