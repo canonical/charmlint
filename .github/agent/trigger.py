@@ -222,25 +222,34 @@ def issue_run(number: int, mode: str, out: pathlib.Path, *, approved: dict | Non
 
 
 def drain(out: pathlib.Path) -> dict:
-    if len(open_bot_prs()) >= MAX_OPEN:
-        raise Skip(f"{MAX_OPEN} agent PRs are already open")
+    """The oldest approved issue that hasn't run.
+
+    Plan-only issues are included: a label event whose triage was still
+    pending when another one queued was cancelled, and this is its retry.
+    """
+    modes = [(PLAN_ONLY, "plan-only")]
+    if len(open_bot_prs()) < MAX_OPEN:
+        modes.append((LABEL, "full"))
     candidates = []
-    for issue in gh(f"repos/{REPO}/issues?state=open&labels={LABEL}&per_page=100", paginate=True):
-        labels = {lab["name"] for lab in issue["labels"]}
-        if issue.get("pull_request") or labels & {FAILED, RUNNING, "needs design"}:
-            continue
-        try:
-            approved = approval(issue["number"], LABEL)
-            # Checked here too, so one edited issue can't block the queue.
-            check_not_edited(issue["number"], approved["at"], "")
-        except Skip:
-            continue
-        if not branch_exists(issue["number"]):
-            candidates.append((approved["at"], issue["number"], approved))
+    for label, mode in modes:
+        for issue in gh(
+            f"repos/{REPO}/issues?state=open&labels={label}&per_page=100", paginate=True
+        ):
+            labels = {lab["name"] for lab in issue["labels"]}
+            if issue.get("pull_request") or labels & {FAILED, RUNNING, "needs design"}:
+                continue
+            try:
+                approved = approval(issue["number"], label)
+                # Checked here too, so one edited issue can't block the queue.
+                check_not_edited(issue["number"], approved["at"], "")
+            except Skip:
+                continue
+            if mode == "plan-only" or not branch_exists(issue["number"]):
+                candidates.append((approved["at"], issue["number"], mode, approved))
     if not candidates:
         raise Skip("no approved issues waiting")
-    _, number, approved = min(candidates)
-    return issue_run(number, "full", out, approved=approved)
+    _, number, mode, approved = min(candidates)
+    return issue_run(number, mode, out, approved=approved)
 
 
 def strip_markup(text: str | None) -> str:
