@@ -35,8 +35,10 @@ from typing import Any
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from run import RULE_CODE, allowed_path, forbidden_uses  # ruff: ignore[E402]
 from trigger import (  # ruff: ignore[E402]
+    BUILT_MARKER,
     FAILED,
     LABEL,
+    NEEDS_DESIGN,
     PLAN_MARKER,
     PLAN_ONLY,
     REVISION_MARKER,
@@ -138,15 +140,18 @@ def clean_text(text: str, *, markdown: bool = True) -> str:
 
     def link(match: re.Match) -> str:
         found = match.group(0)
-        url = urllib.parse.urlsplit(found)
-        ok = (
-            found.lower().startswith("https://")
-            and "\\" not in found
-            and url.hostname in LINK_HOSTS
-            and ".." not in url.path
-            and "%2e" not in url.path.lower()
-            and (url.hostname != "github.com" or url.path.startswith("/canonical/"))
-        )
+        try:
+            url = urllib.parse.urlsplit(found)
+            ok = (
+                found.lower().startswith("https://")
+                and "\\" not in found
+                and url.hostname in LINK_HOSTS
+                and ".." not in url.path
+                and "%2e" not in url.path.lower()
+                and (url.hostname != "github.com" or url.path.startswith("/canonical/"))
+            )
+        except ValueError:  # not a URL urlsplit can read, such as "http://[::1"
+            ok = False
         return found if ok else "(link removed)"
 
     # Cut first: GitHub won't take more, and the regexes below aren't all
@@ -179,12 +184,14 @@ def footer(meta: dict) -> str:
     )
 
 
-def plan_comment(agent: pathlib.Path, intro: str) -> str:
+def plan_comment(agent: pathlib.Path, intro: str, *, built: bool = False) -> str:
+    """The comment a later run reads the plan back from. BUILT for the plan a PR was made from."""
     # The plan is posted in a fence, which GitHub renders literally, so only
     # secrets need removing; anything more would change what is read back.
     plan = SECRET.sub("(removed)", (agent / "plan.md").read_text().strip())
+    marker = f"{PLAN_MARKER}\n{BUILT_MARKER}" if built else PLAN_MARKER
     return (
-        f"{PLAN_MARKER}\n{intro}\n\n<details><summary>Plan</summary>\n\n"
+        f"{marker}\n{intro}\n\n<details><summary>Plan</summary>\n\n"
         f"<!-- plan-start -->\n{fenced(plan, 'markdown')}\n<!-- plan-end -->\n\n</details>\n"
     )
 
@@ -355,18 +362,21 @@ def publish(args: argparse.Namespace, trigger: dict) -> None:
             plan_comment(
                 args.agent,
                 f"The agent thinks this {verdict}; the plan says why. To go ahead anyway, change "
-                f"the plan's verdict to `PROCEED` in this comment and label the issue `{LABEL}`.",
+                f"the plan's verdict to `PROCEED` in this comment"
+                + (f", remove the `{NEEDS_DESIGN}` label" if outcome == "needs_design" else "")
+                + f" and label the issue `{LABEL}`. Labelling it without changing the verdict "
+                "makes a new plan.",
             ),
         )
         set_labels(
             issue,
-            add=("needs design",) if outcome == "needs_design" else (),
+            add=(NEEDS_DESIGN,) if outcome == "needs_design" else (),
             remove=(LABEL, PLAN_ONLY),
         )
     elif outcome == "pr":
         title = pr_title(args.agent)
         body = pr_body(args.agent, meta, issue)
-        plan = plan_comment(args.agent, "The plan the agent's PR was built from.")
+        plan = plan_comment(args.agent, "The plan the agent's PR was built from.", built=True)
         apply(args.repo_dir, args.agent, trigger, commit_message(title, meta, issue))
         comment(issue, plan)
         gh(
@@ -391,11 +401,14 @@ def publish(args: argparse.Namespace, trigger: dict) -> None:
             if (args.agent / "revision-comment.md").exists()
             else "The agent revised the change."
         )
+        # Everything that could fail is done before the push: a commit without
+        # its marker comment would let the same review be acted on again.
+        text, end = clean_text(text.strip()), footer(meta)
         changed = apply(
             args.repo_dir, args.agent, trigger, commit_message("chore: address review", meta, None)
         )
         note = "" if changed else "\n\nNo code changed in this revision."
-        comment(target, f"{REVISION_MARKER}\n{clean_text(text.strip())}{note}" + footer(meta))
+        comment(target, f"{REVISION_MARKER}\n{text}{note}{end}")
 
 
 def fail(number: int, why: str, *, issue: bool) -> None:

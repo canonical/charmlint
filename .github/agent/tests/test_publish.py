@@ -113,7 +113,7 @@ def test_fenced_cannot_be_closed_from_inside(text: str) -> None:
 def test_plan_round_trips_through_the_issue_comment(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
-    monkeypatch.setattr(trigger, "plan_edits_allowed", lambda c: True)
+    monkeypatch.setattr(trigger, "edits_allowed", lambda c: True)
     plan = "# Plan\n\n````python\nx = 1\n````\n\n```\ny\n```\n\nVerdict: PROCEED"
     (tmp_path / "plan.md").write_text(plan)
     body = publish.plan_comment(tmp_path, "intro")
@@ -242,3 +242,20 @@ def test_check_tree_does_not_echo_a_path_with_a_newline(repo: tuple[pathlib.Path
     assert problems == [problems[0]]
     assert "\n" not in problems[0]
     assert "control characters" in problems[0]
+
+
+def test_the_plan_a_pr_was_built_from_is_only_reused_by_a_revision(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    monkeypatch.setattr(trigger, "edits_allowed", lambda c: True)
+    (tmp_path / "plan.md").write_text("## Verdict\nPROCEED\n")
+    body = publish.plan_comment(tmp_path, "intro", built=True)
+    comments = [{"user": {"login": trigger.BOT}, "body": body}]
+    (tmp_path / "plan.md").unlink()
+    assert not trigger.find_plan(comments, tmp_path)
+    assert trigger.find_plan(comments, tmp_path, revising=True)
+
+
+@pytest.mark.parametrize("url", ["http://[::1]:8080/x", "https://[host]/path", "https://[::1"])
+def test_clean_text_removes_a_link_urlsplit_cannot_read(url: str) -> None:
+    assert publish.clean_text(f"see {url} for more").startswith("see (link removed)")

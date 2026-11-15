@@ -24,6 +24,7 @@ running as its own user:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import http.client
 import http.server
 import json
@@ -49,6 +50,11 @@ HOP_BY_HOP = {
     "content-length",
     "accept-encoding",
 }
+# Pin each model to its first-party provider: the cheap OpenRouter providers
+# serve these models at fp4, and routing between providers is the largest
+# source of run-to-run variation. `order` is not honoured reliably once other
+# filters apply; `only` is. The pipeline asks for the same routing (run.py
+# imports this), and the proxy sets it whatever was asked.
 ROUTING = {
     "z-ai/": {"only": ["z-ai"], "allow_fallbacks": False},
     "moonshotai/": {"only": ["moonshotai"], "allow_fallbacks": False},
@@ -245,14 +251,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def cost_in(data: bytes) -> float:
         """The cost of a response: plain JSON, or the usage in an SSE stream."""
         cost = 0.0
-        texts = [data]
-        if b"data:" in data:
-            texts = [line[5:] for line in data.splitlines() if line.startswith(b"data:")]
-        for text in texts:
-            try:
-                usage = json.loads(text).get("usage")
-            except (ValueError, AttributeError):
-                continue
+        # One JSON document, or else a stream: a plain reply can have "data:"
+        # in its text, so that alone doesn't make it one.
+        try:
+            docs = [json.loads(data)]
+        except ValueError:
+            docs = []
+            for line in data.splitlines():
+                if line.startswith(b"data:"):
+                    with contextlib.suppress(ValueError):
+                        docs.append(json.loads(line[5:]))
+        for doc in docs:
+            usage = doc.get("usage") if isinstance(doc, dict) else None
             if isinstance(usage, dict):
                 cost += cost_of(usage)
         return cost
