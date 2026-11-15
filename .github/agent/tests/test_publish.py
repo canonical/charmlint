@@ -16,7 +16,9 @@ import trigger
     ("text", "expected"),
     [
         ("a <b>bold</b> & more", "a &lt;b>bold&lt;/b> &amp; more"),
-        ("thanks @someone", "thanks `@someone`"),
+        ("thanks @someone", "thanks @\u200bsomeone"),
+        ("_@someone_", "_@\u200bsomeone_"),
+        ("@canonical/charm-tech", "@\u200bcanonical/charm-tech"),
         ("Fixes #12", "#12"),
         ("closes: canonical/charmlint#3", "canonical/charmlint#3"),
         ("ghp_" + "a" * 36, "(removed)"),
@@ -50,6 +52,9 @@ def test_clean_text_keeps_allowed_links(url: str) -> None:
         "https://ubuntu.com/../x",
         "https://ubuntu.com/%2e%2e/x",
         "//evil.example/x",
+        "\\/\\/evil.example/x",
+        "/\\evil.example/x",
+        "https\\://evil.example/x",
         "www.evil.example",
     ],
 )
@@ -57,19 +62,36 @@ def test_clean_text_removes_other_links(url: str) -> None:
     assert publish.clean_text(f"see {url} now") == "see (link removed) now"
 
 
-def test_clean_text_leaves_code_literal() -> None:
-    text = "a `<b>@x</b>` b\n\n```\n<img src=https://evil.example> @someone\n```\n"
-    assert publish.clean_text(text) == text
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Each of these is rendered as live HTML by GitHub, though a simple
+        # model of code spans and fences would call it code.
+        "\\`<a href=x>click</a>\\`",
+        "``<img src=x>`",
+        "`x\n# <img src=x>\n`",
+        "```x`\n<img src=x>\n",
+        "`x\n\n<img src=x>\n\ny`",
+        # And code really is code, but is escaped too: there is no telling.
+        "a `<b>` b\n\n```\n<img src=x>\n```\n",
+    ],
+)
+def test_clean_text_escapes_html_everywhere(text: str) -> None:
+    assert "<" not in publish.clean_text(text)
 
 
-def test_clean_text_code_span_does_not_cross_a_blank_line() -> None:
-    # GitHub ends the paragraph at the blank line, so these backticks are not
-    # a code span and the middle paragraph is rendered.
-    text = "`x\n\n<img src=https://evil.example/p.png> @someone\n\ny`"
+@pytest.mark.parametrize(
+    "text",
+    [
+        "```x`\nsee https://evil.example and @someone\n",
+        "Use ` to quote and ping @someone",
+        "`@someone`",
+    ],
+)
+def test_clean_text_removes_links_and_mentions_everywhere(text: str) -> None:
     cleaned = publish.clean_text(text)
-    assert "<img" not in cleaned
     assert "evil.example" not in cleaned
-    assert "`@someone`" in cleaned
+    assert "@someone" not in cleaned
 
 
 def test_clean_text_plain_text_is_not_escaped() -> None:
@@ -109,7 +131,7 @@ def test_plan_round_trips_through_the_issue_comment(tmp_path: pathlib.Path) -> N
         ("add a rule", "feat: add a rule"),
         ("feat(rules): scoped", "feat: feat(rules): scoped"),
         ("", "feat: new rule"),
-        ("feat: <b>x</b> @y", "feat: bx/b `y`"),
+        ("feat: <b>x</b> @y", "feat: bx/b y"),
     ],
 )
 def test_pr_title(tmp_path: pathlib.Path, title: str, expected: str) -> None:
