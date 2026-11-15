@@ -26,6 +26,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from corpus_run import NOISE, charm_dirs  # ruff: ignore[E402]
 
 SUFFIXES = {".py", ".yaml", ".yml"}
+MAX_LINE = 1000
 SKIP_PARTS = {"lib", "tests", "build", "parts", "stage", "prime", "node_modules"}
 
 
@@ -63,6 +64,9 @@ def main() -> None:
                 except (UnicodeDecodeError, OSError):
                     continue
                 for lineno, line in enumerate(text.splitlines(), 1):
+                    # Long lines are generated or minified, not what a rule
+                    # is about, and a pattern can be slow on them.
+                    line = line[:MAX_LINE]
                     for source, pattern in patterns:
                         if pattern.search(line):
                             out.write(

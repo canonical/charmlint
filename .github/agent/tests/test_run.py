@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 import subprocess
 import time
 
@@ -266,3 +267,28 @@ def test_stop_session_stops_what_the_stage_started(tmp_path: pathlib.Path) -> No
     while alive() and time.monotonic() < deadline:
         time.sleep(0.05)
     assert not alive()
+
+
+@pytest.mark.parametrize(
+    ("pattern", "words"),
+    [
+        (r"level\s*=\s*.*\bALIVE\b", ["ALIVE", "level"]),
+        (r"self\.on\.(install)", ["install", "self"]),
+        (r"[Ll]evel=", []),
+        (r"(alive|ready)", []),
+    ],
+)
+def test_loose_words(pattern: str, words: list[str]) -> None:
+    assert run.loose_words(pattern) == words
+
+
+def test_a_loosened_pattern_matches_the_words_in_any_order() -> None:
+    patterns = run.recall_patterns("## Recall patterns\n```\nlevel=.*\\bALIVE\\b\n```\n")
+    assert patterns[1].startswith(run.LOOSE_PREFIX)
+    assert re.search(patterns[1], 'Check(level="alive")')
+
+
+def test_run_bounded_stops_a_command_that_hangs(tmp_path: pathlib.Path) -> None:
+    rc, output = run.run_bounded(["sleep", "30"], tmp_path, timeout=0.5)
+    assert rc == -1
+    assert "timed out" in output
