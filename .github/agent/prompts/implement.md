@@ -21,7 +21,10 @@ Requirements:
   access.
 - Lay the module out as AGENTS.md says: rule classes first in ID order, then
   helpers in the order they're first called. Reuse `_ast.py` / `_yaml.py`
-  helpers and the charm context rather than re-parsing.
+  helpers and the charm context rather than re-parsing. A new helper goes in
+  the rule's own module, private to it: CONTRIBUTING.md has helpers that
+  several rules share land in a PR of their own first, so don't add to or
+  change `_ast.py` / `_yaml.py` unless the plan says to.
 - The rule's docstring is user documentation: it renders into
   `docs/rules.md`. Say what the rule flags, why it matters for a charm, and
   what it deliberately passes over. No design rationale, no reST roles.
