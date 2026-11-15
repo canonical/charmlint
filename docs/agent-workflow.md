@@ -66,7 +66,7 @@ The agent measures every rule over the same charm corpus that [corpus.md](corpus
    - `AGENT_MAX_OPEN_PRS` (optional, default 2) and `AGENT_BUDGET_USD` (optional, default 8; a hard issue costs $6-8). The models each stage uses are set in `.github/agent/run.py`, and the key proxy forwards exactly those.
    - `AGENT_MIN_CHARMS` (optional, default 600): the fewest charms a weekly corpus snapshot may have before it's saved; a snapshot with fewer means clones failed.
 5. Create the labels `agent`, `agent:plan-only`, `agent:running`, `agent:failed` and `needs design`.
-6. Check that the branch rules for the default branch require a review that the bot can't give, so its PRs can't be merged without a maintainer.
+6. Check that the branch rules for the default branch require a review that the bot can't give, so its PRs can't be merged without a maintainer, and add a ruleset for `agent/issue-*` that blocks force-pushes, so the bot can't rewrite a maintainer's commits on its own branches. (A revision already stops if its branch moved while the agent worked, so this is a second line of defence.) Canonical manages this repository's branch rules centrally rather than in its settings, so both are a change there.
 7. Run the "Agent upkeep" workflow by hand once, to build the corpus.
 
 The weekly upkeep workflow also opens an issue when either credential expires within 14 days or has stopped working, or when the key has less credit left than a week's spending. It opens the issue as `github-actions[bot]`, not as the bot, whose token may be the one that failed.
