@@ -9,12 +9,13 @@ here calls a model. Writes into ``--out``:
   from, which the publish job builds on), ``reason`` and an optional
   ``notice`` (``{"number": N, "body": "..."}``) for the publish job to post.
 - ``task.json``: the issue as approved (title, body, labels, and comments by
-  allowlisted users made before the approval).
+  allowlisted users made before the approval), without HTML comments, which
+  whoever approved it couldn't see.
 - ``plan.md``: a plan posted earlier by the agent, if there is one.
 - ``feedback.md``: the review to address, for a revision.
 
-and sets ``run``, ``notice``, ``issue``, ``mode`` and ``start_sha`` as step
-outputs.
+and sets ``run``, ``notice``, ``issue``, ``mode``, ``start_sha`` and ``attempt``
+(the run attempt these were decided in) as step outputs.
 
 Approval is the ``agent`` (or ``agent:plan-only``) label applied by someone in
 ``AGENT_ALLOWLIST``, read from the issue's timeline rather than from the event,
@@ -44,9 +45,14 @@ PLAN_ONLY = "agent:plan-only"
 RUNNING = "agent:running"
 FAILED = "agent:failed"
 PLAN_MARKER = "<!-- charmlint-agent:plan -->"
+# On the second line of the plan comment posted with a PR: that plan has been
+# implemented, so a later full run plans again rather than reusing it.
+BUILT_MARKER = "<!-- charmlint-agent:built -->"
 REVISION_MARKER = "<!-- charmlint-agent:revision -->"
+NEEDS_DESIGN = "needs design"
 MAX_REVISIONS = 3
 BRANCH = re.compile(r"^agent/issue-(\d+)$")
+VERDICT = re.compile(r"\b(PROCEED|OUT_OF_SCOPE|NEEDS_DESIGN)\b", re.I)
 PLAN_BLOCK = re.compile(
     r"<!-- plan-start -->\n(`{3,})markdown\n(.*?)\n\1\n<!-- plan-end -->", re.S
 )
@@ -74,7 +80,9 @@ def gh(*args: str, paginate: bool = False) -> Any:
     if paginate:
         cmd[2:2] = ["--paginate", "--jq", ".[]"]
         out = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
-        return [json.loads(line) for line in out.splitlines() if line]
+        # Not splitlines(): that also splits on characters JSON leaves raw
+        # inside strings (U+0085, U+2028), which anyone can put in a title.
+        return [json.loads(line) for line in out.split("\n") if line]
     return json.loads(
         subprocess.run(cmd, check=True, capture_output=True, text=True).stdout or "null"
     )
@@ -160,55 +168,42 @@ def edits_of(node: dict) -> list[dict]:
 
 
 def snapshot(issue: dict, before: str, out: pathlib.Path) -> list[dict]:
+    """Write task.json: the issue as whoever approved it saw it. Returns its comments."""
     comments = gh(f"repos/{REPO}/issues/{issue['number']}/comments", paginate=True)
+    kept = []
+    for c in comments:
+        if not (
+            allowed(c["user"]["login"])
+            and c["created_at"] <= before
+            and PLAN_MARKER not in c["body"]
+        ):
+            continue
+        # Anyone with write access can edit a maintainer's comment. Only an
+        # edited one costs a request.
+        if c.get("updated_at") != c["created_at"] and not edits_allowed(c):
+            print(
+                f"a comment by {c['user']['login']} was edited by someone not on the allowlist",
+                file=sys.stderr,
+            )
+            continue
+        kept.append({"author": c["user"]["login"], "body": visible(c["body"])})
     task = {
         "issue": issue["number"],
         "title": issue["title"],
-        "body": issue["body"] or "",
+        "body": visible(issue["body"]),
         "labels": [lab["name"] for lab in issue["labels"] if not lab["name"].startswith(LABEL)],
-        "comments": [
-            {"author": c["user"]["login"], "body": c["body"]}
-            for c in comments
-            if allowed(c["user"]["login"])
-            and c["created_at"] <= before
-            and PLAN_MARKER not in c["body"]
-        ],
+        "comments": kept,
     }
     (out / "task.json").write_text(json.dumps(task, indent=2) + "\n")
     return comments
 
 
-def find_plan(comments: list[dict], out: pathlib.Path) -> bool:
-    """The plan from the agent's latest plan comment, as a maintainer may have edited it.
-
-    Only a comment that starts with the marker: a failure comment quotes
-    text the agent chose, which could contain one. And only if nobody
-    outside the allowlist has edited it, since anyone with write access can.
-    """
-    plans = [
-        c
-        for c in comments
-        if c["user"]["login"].lower() == BOT and c["body"].startswith(PLAN_MARKER)
-    ]
-    if not plans:
-        return False
-    if not plan_edits_allowed(plans[-1]):
-        print(
-            "the latest plan comment was edited by someone not on the allowlist", file=sys.stderr
-        )
-        return False
-    match = PLAN_BLOCK.search(plans[-1]["body"].replace("\r\n", "\n"))
-    if not match:
-        return False
-    (out / "plan.md").write_text(match.group(2).strip() + "\n")
-    return True
-
-
-def plan_edits_allowed(comment: dict) -> bool:
+def edits_allowed(comment: dict) -> bool:
+    """Whether everyone who edited COMMENT (anything with a ``node_id``) is allowlisted, or the bot."""
     data = gh(
         "graphql",
         "-f",
-        f"query=query($id:ID!){{node(id:$id){{... on IssueComment{{{EDITS}}}}}}}",
+        f"query=query($id:ID!){{node(id:$id){{... on Comment{{{EDITS}}}}}}}",
         "-f",
         f"id={comment['node_id']}",
     )
@@ -217,6 +212,72 @@ def plan_edits_allowed(comment: dict) -> bool:
         or (e["editor"] or {}).get("login", "").lower() == BOT
         for e in edits_of(data["data"]["node"])
     )
+
+
+def visible(text: str | None) -> str:
+    """TEXT without its HTML comments, which GitHub doesn't show to whoever approves it.
+
+    An unclosed comment hides everything after it. Each one leaves a note, so
+    a reader of the task can tell something was there.
+    """
+    return re.sub(r"<!--.*?(?:-->|\Z)", "(HTML comment removed)", text or "", flags=re.S).strip()
+
+
+def find_plan(comments: list[dict], out: pathlib.Path, *, revising: bool = False) -> bool:
+    """The plan from the agent's latest plan comment, as a maintainer may have edited it.
+
+    Only a comment that starts with the marker: a failure comment quotes
+    text the agent chose, which could contain one. And only if nobody
+    outside the allowlist has edited it, since anyone with write access can.
+
+    A revision uses the plan its PR was built from. A new run doesn't: that
+    PR was closed, so it plans again. Nor does it use a plan whose verdict
+    isn't ``PROCEED``: approving the issue again without changing the verdict
+    asks for a fresh look, at an issue that has probably changed.
+    """
+    plans = [
+        c
+        for c in comments
+        if c["user"]["login"].lower() == BOT and c["body"].startswith(PLAN_MARKER)
+    ]
+    if not plans:
+        return False
+    body = plans[-1]["body"].replace("\r\n", "\n")
+    if not revising and body.startswith(f"{PLAN_MARKER}\n{BUILT_MARKER}"):
+        return False
+    if not edits_allowed(plans[-1]):
+        print(
+            "the latest plan comment was edited by someone not on the allowlist", file=sys.stderr
+        )
+        return False
+    match = PLAN_BLOCK.search(body)
+    if not match:
+        return False
+    plan = match.group(2).strip() + "\n"
+    if not revising and parse_verdict(plan) != "PROCEED":
+        return False
+    (out / "plan.md").write_text(plan)
+    return True
+
+
+def parse_verdict(plan: str) -> str:
+    """The plan's verdict, however it's marked up; NEEDS_DESIGN if it can't be read.
+
+    Not PROCEED: a plan whose verdict can't be read goes back to a maintainer
+    rather than being implemented. The verdict is what the first line with
+    any text after "Verdict" starts with, and that line may name only one.
+    The template's own line of all three (``PROCEED | OUT_OF_SCOPE |
+    NEEDS_DESIGN``) is skipped, so a plan that leaves it in place above its
+    answer isn't read as the first of them.
+    """
+    match = re.search(r"Verdict\b(.*)", plan, re.I | re.S)
+    for line in match.group(1).splitlines() if match else ():
+        named = {v.upper() for v in VERDICT.findall(line)}
+        if len(named) == 3 or not re.search(r"\w", line):
+            continue
+        first = re.match(rf"\W*{VERDICT.pattern}", line, re.I)
+        return first.group(1).upper() if first and len(named) == 1 else "NEEDS_DESIGN"
+    return "NEEDS_DESIGN"
 
 
 def in_flight() -> int:
@@ -264,8 +325,17 @@ def issue_run(number: int, mode: str, out: pathlib.Path, *, approved: dict | Non
     labels = {lab["name"] for lab in issue["labels"]}
     if RUNNING in labels:
         raise Skip(f"#{number} already has a run in progress")
-    if "needs design" in labels:
-        raise Skip(f"#{number} is labelled needs design")
+    if NEEDS_DESIGN in labels:
+        raise Skip(
+            f"#{number} is labelled {NEEDS_DESIGN}",
+            {
+                "number": number,
+                "body": f"This issue is labelled `{NEEDS_DESIGN}`, so the agent didn't run. "
+                f"Remove that label once the design is settled, and label the issue `{label}` "
+                "again.",
+                "remove": [label],
+            },
+        )
     # Before the capacity check, so an issue left waiting is told now.
     check_not_edited(number, approved["at"], f"Remove and re-apply `{label}` to approve it.")
     if mode == "full":
@@ -314,7 +384,7 @@ def drain(out: pathlib.Path) -> dict:
             # Not agent:failed: a failed run removes the approval label, so an
             # issue that has both was approved again.
             labels = {lab["name"] for lab in issue["labels"]}
-            if issue.get("pull_request") or labels & {RUNNING, "needs design"}:
+            if issue.get("pull_request") or labels & {RUNNING, NEEDS_DESIGN}:
                 continue
             try:
                 approved = approval(issue["number"], label)
@@ -335,11 +405,6 @@ def drain(out: pathlib.Path) -> dict:
         raise Skip("no approved issues waiting", notice)
     _, number, mode, approved = min(candidates)
     return issue_run(number, mode, out, approved=approved)
-
-
-def strip_markup(text: str | None) -> str:
-    text = re.sub(r"<!--.*?-->", "", text or "", flags=re.S)
-    return re.sub(r"<[^>]+>", "", text).strip()
 
 
 def check_review(pr: dict, review: dict) -> int:
@@ -379,7 +444,8 @@ def revision(number: int, review_id: int, out: pathlib.Path) -> dict:
     done = [
         c
         for c in gh(f"repos/{REPO}/issues/{number}/comments", paginate=True)
-        if c["user"]["login"].lower() == BOT and REVISION_MARKER in c["body"]
+        # Starts with, as for a plan: a failure comment quotes the agent's text.
+        if c["user"]["login"].lower() == BOT and c["body"].startswith(REVISION_MARKER)
     ]
     # A review is acted on once: replaying an old one would run the agent on
     # feedback a maintainer has already seen answered.
@@ -394,11 +460,25 @@ def revision(number: int, review_id: int, out: pathlib.Path) -> dict:
                 "revise it again. Push changes to the branch directly, or close it.",
             },
         )
-    inline = gh(f"repos/{REPO}/pulls/{number}/reviews/{review_id}/comments", paginate=True)
-    parts = [strip_markup(review["body"])] if strip_markup(review["body"]) else []
-    for c in inline:
-        line = c.get("line") or c.get("original_line")
-        parts.append(f"On `{c['path']}` line {line}:\n\n{strip_markup(c['body'])}")
+    # Not the review's own comments endpoint, which leaves out the line numbers.
+    inline = [
+        c
+        for c in gh(f"repos/{REPO}/pulls/{number}/comments?per_page=100", paginate=True)
+        if c.get("pull_request_review_id") == review_id
+    ]
+    # Anyone with write access can edit a reviewer's comments.
+    edited = [c for c in inline if c.get("updated_at") != c["created_at"]]
+    if not all(edits_allowed(c) for c in [review, *edited]):
+        raise Skip(
+            f"review {review_id} was edited by someone not on the allowlist",
+            {
+                "number": number,
+                "body": "This review was edited by someone who isn't on the agent's allowlist, "
+                "so the agent didn't act on it. Submit a new review to request the changes.",
+            },
+        )
+    parts = [visible(review["body"])] if visible(review["body"]) else []
+    parts += [inline_feedback(c) for c in inline]
     if not parts:
         raise Skip("the review has no comments to act on")
     (out / "feedback.md").write_text("\n\n---\n\n".join(parts) + "\n")
@@ -421,7 +501,7 @@ def revision(number: int, review_id: int, out: pathlib.Path) -> dict:
         notify=number,
     )
     comments = snapshot(issue, pr["created_at"], out)
-    if not find_plan(comments, out):
+    if not find_plan(comments, out, revising=True):
         raise Skip(
             "no plan comment found",
             {
@@ -440,6 +520,19 @@ def revision(number: int, review_id: int, out: pathlib.Path) -> dict:
         "start_sha": pr["head"]["sha"],
         "reason": f"review {review_id} by {review['user']['login']}",
     }
+
+
+def inline_feedback(comment: dict) -> str:
+    """One inline review comment, with where it was left and the code it was left on."""
+    line = comment.get("line") or comment.get("original_line")
+    where = f"`{comment['path']}`" + (f" line {line}" if line else "")
+    if comment.get("line") is None and line:
+        where += " (as it was when reviewed; the code has changed since)"
+    # The end of the hunk is the commented line and the few above it.
+    hunk = "\n".join((comment.get("diff_hunk") or "").splitlines()[-4:])
+    fence = "`" * max(3, max((len(m) for m in re.findall(r"`+", hunk)), default=0) + 1)
+    code = f"\n\n{fence}diff\n{hunk}\n{fence}" if hunk else ""
+    return f"On {where}:{code}\n\n{visible(comment['body'])}"
 
 
 def run_started(number: int, before: str) -> str:
@@ -540,6 +633,9 @@ def main() -> int:
         f.write(f"issue={result.get('issue') or ''}\n")
         f.write(f"mode={result.get('mode') or ''}\n")
         f.write(f"start_sha={result.get('start_sha') or ''}\n")
+        # The agent and publish jobs only run in the attempt that triage did:
+        # "Re-run failed jobs" would reuse these outputs without the checks.
+        f.write(f"attempt={os.environ.get('GITHUB_RUN_ATTEMPT', '')}\n")
     return 0
 
 

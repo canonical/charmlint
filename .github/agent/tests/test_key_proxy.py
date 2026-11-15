@@ -49,6 +49,11 @@ def test_cost_in_stream() -> None:
     assert key_proxy.Handler.cost_in(body) == 0.5
 
 
+def test_cost_in_json_that_mentions_a_stream() -> None:
+    body = b'{"choices": [{"message": {"content": "send data: now"}}], "usage": {"cost": 0.25}}'
+    assert key_proxy.Handler.cost_in(body) == 0.25
+
+
 def test_cost_in_without_usage() -> None:
     assert key_proxy.Handler.cost_in(b'{"choices": []}') == 0.0
 

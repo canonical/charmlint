@@ -140,12 +140,20 @@ def _lint_one(item: tuple[str, str, str]) -> list[dict]:
             name,
             d.rule_id,
             getattr(d.severity, "value", str(d.severity)),
-            d.path,
+            _relative(d.path, charm),
             d.line,
             d.message,
         )
         for d in diagnostics
     ]
+
+
+def _relative(path: object, charm: str) -> str | None:
+    """PATH relative to its charm, as most rules report it; some give an absolute one."""
+    if path is None:
+        return None
+    path = pathlib.Path(str(path))
+    return str(path.relative_to(charm) if path.is_relative_to(charm) else path)
 
 
 def _record(
@@ -162,7 +170,7 @@ def _record(
         "name": name,
         "rule_id": rule_id,
         "severity": severity,
-        "path": str(path) if path is not None else None,
+        "path": path,
         "line": line,
         "message": message,
     }
