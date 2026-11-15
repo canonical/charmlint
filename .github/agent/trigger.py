@@ -77,6 +77,23 @@ class Skip(Exception):
         self.notice = notice
 
 
+# A fenced code block, to its closing fence or, unclosed, the end.
+# A backtick fence's info string can't hold a backtick: "```x``` is" is
+# inline code, not a fence.
+FENCE = re.compile(
+    r"^ {0,3}(?:(`{3,})[^`\n]*|(~{3,})[^\n]*)"
+    r"(?:\n.*?^ {0,3}(?:\1`*|\2~*)[ \t]*$|\Z|\n.*\Z)",
+    re.M | re.S,
+)
+# A link reference definition, also in a quote or a list item, with a label
+# that may span lines; not a footnote, which GitHub shows.
+LINK_DEFINITION = re.compile(
+    r"^ {0,3}(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*"
+    r"\[(?!\^)(?:[^\]\n]|\n(?![ \t]*\n)){1,999}\]:.*(?:\n(?![ \t]*$).*)*",
+    re.M,
+)
+
+
 def gh(*args: str, paginate: bool = False) -> Any:
     cmd = ["gh", "api", *args]
     if paginate:
@@ -221,26 +238,36 @@ def visible(text: str | None) -> str:
 
     That's HTML comments (an unclosed one hides everything after it), link
     reference definitions such as ``[//]: # (...)``, whose title can run on
-    until a blank line, and invisible format characters: zero-width, bidi and
-    tag characters. Comments and definitions leave a note, so a reader of the
-    task can tell something was there.
+    until a blank line, and invisible characters (see ``shown``). Comments and
+    definitions leave a note, so a reader of the task can tell something was
+    there. A definition inside a code fence is shown as code, so it stays; one
+    the approximation here misses, or a line it takes too many, is the price of
+    not parsing Markdown.
     """
-    text = re.sub(r"<!--.*?(?:-->|\Z)", "(HTML comment removed)", text or "", flags=re.S)
-    text = re.sub(
-        r"^ {0,3}\[[^\]\n]+\]:.*(?:\n(?![ \t]*$).*)*",
-        "(link definition removed)",
-        text,
-        flags=re.M,
-    )
-    return shown(text).strip()
+    text = (text or "").replace("\r\n", "\n")
+    text = re.sub(r"<!--.*?(?:-->|\Z)", "(HTML comment removed)", text, flags=re.S)
+    kept, last = [], 0
+    for fence in FENCE.finditer(text):
+        kept += [LINK_DEFINITION.sub("(link definition removed)", text[last : fence.start()])]
+        kept += [fence.group()]
+        last = fence.end()
+    kept += [LINK_DEFINITION.sub("(link definition removed)", text[last:])]
+    return shown("".join(kept)).strip()
 
 
 def shown(text: str) -> str:
-    """TEXT without invisible format characters: zero-width, bidi and tag characters.
+    """TEXT without characters that render as nothing.
 
-    A title is plain text, so this is all it needs.
+    Format characters (zero-width, bidi and tag characters) and variation
+    selectors, which can carry text of their own. A title is plain text, so
+    this is all it needs.
     """
-    return "".join(c for c in text if unicodedata.category(c) != "Cf")
+    return "".join(
+        c
+        for c in text
+        if unicodedata.category(c) != "Cf"
+        and not ("\ufe00" <= c <= "\ufe0f" or "\U000e0100" <= c <= "\U000e01ef")
+    )
 
 
 def find_plan(comments: list[dict], out: pathlib.Path, *, revising: bool = False) -> bool:
