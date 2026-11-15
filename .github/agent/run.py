@@ -192,6 +192,9 @@ class Config:
     fp_rounds: int = 2
     review_rounds: int = 2
     classify_batch: int = 40
+    # Past this many changed findings, classify an even sample of them: a
+    # change that moves thousands is wrong in a way a sample shows as well.
+    classify_limit: int = 400
     recall_sample: int = 40
 
 
@@ -235,7 +238,10 @@ class Pipeline:
         self.misses: list[dict] = []
         self.deferred: list[dict] = []
         self.shoulds: list[dict] = []
-        self.unreviewed: list[str] = []  # review focuses whose reviewer produced nothing usable
+        self.unreviewed: list[str] = []
+        self.crashes: list[
+            dict
+        ] = []  # charms charmlint now crashes on  # review focuses whose reviewer produced nothing usable
         self.agent_dir = self.work / "pi-agent"
         self._setup_pi()
         self.task_md = self.work / "task.md"
@@ -485,13 +491,16 @@ class Pipeline:
         for round_ in range(self.config.fp_rounds):
             fps = [c for c in classified if c["label"] == "FP"]
             misses = self.recall(plan_md, classified)
-            if not fps and not misses:
+            if not fps and not misses and not self.crashes:
                 break
-            log(f"corpus round {round_ + 1}: {len(fps)} false positives, {len(misses)} misses")
+            log(
+                f"corpus round {round_ + 1}: {len(fps)} false positives, {len(misses)} misses, "
+                f"{len(self.crashes)} crashes"
+            )
             self.pi(
                 "02-implement",
                 self.config.impl_model,
-                corpus_feedback(fps, misses),
+                corpus_feedback(fps, misses, self.crashes),
                 tools="read,bash,edit,write,grep,find,ls",
                 resume=True,
                 timeout=45 * 60,
@@ -561,6 +570,7 @@ class Pipeline:
                 f"- Not reviewed for {focus}: the reviewer produced no readable output."
                 for focus in self.unreviewed
             ]
+            + [f"- charmlint crashes on {c['charm']}: {c['message']}" for c in self.crashes]
         )
         if self.feedback:
             # The PR body is the maintainer's to edit by now; a revision reports in a comment.
@@ -576,7 +586,7 @@ class Pipeline:
             self.write_publish_diff()
             self.write_meta(
                 outcome="revision",
-                draft=bool(blocking or self.misses or self.unreviewed),
+                draft=bool(blocking or self.misses or self.unreviewed or self.crashes),
                 unreviewed=self.unreviewed,
                 blocking=blocking,
                 misses=self.misses,
@@ -631,7 +641,7 @@ class Pipeline:
         self.write_publish_diff()
         self.write_meta(
             outcome="pr",
-            draft=bool(blocking or self.misses or self.unreviewed),
+            draft=bool(blocking or self.misses or self.unreviewed or self.crashes),
             unreviewed=self.unreviewed,
             blocking=blocking,
             misses=self.misses,
@@ -875,6 +885,7 @@ class Pipeline:
         self.cand_findings = corpus_run(
             self.repo, self.work / "findings.jsonl", self.config.corpus
         )
+        self.crashes = new_crashes(self.base_findings, self.cand_findings)
         delta = finding_delta(self.base_findings, self.cand_findings)
         for i, f in enumerate(delta):
             f["id"] = i
@@ -889,6 +900,22 @@ class Pipeline:
         )
         todo = [f for f in delta if cache_key(f) not in self.label_cache]
         log(f"classify: {len(delta)} changed findings, {len(todo)} new")
+        if len(todo) > self.config.classify_limit:
+            step = len(todo) / self.config.classify_limit
+            sample = [todo[int(i * step)] for i in range(self.config.classify_limit)]
+            log(f"classify: only a sample of {len(sample)}")
+            for f in todo:
+                self.label_cache.setdefault(
+                    cache_key(f),
+                    {
+                        "label": "UNK",
+                        "reason": "not in the sample classified",
+                        "pattern": "unsampled",
+                    },
+                )
+            for f in sample:
+                del self.label_cache[cache_key(f)]
+            todo = sample
         stage_dir = self.work / "04-classify"
         stage_dir.mkdir(parents=True, exist_ok=True)
         for start in range(0, len(todo), self.config.classify_batch):
@@ -1269,21 +1296,41 @@ def added_lines(diff: str) -> dict[str, int]:
 
 
 def finding_delta(base: list[dict], cand: list[dict]) -> list[dict]:
-    def key(r: dict) -> tuple:
-        return (r["rule_id"], r["charm"], r["path"], r["line"], r["message"])
+    """The findings the change added or removed, for classification.
 
-    base_keys, cand_keys = {key(r) for r in base}, {key(r) for r in cand}
-    added = [
-        dict(r, change="added")
-        for r in cand
-        if key(r) not in base_keys and r["rule_id"] != "FATAL"
-    ]
-    removed = [
-        dict(r, change="removed")
-        for r in base
-        if key(r) not in cand_keys and r["rule_id"] != "FATAL"
-    ]
+    A finding that's still reported for the same rule at the same place, with
+    a reworded message, hasn't changed: the corpus doesn't move, so only a
+    real difference in what's flagged is classified. ``FATAL`` and ``CRASH``
+    rows aren't findings, and a charm the change made charmlint crash on is
+    left out (``new_crashes`` reports it), since every finding on it would
+    otherwise look removed.
+    """
+    crashed = {r["charm"] for r in new_crashes(base, cand)}
+
+    def keep(r: dict) -> bool:
+        return r["rule_id"] not in ("FATAL", "CRASH") and r["charm"] not in crashed
+
+    groups: dict[tuple, tuple[list[dict], list[dict]]] = collections.defaultdict(lambda: ([], []))
+    for side, rows in enumerate((base, cand)):
+        for r in filter(keep, rows):
+            groups[(r["rule_id"], r["charm"], r["path"])][side].append(r)
+    added, removed = [], []
+    for old, new in groups.values():
+        for match in (lambda r: (r["line"], r["message"]), lambda r: r["line"]):
+            for r in list(new):
+                twin = next((o for o in old if match(o) == match(r)), None)
+                if twin is not None:
+                    old.remove(twin)
+                    new.remove(r)
+        added += [dict(r, change="added") for r in new]
+        removed += [dict(r, change="removed") for r in old]
     return added + removed
+
+
+def new_crashes(base: list[dict], cand: list[dict]) -> list[dict]:
+    """The ``CRASH`` rows for charms that charmlint didn't crash on before the change."""
+    before = {r["charm"] for r in base if r["rule_id"] == "CRASH"}
+    return [r for r in cand if r["rule_id"] == "CRASH" and r["charm"] not in before]
 
 
 def cache_key(f: dict) -> tuple:
@@ -1480,8 +1527,15 @@ def _uses(
     return found, lines
 
 
-def corpus_feedback(fps: list[dict], misses: list[dict]) -> str:
+def corpus_feedback(fps: list[dict], misses: list[dict], crashes: list[dict]) -> str:
     text = ""
+    if crashes:
+        text += (
+            "charmlint now crashes on these charms, so none of their findings are reported. Fix the "
+            "code that raises, and add a test with the charm content that set it off.\n\n"
+            + "\n".join(f"- {c['charm']}: {c['message']}" for c in crashes[:30])
+            + "\n\n"
+        )
     if fps:
         text += (
             "The corpus run found false positives: findings where the code doesn't have the problem. "

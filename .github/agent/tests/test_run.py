@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from run import allowed_path, forbidden_uses
+from run import allowed_path, finding_delta, forbidden_uses, new_crashes
 
 
 def whats(source: str, base: str = "", *, rule_code: bool = True) -> list[str]:
@@ -124,3 +124,33 @@ def test_source_that_does_not_parse_is_reported() -> None:
 )
 def test_allowed_path(path: str, ok: bool) -> None:
     assert allowed_path(path) is ok
+
+
+def row(
+    rule: str = "R-001", charm: str = "c", path: str = "a.py", line: int | None = 1, **kw: str
+) -> dict:
+    return {"rule_id": rule, "charm": charm, "path": path, "line": line, "message": "m", **kw}
+
+
+def changes(base: list[dict], cand: list[dict]) -> list[tuple]:
+    return sorted(
+        (r["change"], r["rule_id"], r["charm"], r["line"]) for r in finding_delta(base, cand)
+    )
+
+
+def test_a_reworded_message_is_not_a_change() -> None:
+    base = [row(line=n) for n in range(5)]
+    assert changes(base, [row(line=n, message="new wording") for n in range(5)]) == []
+
+
+def test_findings_added_and_removed_are_changes() -> None:
+    base = [row(line=1), row(line=2)]
+    cand = [row(line=2, message="reworded"), row(line=3)]
+    assert changes(base, cand) == [("added", "R-001", "c", 3), ("removed", "R-001", "c", 1)]
+
+
+def test_a_charm_that_now_crashes_is_left_out() -> None:
+    base = [row(charm="c", line=n) for n in range(18)] + [row(charm="d")]
+    cand = [row(rule="CRASH", charm="c", line=None, message="KeyError: x")]
+    assert changes(base, cand) == [("removed", "R-001", "d", 1)]
+    assert [r["charm"] for r in new_crashes(base, cand)] == ["c"]
