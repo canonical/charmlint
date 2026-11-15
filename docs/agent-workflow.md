@@ -50,7 +50,7 @@ Because the agent could write any of the agent job's output, the publish job che
 
 ## The corpus
 
-The agent measures every rule over the same charm corpus that [corpus.md](corpus.md) describes. A weekly workflow clones the charms in hyrum's charm list, drops build output and large files, and stores the result in the Actions cache. The agent job uses the newest copy.
+The agent measures every rule over the same charm corpus that [corpus.md](corpus.md) describes. A weekly workflow clones the charms in hyrum's charm list (pinned to a commit in `agent-weekly.yaml`, and bumped by hand), drops build output and large files, and stores the result in the Actions cache. The agent job uses the newest copy.
 
 ## Setting it up
 
