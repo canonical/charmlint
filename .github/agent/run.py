@@ -56,7 +56,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 PROMPTS = HERE / "prompts"
 CORPUS_RUN = HERE / "corpus_run.py"
 RECALL_GREP = HERE / "recall_grep.py"
-LOOSE_PREFIX = "(?i)(?=.*\\b"  # how a loosened pattern starts
+LOOSE_PREFIX = "(?i)^(?=.*\\b"  # how a loosened pattern starts
 
 
 def allowed_path(path: str) -> bool:
@@ -703,7 +703,7 @@ class Pipeline:
         patterns_path = self.work / "recall-patterns.txt"
         patterns_path.write_text("\n".join(patterns) + "\n")
         out = self.work / "recall-hits.jsonl"
-        proc = subprocess.run(
+        rc, output = run_bounded(
             [
                 "uv",
                 "run",
@@ -722,12 +722,13 @@ class Pipeline:
                 "--out",
                 str(out),
             ],
-            capture_output=True,
-            text=True,
-            check=False,
+            self.repo,
+            timeout=15 * 60,
         )
-        if proc.returncode:
-            log(f"recall grep failed: {tail(proc.stderr, 5)}")
+        if rc:
+            # Not "no misses": the PR says the check didn't happen.
+            log(f"recall grep failed: {tail(output, 5)}")
+            self.unreviewed.append("missed cases (the corpus grep failed)")
             return []
         hits = read_jsonl(out)
         # A loosened pattern of common words can match thousands of lines,
@@ -902,18 +903,16 @@ class Pipeline:
     def checks(self) -> dict[str, str]:
         targets = make_targets(self.repo)
         if "format" in targets:
-            subprocess.run(["make", "format"], cwd=self.repo, capture_output=True, check=False)
+            run_bounded(["make", "format"], self.repo, timeout=10 * 60)
         if "docs" in targets:
-            subprocess.run(["make", "docs"], cwd=self.repo, capture_output=True, check=False)
+            run_bounded(["make", "docs"], self.repo, timeout=10 * 60)
         failures = {}
         for target in ("lint", "test", "docs-check"):
             if target not in targets:
                 continue
-            proc = subprocess.run(
-                ["make", target], cwd=self.repo, capture_output=True, text=True, check=False
-            )
-            if proc.returncode:
-                failures[target] = proc.stdout + proc.stderr
+            rc, output = run_bounded(["make", target], self.repo, timeout=20 * 60)
+            if rc:
+                failures[target] = output
         changed = self.changed_files()
         outside = [f for f in changed if not allowed_path(f)]
         if outside:
@@ -1326,15 +1325,29 @@ def recall_patterns(plan: str) -> list[str]:
             continue
         patterns.append(line)
     patterns = patterns[:8]
-    # The planner's patterns share its blind spots (v6 wrote `level=...ALIVE`
-    # but not `level="alive"`), so also match each pattern's words in any
-    # order with any punctuation between them.
+    # The planner's patterns share its blind spots (it can write
+    # `level=...ALIVE` but not `level="alive"`), so also match each pattern's
+    # words in any order with any punctuation between them.
     loose = []
     for pattern in patterns:
-        words = sorted(set(re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", pattern)))
+        words = loose_words(pattern)
         if words:
-            loose.append("(?i)" + "".join(rf"(?=.*\b{w}\b)" for w in words))
+            # Anchored, or each start position rescans the line.
+            loose.append("(?i)^" + "".join(rf"(?=.*\b{w}\b)" for w in words))
     return list(dict.fromkeys(patterns + loose))
+
+
+def loose_words(pattern: str) -> list[str]:
+    """The literal words in PATTERN, to match in any order; none if that can't be done.
+
+    Escapes (``\\b``, ``\\.``) aren't words, a word with a character class in
+    it (``[Ll]evel``) isn't a literal one, and a pattern with alternatives would
+    need all of them on one line.
+    """
+    if "|" in pattern:
+        return []
+    literal = re.sub(r"\w*\[(?:\\.|[^\]])*\]\w*|\\.|\(\?[^)]*\)", " ", pattern)
+    return sorted(set(re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", literal)))
 
 
 def recall_key(h: dict) -> tuple:
@@ -1728,7 +1741,7 @@ def export_tree(repo: pathlib.Path, sha: str, dest: pathlib.Path) -> None:
 
 
 def corpus_run(tree: pathlib.Path, out: pathlib.Path, corpus: pathlib.Path) -> list[dict]:
-    subprocess.run(
+    rc, output = run_bounded(
         [
             "uv",
             "run",
@@ -1747,10 +1760,33 @@ def corpus_run(tree: pathlib.Path, out: pathlib.Path, corpus: pathlib.Path) -> l
             "--out",
             str(out),
         ],
-        check=True,
-        capture_output=True,
+        tree,
+        # A rule that loops on one charm would otherwise hold the run until
+        # it's killed; it takes a few minutes.
+        timeout=20 * 60,
     )
+    if rc:
+        raise RuntimeError(f"the corpus run failed: {tail(output, 5)}")
     return read_jsonl(out)
+
+
+def run_bounded(cmd: list[str], cwd: pathlib.Path, *, timeout: float) -> tuple[int, str]:
+    """Run CMD and return its exit code and output; stop it and all it started after TIMEOUT."""
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        output, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        stop_session(proc)
+        return -1, f"{' '.join(cmd)} timed out after {timeout:.0f}s"
+    return proc.returncode, output
 
 
 def review_findings(result: object) -> list[dict]:
