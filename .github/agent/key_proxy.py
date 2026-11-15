@@ -186,7 +186,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return f"{path}?{query}" if query else path
 
     def forward(self, body: bytes | None, reserve: float = 0.0) -> None:
-        headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP_BY_HOP}
+        # Drop the client's copies of the headers set below, whatever their
+        # case, so each goes upstream once.
+        own = {"accept-encoding", "content-type"}
+        headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP_BY_HOP | own}
         headers["Host"] = UPSTREAM
         headers["Authorization"] = f"Bearer {State.key}"
         headers["Accept-Encoding"] = "identity"
