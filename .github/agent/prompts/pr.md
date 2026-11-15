@@ -24,8 +24,7 @@ a single line (no hard wrapping):
    as examples; don't list every finding.
 4. "Not matched:" followed by bullets for what the rule deliberately passes
    over (from the plan and the docstring).
-5. If there are remaining reviewer findings, a "Open points" list.
-6. A final line: `Fixes #{issue}`
+5. If there are remaining reviewer findings, an "Open points" list.
 
 Plain, specific, no marketing language, no headings, no emoji. Don't
 describe the tests or say that checks pass; the reviewer can see CI.

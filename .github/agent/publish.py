@@ -11,9 +11,9 @@ any of it:
   code or tests.
 - Only the outcomes that the run's mode can produce are accepted.
 - The commit message is rebuilt here. The PR text has raw HTML escaped, links
-  off a short list, anything shaped like a secret, @-mentions and closing
-  keywords removed, and
-  ``Fixes #N`` is added here.
+  off a short list, anything shaped like a secret and closing keywords
+  removed, and @-mentions broken so they notify no one; ``Fixes #N`` is added
+  here.
 - Plans are posted inside a fenced block, so what a maintainer sees on the
   issue is exactly what a later run reads back.
 

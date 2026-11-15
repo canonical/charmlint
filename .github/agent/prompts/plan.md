@@ -62,8 +62,8 @@ pattern - a dict literal, a keyword argument, a constant or enum, a YAML
 key, any spelling you found in the corpus or can think of - even at the
 cost of hits the rule rightly ignores. Two to six patterns, each matching
 within a single line. Prefer the fewest, loosest tokens: `level.*alive`
-beats one pattern per spelling of the separator and quotes. For a change that only narrows an existing rule,
-write the block with no patterns.
+beats one pattern per spelling of the separator and quotes. For a change
+that only narrows an existing rule, write the block with no patterns.
 
 Deferring part of the problem: if the corpus has the same problem written
 another way (a keyword argument instead of a dict key, an enum instead of a

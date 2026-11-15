@@ -20,10 +20,11 @@ both and uses a plan made earlier (posted on the issue by a plan-only run).
 Exit codes: 0 a PR or a revision, 3 the plan says out of scope or needs
 design, or ``--plan-only``, 1 the pipeline failed.
 
-Stages: plan → implement (+ deterministic checks, bounded fix rounds) →
-corpus run (deterministic) → classify (+ FP fix rounds) → review (two focused
-reviewers + deterministic checks, one fix round) → PR text. Each model call is
-a fresh pi process; the implementer's own fix rounds continue its session.
+Stages: plan (+ critique) → implement (+ deterministic checks, bounded fix
+rounds) → corpus run (deterministic) → classify and recall (+ FP and miss fix
+rounds) → trim → review (two focused reviewers + deterministic checks, fix
+rounds checked by re-review) → PR text. Each model call is a fresh pi process;
+the implementer's own fix rounds continue its session.
 
 Configuration is by environment variable (see ``Config``). The OpenRouter key
 comes from ``OPENROUTER_API_KEY``; locally it falls back to pi's own
@@ -463,7 +464,6 @@ class Pipeline:
             verdict = parse_verdict(plan_md.read_text())
         shutil.copy(plan_md, self.work / "plan.md")
         if verdict != "PROCEED" or self.plan_only:
-            shutil.copy(plan_md, self.work / "issue-comment.md")
             self.write_meta(outcome="plan-only" if verdict == "PROCEED" else verdict.lower())
             return 3
         return self._implement(plan_md)
@@ -669,8 +669,7 @@ class Pipeline:
         if not pr_md.exists():
             log("PR stage wrote no pr.md; using the counts alone")
             pr_md.write_text(
-                f"Adds the rule planned in #{self.task['issue']}.\n\n{counts_md.read_text()}\n\n"
-                f"Fixes #{self.task['issue']}\n"
+                f"Adds the rule planned in #{self.task['issue']}.\n\n{counts_md.read_text()}\n"
             )
         self.restore(before, "the PR stage")
         existing = set(
@@ -1390,8 +1389,7 @@ def finding_delta(base: list[dict], cand: list[dict]) -> list[dict]:
     real difference in what's flagged is classified. Without a line, the
     place is the file, and a file with several such findings left can't say
     which was reworded and which replaced, so they all count as changed.
-    ``FATAL`` and ``CRASH``
-    rows aren't findings, and a charm the change made charmlint crash on is
+    ``FATAL`` and ``CRASH`` rows aren't findings, and a charm the change made charmlint crash on is
     left out (``new_crashes`` reports it), since every finding on it would
     otherwise look removed.
     """
