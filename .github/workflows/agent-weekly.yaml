@@ -51,6 +51,8 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/hyrum" --require-hashes -r .github/agent/hyrum-requirements.txt
           "$RUNNER_TEMP/hyrum/bin/hyrum" get-charms --source "$RUNNER_TEMP/charms.csv" --dest "$RUNNER_TEMP/charms" --workers 16
         env:
+          # Pinned so the charm list only changes in a reviewed commit. Dependabot
+          # doesn't update it: bump it by hand when hyrum's list moves on.
           HYRUM_LIST_SHA: 592b85093a6331a96617c707f2e2e3fe652ad262
       - name: Snapshot and pack
         run: |
