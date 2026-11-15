@@ -254,7 +254,15 @@ def test_stop_session_stops_what_the_stage_started(tmp_path: pathlib.Path) -> No
         time.sleep(0.05)
     child = int(pid_file.read_text())
     run.stop_session(proc, grace=0.5)
-    assert (
-        not pathlib.Path(f"/proc/{child}").exists()
-        or "Z" in pathlib.Path(f"/proc/{child}/stat").read_text().split()[2]
-    )
+
+    def alive() -> bool:
+        try:
+            return pathlib.Path(f"/proc/{child}/stat").read_text().split()[2] != "Z"
+        except FileNotFoundError:
+            return False
+
+    # SIGKILL is delivered asynchronously.
+    deadline = time.monotonic() + 5
+    while alive() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not alive()
