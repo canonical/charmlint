@@ -252,3 +252,13 @@ def test_drain_posts_an_edited_issues_notice_when_nothing_else_runs(
     with pytest.raises(trigger.Skip) as e:
         trigger.drain(tmp_path)
     assert e.value.notice == {"number": 1, "body": "Remove and re-apply `agent` to approve it."}
+
+
+def test_in_flight_counts_a_pr_being_revised_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        trigger,
+        "open_bot_prs",
+        lambda: [pr(head={"ref": "agent/issue-12"}), pr(head={"ref": "agent/issue-13"})],
+    )
+    monkeypatch.setattr(trigger, "gh", lambda *a, **k: [{"number": 12}, {"number": 14}])
+    assert trigger.in_flight() == 3
