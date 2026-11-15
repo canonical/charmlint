@@ -216,7 +216,7 @@ def check_tree(repo: pathlib.Path, start: str) -> list[str]:
             problems.append(f"{path}: change type {status} isn't allowed")
         if {old_mode, new_mode} - {"000000", "100644"}:
             problems.append(f"{path}: mode {old_mode} -> {new_mode} isn't allowed")
-        if not allowed_path(path) or ".." in pathlib.PurePosixPath(path).parts:
+        if not allowed_path(path):
             problems.append(f"{path}: outside what the agent may change")
         if status != "D" and path.endswith(".py"):
             source = (repo / path).read_text(errors="replace")

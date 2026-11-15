@@ -54,8 +54,21 @@ LOOSE_PREFIX = "(?i)(?=.*\\b"  # how a loosened pattern starts
 
 
 def allowed_path(path: str) -> bool:
-    """Directories end in "/" and cover what's under them; anything else is one exact file."""
-    return any(path.startswith(p) if p.endswith("/") else path == p for p in ALLOWED_PREFIXES)
+    """Whether the agent may change PATH.
+
+    Directories end in "/" and cover the Python source under them, and anything
+    else is one exact file. Only ``.py`` files, because pytest runs a
+    ``test*.txt`` as a doctest and Python loads a ``__pycache__`` ``.pyc`` or an
+    extension module in place of the source next to it, and only ``.py`` files
+    are checked for what they import.
+    """
+    parts = pathlib.PurePosixPath(path).parts
+    if ".." in parts or "__pycache__" in parts:
+        return False
+    return any(
+        path.startswith(p) and path.endswith(".py") if p.endswith("/") else path == p
+        for p in ALLOWED_PREFIXES
+    )
 
 
 ALLOWED_PREFIXES = (
