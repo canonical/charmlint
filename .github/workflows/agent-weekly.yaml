@@ -77,13 +77,14 @@ jobs:
           egress-policy: block
           allowed-endpoints: openrouter.ai:443
       - id: key
+        shell: bash  # with pipefail, so a failed request fails the step
         run: |
           curl -fsS -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/key | python3 -c '
           import json, sys
           d = json.load(sys.stdin)["data"]
-          print(f"remaining={d.get(\"limit_remaining\")}")
-          print(f"expires={d.get(\"expires_at\") or \"\"}")
-          print(f"weekly={d.get(\"usage_weekly\")}")
+          print("remaining=%s" % d.get("limit_remaining"))
+          print("expires=%s" % (d.get("expires_at") or ""))
+          print("weekly=%s" % d.get("usage_weekly"))
           ' >> "$GITHUB_OUTPUT"
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -101,16 +102,21 @@ jobs:
           egress-policy: block
           allowed-endpoints: api.github.com:443
       - name: Open an issue if a credential needs attention
+        shell: bash  # with pipefail, so a rejected token isn't read as one with no expiry
         run: |
+          pat_check=success
           pat_expiry=$(curl -fsSI -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/user \
-            | awk -F': ' 'tolower($1)=="github-authentication-token-expiration" {print $2}' | tr -d '\r')
-          PAT_EXPIRY="$pat_expiry" python3 - <<'EOF' > "$RUNNER_TEMP/body.md"
+            | awk -F': ' 'tolower($1)=="github-authentication-token-expiration" {print $2}' | tr -d '\r') \
+            || pat_check=failure
+          PAT_CHECK="$pat_check" PAT_EXPIRY="$pat_expiry" python3 - <<'EOF' > "$RUNNER_TEMP/body.md"
           import datetime, os
           now = datetime.datetime.now(datetime.UTC)
           soon = now + datetime.timedelta(days=14)
           problems = []
           pat = os.environ.get("PAT_EXPIRY", "")
-          if pat:
+          if os.environ.get("PAT_CHECK") != "success":
+              problems.append("The bot's GitHub token check failed: it may have expired or been revoked.")
+          elif pat:
               when = datetime.datetime.strptime(pat.replace(" UTC", " +0000"), "%Y-%m-%d %H:%M:%S %z")
               if when < soon:
                   problems.append(f"The bot's GitHub token expires on {when:%Y-%m-%d}.")
@@ -122,7 +128,8 @@ jobs:
               problems.append("The OpenRouter key check failed.")
           elif remaining not in ("", "None") and float(remaining) < max(float(weekly or 0), 10.0):
               problems.append(f"The OpenRouter key has ${float(remaining):.2f} left (${float(weekly or 0):.2f} spent this week).")
-          print("\n".join(f"- {p}" for p in problems))
+          if problems:
+              print("\n".join(f"- {p}" for p in problems))
           EOF
           if [ ! -s "$RUNNER_TEMP/body.md" ]; then echo "All fine."; exit 0; fi
           title="Agent credentials need attention"
