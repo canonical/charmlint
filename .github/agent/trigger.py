@@ -38,6 +38,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import unicodedata
 import urllib.parse
 from typing import Any
 
@@ -190,7 +191,7 @@ def snapshot(issue: dict, before: str, out: pathlib.Path) -> list[dict]:
         kept.append({"author": c["user"]["login"], "body": visible(c["body"])})
     task = {
         "issue": issue["number"],
-        "title": issue["title"],
+        "title": shown(issue["title"]),
         "body": visible(issue["body"]),
         "labels": [lab["name"] for lab in issue["labels"] if not lab["name"].startswith(LABEL)],
         "comments": kept,
@@ -216,12 +217,30 @@ def edits_allowed(comment: dict) -> bool:
 
 
 def visible(text: str | None) -> str:
-    """TEXT without its HTML comments, which GitHub doesn't show to whoever approves it.
+    """TEXT without what GitHub doesn't show to whoever approves it.
 
-    An unclosed comment hides everything after it. Each one leaves a note, so
-    a reader of the task can tell something was there.
+    That's HTML comments (an unclosed one hides everything after it), link
+    reference definitions such as ``[//]: # (...)``, whose title can run on
+    until a blank line, and invisible format characters: zero-width, bidi and
+    tag characters. Comments and definitions leave a note, so a reader of the
+    task can tell something was there.
     """
-    return re.sub(r"<!--.*?(?:-->|\Z)", "(HTML comment removed)", text or "", flags=re.S).strip()
+    text = re.sub(r"<!--.*?(?:-->|\Z)", "(HTML comment removed)", text or "", flags=re.S)
+    text = re.sub(
+        r"^ {0,3}\[[^\]\n]+\]:.*(?:\n(?![ \t]*$).*)*",
+        "(link definition removed)",
+        text,
+        flags=re.M,
+    )
+    return shown(text).strip()
+
+
+def shown(text: str) -> str:
+    """TEXT without invisible format characters: zero-width, bidi and tag characters.
+
+    A title is plain text, so this is all it needs.
+    """
+    return "".join(c for c in text if unicodedata.category(c) != "Cf")
 
 
 def find_plan(comments: list[dict], out: pathlib.Path, *, revising: bool = False) -> bool:
