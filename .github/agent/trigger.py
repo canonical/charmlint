@@ -554,6 +554,11 @@ def run_started(number: int, before: str) -> str:
     return max(started)
 
 
+def numeric(value: str | None) -> bool:
+    """Whether a workflow_dispatch input, which is always a string, holds a number."""
+    return bool(value) and value.strip().isdigit()
+
+
 def dispatched(event: dict, out: pathlib.Path) -> dict:
     inputs = event.get("inputs") or {}
     mode = inputs.get("mode") or "full"
@@ -563,6 +568,8 @@ def dispatched(event: dict, out: pathlib.Path) -> dict:
         triggering = os.environ.get("GITHUB_TRIGGERING_ACTOR") or os.environ.get("GITHUB_ACTOR")
         if triggering != "github-actions[bot]" and not allowed(triggering):
             raise Skip("revision started by someone not on the allowlist")
+        if not (numeric(inputs.get("pr")) and numeric(inputs.get("review"))):
+            raise Skip("a revision needs both a pr and a review number")
         return revision(int(inputs["pr"]), int(inputs["review"]), out)
     # A re-run keeps the original run's GITHUB_ACTOR, and approval is as of
     # now, so whoever started this attempt has to be on the allowlist too.
@@ -570,6 +577,8 @@ def dispatched(event: dict, out: pathlib.Path) -> dict:
     triggering = os.environ.get("GITHUB_TRIGGERING_ACTOR") or actor
     if not (allowed(actor) and allowed(triggering)):
         raise Skip("dispatched or re-run by someone not on the allowlist")
+    if not numeric(inputs.get("issue")):
+        raise Skip("no issue number given")
     number = int(inputs["issue"])
     issue = gh(f"repos/{REPO}/issues/{number}")
     now = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
