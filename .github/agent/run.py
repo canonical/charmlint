@@ -17,9 +17,8 @@ plus ``plan.md``, ``pr.md`` (or ``revision-comment.md``), ``title.txt``,
 ``--plan-only`` stops after the plan and its critique; ``--plan`` skips
 both and uses a plan made earlier (posted on the issue by a plan-only run).
 
-Exit codes: 0 a PR or a revision (``meta.json`` says if it should be a
-draft), 3 the plan says out of scope or needs design, or ``--plan-only``
-(``issue-comment.md`` holds the plan), 1 the pipeline failed.
+Exit codes: 0 a PR or a revision, 3 the plan says out of scope or needs
+design, or ``--plan-only``, 1 the pipeline failed.
 
 Stages: plan → implement (+ deterministic checks, bounded fix rounds) →
 corpus run (deterministic) → classify (+ FP fix rounds) → review (two focused
@@ -168,6 +167,8 @@ FORBIDDEN_ATTRS = {
     "FullLoader",
     "UnsafeLoader",
 }
+LABELS = {"TP", "EXPECTED", "FP", "UNK"}  # what classify may label a finding
+RECALL_LABELS = {"MISSED", "DEFERRED", "OK", "UNK"}  # and recall a grep hit
 RULE_CODE = ("src/charmlint/_rules/", "src/charmlint/_ast.py", "src/charmlint/_yaml.py")
 
 
@@ -412,6 +413,13 @@ class Pipeline:
             shutil.copy(plan_md, self.work / "plan.md")
             if self.feedback:
                 return self._revise(plan_md)
+            # A plan from an earlier run may have said not to go ahead; a
+            # maintainer overrides that by editing its verdict.
+            verdict = parse_verdict(plan_md.read_text())
+            if verdict != "PROCEED":
+                log(f"the given plan's verdict is {verdict}")
+                self.write_meta(outcome=verdict.lower())
+                return 3
             return self._implement(plan_md)
         log("plan")
         self.pi(
@@ -588,7 +596,6 @@ class Pipeline:
             self.write_publish_diff()
             self.write_meta(
                 outcome="revision",
-                draft=bool(blocking or self.misses or self.unreviewed or self.crashes),
                 unreviewed=self.unreviewed,
                 blocking=blocking,
                 misses=self.misses,
@@ -648,7 +655,6 @@ class Pipeline:
         self.write_publish_diff()
         self.write_meta(
             outcome="pr",
-            draft=bool(blocking or self.misses or self.unreviewed or self.crashes),
             unreviewed=self.unreviewed,
             blocking=blocking,
             misses=self.misses,
@@ -763,8 +769,10 @@ class Pipeline:
                 for line in labels_out.read_text().splitlines():
                     try:
                         row = json.loads(line)
+                        if row.get("label") not in RECALL_LABELS:
+                            continue
                         by_id[int(row["id"])] = row
-                    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                    except (json.JSONDecodeError, KeyError, ValueError, TypeError, AttributeError):
                         continue
             for h in todo:
                 row = by_id.get(
@@ -952,8 +960,10 @@ class Pipeline:
                 for line in batch_out.read_text().splitlines():
                     try:
                         row = json.loads(line)
+                        if row.get("label") not in LABELS:
+                            continue
                         by_id[int(row["id"])] = row
-                    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                    except (json.JSONDecodeError, KeyError, ValueError, TypeError, AttributeError):
                         continue
             for f in batch:
                 row = by_id.get(
@@ -1014,13 +1024,9 @@ class Pipeline:
                 git(self.repo, "checkout", "--", ".")
                 git(self.repo, "clean", "-fdq")
             try:
-                findings = self.read_json(stage, out)["findings"]
-                if not isinstance(findings, list) or not all(
-                    isinstance(f, dict) for f in findings
-                ):
-                    raise TypeError("findings isn't a list of objects")
+                findings = review_findings(self.read_json(stage, out))
             except (OSError, json.JSONDecodeError, KeyError, TypeError):
-                # No review isn't a clean review: the PR opens as a draft and says so.
+                # No review isn't a clean review: the PR says so.
                 log(f"  {out.name}: unreadable review output")
                 self.unreviewed.append(focus)
                 continue
@@ -1068,23 +1074,25 @@ class Pipeline:
         blocking = deterministic_review(self.own_diff(), self.repo, self.start_sha)
         try:
             result = self.read_json(stage, out)
-        except (OSError, json.JSONDecodeError):
+            new = review_findings(result)
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
             log(f"  {out.name}: unreadable; treating earlier findings as unresolved")
             return blocking + previous
         statuses = {
             int(p["index"]): p
-            for p in result.get("previous", [])
-            if str(p.get("index", "")).isdigit()
+            for p in result.get("previous") or []
+            if isinstance(p, dict) and str(p.get("index", "")).isdigit()
         }
         for i, finding in enumerate(previous):
-            status = statuses.get(i, {}).get("status", "not_resolved")
-            if status in ("not_resolved", "dispute_rejected"):
+            # Only a clear "resolved" closes a finding; anything else keeps it open.
+            status = statuses.get(i, {}).get("status")
+            if status not in ("resolved", "dispute_accepted"):
                 blocking.append({
                     **finding,
                     "problem": finding["problem"]
-                    + f" (still open: {statuses.get(i, {}).get('note', '')})",
+                    + f" (still open: {str(statuses.get(i, {}).get('note', ''))[:300]})",
                 })
-        blocking += [f for f in result.get("findings", []) if f.get("severity") == "blocking"]
+        blocking += [f for f in new if f["severity"] == "blocking"]
         log(
             f"  re-review: {sum(1 for p in statuses.values() if p.get('status') in ('resolved', 'dispute_accepted'))}"
             f"/{len(previous)} resolved, {len(blocking)} blocking"
@@ -1245,8 +1253,13 @@ def render_task(task: dict) -> str:
 
 
 def parse_verdict(plan: str) -> str:
-    match = re.search(r"##\s*Verdict\s*\n+\s*\**(PROCEED|OUT_OF_SCOPE|NEEDS_DESIGN)", plan)
-    return match.group(1) if match else "PROCEED"
+    """The plan's verdict, however it's marked up; NEEDS_DESIGN if there isn't one.
+
+    Not PROCEED: a plan whose verdict can't be read goes back to a maintainer
+    rather than being implemented.
+    """
+    match = re.search(r"Verdict\W*(PROCEED|OUT_OF_SCOPE|NEEDS_DESIGN)\b", plan, re.I)
+    return match.group(1).upper() if match else "NEEDS_DESIGN"
 
 
 def make_title(plan: str, existing: set[str]) -> str:
@@ -1702,6 +1715,30 @@ def corpus_run(tree: pathlib.Path, out: pathlib.Path, corpus: pathlib.Path) -> l
         capture_output=True,
     )
     return read_jsonl(out)
+
+
+def review_findings(result: object) -> list[dict]:
+    """The findings in a reviewer's JSON, each with the fields the pipeline uses.
+
+    TypeError or KeyError if it isn't shaped like a review at all, which the
+    callers treat as no review.
+    """
+    if not isinstance(result, dict):
+        raise TypeError("the review isn't a JSON object")
+    findings = result["findings"]
+    if not isinstance(findings, list):
+        raise TypeError("findings isn't a list")
+    return [
+        {
+            "severity": str(f.get("severity", "")),
+            "file": str(f.get("file") or f.get("path") or "?"),
+            "line": f.get("line") if isinstance(f.get("line"), int) else None,
+            "problem": str(f.get("problem") or f.get("issue") or ""),
+            "fix": str(f.get("fix") or ""),
+        }
+        for f in findings
+        if isinstance(f, dict)
+    ]
 
 
 def read_jsonl(path: pathlib.Path) -> list[dict]:

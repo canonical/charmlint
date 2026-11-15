@@ -11,6 +11,8 @@ from run import (
     kept_findings,
     make_title,
     new_crashes,
+    parse_verdict,
+    review_findings,
 )
 
 
@@ -186,3 +188,30 @@ def test_a_changed_rule_is_counted_by_everything_it_still_reports() -> None:
     assert "2 findings, all warning, 0 of them new. 1 findings no longer reported." in block
     assert "| R-001 | 1 | 0 | 1 | 0 | 2 |" in block
     assert "**Totals: 2 findings, 1 FP (50%).**" in block
+
+
+@pytest.mark.parametrize(
+    ("plan", "verdict"),
+    [
+        ("## Verdict\nPROCEED\nbecause", "PROCEED"),
+        ("## Verdict\n\n**OUT_OF_SCOPE**", "OUT_OF_SCOPE"),
+        ("## Verdict\n`NEEDS_DESIGN`", "NEEDS_DESIGN"),
+        ("Verdict: needs_design", "NEEDS_DESIGN"),
+        ("# Plan\nNo verdict here.", "NEEDS_DESIGN"),
+    ],
+)
+def test_parse_verdict_fails_closed(plan: str, verdict: str) -> None:
+    assert parse_verdict(plan) == verdict
+
+
+def test_review_findings_fills_in_what_a_model_left_out() -> None:
+    result = {"findings": [{"severity": "blocking", "path": "a.py", "issue": "x"}, "junk"]}
+    assert review_findings(result) == [
+        {"severity": "blocking", "file": "a.py", "line": None, "problem": "x", "fix": ""}
+    ]
+
+
+@pytest.mark.parametrize("result", [[], {"findings": None}, {"nothing": 1}])
+def test_review_findings_rejects_what_isnt_a_review(result: object) -> None:
+    with pytest.raises((TypeError, KeyError)):
+        review_findings(result)

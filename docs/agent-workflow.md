@@ -4,9 +4,9 @@ An agent turns approved issues into pull requests, and revises its own pull requ
 
 ## Using it
 
-Label an issue `agent` to approve it. The agent plans the change, implements it, measures it over the charm corpus, reviews it, and opens a PR. The PR is a draft when a review finding or a possible miss is still open, and the PR body lists them.
+Label an issue `agent` to approve it. The agent plans the change, implements it, measures it over the charm corpus, reviews it, and opens a PR. The PR is always a draft, because CONTRIBUTING.md asks for a person to review a tool-written PR before it leaves draft; the PR body lists any review finding or possible miss that is still open.
 
-Label an issue `agent:plan-only` to see the plan first. The agent posts the plan as a comment and stops. Edit the plan in that comment if it needs changing, then label the issue `agent` to implement it.
+Label an issue `agent:plan-only` to see the plan first. The agent posts the plan as a comment and stops. Edit the plan in that comment if it needs changing, then label the issue `agent` to implement it. The same works when the agent decides an issue is out of scope or needs a design decision: it posts the plan with that verdict, and changing the verdict to `PROCEED` before labelling the issue `agent` again overrides it. Only edits by allowlisted users count.
 
 To revise a PR, submit a review that requests changes. The agent addresses the review comments, measures and reviews the change again, pushes a new commit and comments with what it did. It revises a PR at most three times. The review event itself only starts a run of the workflow on the default branch, so a revision runs with the same credentials and checks as a new PR.
 
