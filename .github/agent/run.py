@@ -949,7 +949,7 @@ class Pipeline:
                 else "none checked\n"
             )
         )
-        blocking = deterministic_review(diff.read_text(), self.repo, self.start_sha)
+        blocking = deterministic_review(self.own_diff(), self.repo, self.start_sha)
         for focus, checklist in (
             ("correctness", "checklist-correctness"),
             ("tests and conventions", "checklist-conventions"),
@@ -1027,7 +1027,7 @@ class Pipeline:
             log("reviewer edited the repository; restoring")
             git(self.repo, "checkout", "--", ".")
             git(self.repo, "clean", "-fdq")
-        blocking = deterministic_review(diff.read_text(), self.repo, self.start_sha)
+        blocking = deterministic_review(self.own_diff(), self.repo, self.start_sha)
         try:
             result = self.read_json(stage, out)
         except (OSError, json.JSONDecodeError):
@@ -1131,8 +1131,18 @@ class Pipeline:
         return json.loads((self.work / "findings.summary.json").read_text())
 
     def changed_files(self) -> list[str]:
+        """The files this run changed: since the PR's head, when revising, not since main.
+
+        The PR can have commits from a maintainer, which aren't the agent's
+        to answer for and may touch files the agent may not.
+        """
         git(self.repo, "add", "-A")
-        return git(self.repo, "diff", "--cached", "--name-only", self.base_sha).split()
+        return git(self.repo, "diff", "--cached", "--name-only", self.start_sha).split()
+
+    def own_diff(self) -> str:
+        """The diff of what this run changed; see ``changed_files``."""
+        git(self.repo, "add", "-A")
+        return git(self.repo, "diff", "--cached", self.start_sha)
 
     def diff_text(self) -> str:
         git(self.repo, "add", "-A")
