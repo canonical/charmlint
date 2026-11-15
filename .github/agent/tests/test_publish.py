@@ -123,6 +123,18 @@ def test_plan_round_trips_through_the_issue_comment(
     assert (tmp_path / "plan.md").read_text() == plan + "\n"
 
 
+def test_long_plan_is_truncated_visibly_and_still_round_trips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    monkeypatch.setattr(trigger, "edits_allowed", lambda c: True)
+    (tmp_path / "plan.md").write_text("# Plan\n\n" + "word " * 20_000)
+    body = publish.plan_comment(tmp_path, "intro")
+    assert len(body) <= publish.MAX_BODY
+    comments = [{"user": {"login": trigger.BOT}, "body": body}]
+    assert trigger.find_plan(comments, tmp_path, revising=True)
+    assert (tmp_path / "plan.md").read_text().endswith("(plan truncated)\n")
+
+
 # ---- pr_title -------------------------------------------------------------------
 
 
