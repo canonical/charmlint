@@ -82,7 +82,10 @@ Verdict rules:
   `tests/` and `docs/rules.md` (for example the linter core, `_models.py`,
   `_linter.py`, the CLI, configuration or dependencies).
 - NEEDS_DESIGN if the issue leaves a choice open that changes what users see
-  and that the corpus can't settle.
+  and that the corpus can't settle, or the rule needs a change to a helper in
+  `_ast.py` / `_yaml.py` that other rules use: CONTRIBUTING.md has shared
+  helpers land in a PR of their own first. Say what the helper change is. A
+  new helper only this rule uses goes in the rule's module, which is fine.
 - Otherwise PROCEED.
 
 For a change to an existing rule, the Rule section names the existing ID and

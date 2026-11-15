@@ -6,7 +6,9 @@ Tests and house conventions:
   style of the neighbouring tests.
 - Module layout (AGENTS.md): rule classes first in ID order, helpers below
   their first caller in call order. Shared concerns in `_ast.py` / `_yaml.py`,
-  not a new private walker that duplicates one there.
+  not a new private walker that duplicates one there; but a change to a
+  helper there that other rules use belongs in its own PR first
+  (CONTRIBUTING.md), so flag one as blocking.
 - Parse once: use the charm context and shared models rather than
   re-reading and re-validating raw YAML in the rule.
 - The docstring is user documentation rendered into `docs/rules.md`: what it
