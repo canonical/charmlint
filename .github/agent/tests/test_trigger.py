@@ -228,6 +228,26 @@ def test_dispatch_needs_both_actors_on_the_allowlist(
         trigger.dispatched({"inputs": {"mode": "full", "issue": "12"}}, tmp_path)
 
 
+@pytest.mark.parametrize("issue", ["", " ", "abc"])
+def test_dispatch_without_an_issue_number_is_skipped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, issue: str
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTOR", "maintainer")
+    monkeypatch.setenv("GITHUB_TRIGGERING_ACTOR", "maintainer")
+    with pytest.raises(trigger.Skip, match="no issue number"):
+        trigger.dispatched({"inputs": {"mode": "full", "issue": issue}}, tmp_path)
+
+
+@pytest.mark.parametrize("inputs", [{}, {"pr": "20"}, {"review": "5"}, {"pr": "20", "review": ""}])
+def test_a_revision_without_pr_and_review_is_skipped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, inputs: dict
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTOR", "maintainer")
+    monkeypatch.setenv("GITHUB_TRIGGERING_ACTOR", "maintainer")
+    with pytest.raises(trigger.Skip, match="needs both"):
+        trigger.dispatched({"inputs": {"mode": "revise", **inputs}}, tmp_path)
+
+
 def labelled(label: str, at: str, by: str = "github-actions[bot]") -> dict:
     return {"event": "labeled", "label": {"name": label}, "actor": {"login": by}, "created_at": at}
 
