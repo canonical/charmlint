@@ -83,6 +83,21 @@ def test_uses_already_in_the_file_are_not_reported() -> None:
     assert whats(base + "X = 1\n", base, rule_code=False) == []
 
 
+@pytest.mark.parametrize("encoding", ["utf-7", "shift_jis", "latin-1"])
+def test_coding_declarations_other_than_utf8_are_reported(encoding: str) -> None:
+    # In UTF-7 the second line is `import subprocess`; as UTF-8 it's a comment.
+    source = f"# coding: {encoding}\n# +AAo-import subprocess\n".encode()
+    assert forbidden_uses(source, rule_code=False) == [
+        (1, "a coding declaration other than UTF-8")
+    ]
+
+
+def test_utf8_bytes_are_checked_like_text() -> None:
+    assert forbidden_uses(b"# coding: utf-8\nimport os\n") == [(2, "`import os`")]
+    assert forbidden_uses(b"\xef\xbb\xbfimport os\n") == [(1, "`import os`")]
+    assert forbidden_uses(b"x = 1\0\n") == [(0, "source that doesn't parse on this Python")]
+
+
 def test_source_that_does_not_parse_is_reported() -> None:
     assert whats("import subprocess\ndef (:\n") == ["source that doesn't parse on this Python"]
 

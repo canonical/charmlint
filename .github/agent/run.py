@@ -37,6 +37,7 @@ import argparse
 import ast
 import collections
 import dataclasses
+import io
 import json
 import os
 import pathlib
@@ -45,6 +46,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tokenize
 from typing import Any
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -1328,14 +1330,10 @@ def deterministic_review(diff: str, repo: pathlib.Path, base: str = "HEAD") -> l
         elif f.endswith(".py") and (repo / f).exists():
             rule_code = f.startswith(RULE_CODE)
             old = subprocess.run(
-                ["git", "show", f"{base}:{f}"],
-                cwd=repo,
-                capture_output=True,
-                text=True,
-                check=False,
+                ["git", "show", f"{base}:{f}"], cwd=repo, capture_output=True, check=False
             ).stdout
             for line, what in forbidden_uses(
-                (repo / f).read_text(), old, rule_code=rule_code, path=f
+                (repo / f).read_bytes(), old, rule_code=rule_code, path=f
             ):
                 findings.append({
                     "severity": "blocking",
@@ -1353,7 +1351,7 @@ def deterministic_review(diff: str, repo: pathlib.Path, base: str = "HEAD") -> l
 
 
 def forbidden_uses(
-    source: str, base: str = "", *, rule_code: bool = True, path: str = ""
+    source: str | bytes, base: str | bytes = "", *, rule_code: bool = True, path: str = ""
 ) -> list[tuple[int, str]]:
     """Imports and calls that run, fetch or reach around things, that ``base`` didn't have.
 
@@ -1368,6 +1366,10 @@ def forbidden_uses(
     and a module the file already imports has each of its attributes counted
     too, so a new ``os.system`` call in a file that has always imported ``os``
     is reported. Source that doesn't parse is reported as well.
+
+    Pass the file's bytes, as Python reads them: it decodes by a PEP 263
+    coding declaration, which can make a line that's a comment in UTF-8 an
+    import, so a declaration of anything but UTF-8 is reported too.
     """
     package = pathlib.PurePosixPath(path.removeprefix("src/")).parent.parts if path else ()
     new, lines = _uses(source, rule_code, package)
@@ -1376,7 +1378,7 @@ def forbidden_uses(
 
 
 def _uses(
-    text: str, rule_code: bool, package: tuple[str, ...]
+    text: str | bytes, rule_code: bool, package: tuple[str, ...]
 ) -> tuple[collections.Counter[str], dict[str, int]]:
     """What ``forbidden_uses`` looks for in TEXT: a count of each, and the line of the first."""
 
@@ -1393,13 +1395,21 @@ def _uses(
         found[what] += 1
         lines.setdefault(what, getattr(node, "lineno", 0))
 
+    if isinstance(text, bytes):
+        try:
+            encoding = tokenize.detect_encoding(io.BytesIO(text).readline)[0]
+        except SyntaxError:
+            encoding = "utf-8"  # a null byte or an unknown codec: ast.parse reports it
+        if encoding not in ("utf-8", "utf-8-sig"):
+            what = "a coding declaration other than UTF-8"
+            return collections.Counter({what: 1}), {what: 1}
     try:
         tree = ast.parse(text)
-    except SyntaxError as e:
+    except (SyntaxError, ValueError) as e:
         # charmlint supports 3.12, so its code must parse there; checking
         # nothing would let newer syntax carry any import past the checks.
         what = "source that doesn't parse on this Python"
-        return collections.Counter({what: 1}), {what: e.lineno or 0}
+        return collections.Counter({what: 1}), {what: getattr(e, "lineno", 0) or 0}
     bound: dict[str, str] = {}  # names this file binds to a forbidden module, and the module
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
