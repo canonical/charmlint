@@ -88,6 +88,8 @@ URL = re.compile(r"\bhttps?\\?:[^\s)>\]]*|(?<![\w:])[/\\]{2}[^\s)>\]]+|\bwww\.[^
 MODEL = re.compile(r"[a-z0-9.-]+/[a-z0-9.:-]+")
 STAGE = re.compile(r"[0-9]{2}-[a-z0-9-]+")
 MAX_BODY = 60_000
+# Short enough that a plan comment fits in MAX_BODY with its markers intact.
+MAX_PLAN = 50_000
 
 
 def gh(*args: str) -> Any:
@@ -189,6 +191,10 @@ def plan_comment(agent: pathlib.Path, intro: str, *, built: bool = False) -> str
     # The plan is posted in a fence, which GitHub renders literally, so only
     # secrets need removing; anything more would change what is read back.
     plan = SECRET.sub("(removed)", (agent / "plan.md").read_text().strip())
+    if len(plan) > MAX_PLAN:
+        # Cut here rather than leave it to comment(), which would drop the
+        # closing fence and plan-end marker, so the plan couldn't be read back.
+        plan = plan[:MAX_PLAN].rstrip() + "\n\n(plan truncated)"
     marker = f"{PLAN_MARKER}\n{BUILT_MARKER}" if built else PLAN_MARKER
     return (
         f"{marker}\n{intro}\n\n<details><summary>Plan</summary>\n\n"
