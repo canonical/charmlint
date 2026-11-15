@@ -99,7 +99,7 @@ jobs:
           d = json.load(sys.stdin)["data"]
           print("remaining=%s" % d.get("limit_remaining"))
           print("expires=%s" % (d.get("expires_at") or ""))
-          print("weekly=%s" % d.get("usage_weekly"))
+          print("weekly=%s" % (d.get("usage_weekly") or 0))
           ' >> "$GITHUB_OUTPUT"
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
