@@ -554,35 +554,17 @@ class Pipeline:
         # would ask for them too. Only blocking ones are re-checked.
         if not blocking and self.shoulds:
             log(f"review fix round 0: {len(self.shoulds)} should findings")
-            self.pi(
-                "02-implement",
-                self.config.impl_model,
-                review_feedback([], self.shoulds),
-                tools="read,bash,edit,write,grep,find,ls",
-                resume=True,
-                timeout=45 * 60,
-            )
-            if not self.checks_until_green():
-                self.write_meta(outcome="checks-failed")
-                return 1
-            classified = self.evaluate()
+            if self.review_fix(review_feedback([], self.shoulds)) is not None:
+                classified = self.evaluate()
         for round_ in range(self.config.review_rounds):
             if not blocking:
                 break
             log(f"review fix round {round_ + 1}: {len(blocking)} blocking findings")
             before_fix = self.snapshot()
             shoulds = self.shoulds if round_ == 0 else []
-            response = self.pi(
-                "02-implement",
-                self.config.impl_model,
-                review_feedback(blocking, shoulds),
-                tools="read,bash,edit,write,grep,find,ls",
-                resume=True,
-                timeout=45 * 60,
-            )
-            if not self.checks_until_green():
-                self.write_meta(outcome="checks-failed")
-                return 1
+            response = self.review_fix(review_feedback(blocking, shoulds))
+            if response is None:
+                break  # what's still blocking is listed as open
             classified = self.evaluate()
             blocking = self.rereview(f"06-re-review-{round_ + 1}", blocking, response, before_fix)
         if self.snapshot() != reviewed:
@@ -1063,6 +1045,26 @@ class Pipeline:
             blocking += [f for f in findings if f.get("severity") == "blocking"]
             self.shoulds += [f for f in findings if f.get("severity") == "should"]
         return blocking
+
+    def review_fix(self, feedback: str) -> str | None:
+        """Have the implementer address review FEEDBACK; its response, or None if that failed.
+
+        The change before the round had passed the checks and the corpus run,
+        so a fix that can't pass the checks is undone rather than ending the run.
+        """
+        before = self.state()
+        response = self.pi(
+            "02-implement",
+            self.config.impl_model,
+            feedback,
+            tools="read,bash,edit,write,grep,find,ls",
+            resume=True,
+            timeout=45 * 60,
+        )
+        if self.checks_until_green():
+            return response
+        self.restore(before, "the review fix round")
+        return None
 
     def rereview(
         self, stage: str, previous: list[dict], response: str, before_fix: str
