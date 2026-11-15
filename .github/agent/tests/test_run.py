@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 import pytest
-from run import allowed_path, finding_delta, forbidden_uses, new_crashes
+from run import (
+    allowed_path,
+    counts_block,
+    finding_delta,
+    forbidden_uses,
+    kept_findings,
+    make_title,
+    new_crashes,
+)
 
 
 def whats(source: str, base: str = "", *, rule_code: bool = True) -> list[str]:
@@ -154,3 +162,27 @@ def test_a_charm_that_now_crashes_is_left_out() -> None:
     cand = [row(rule="CRASH", charm="c", line=None, message="KeyError: x")]
     assert changes(base, cand) == [("removed", "R-001", "d", 1)]
     assert [r["charm"] for r in new_crashes(base, cand)] == ["c"]
+
+
+PLAN = "- ID: `CHARMCRAFT-004`\n- Name: `unknown-top-level-field`\n"
+
+
+def test_title_adds_a_new_rule_and_updates_an_existing_one() -> None:
+    assert make_title(PLAN, set()) == "feat: add CHARMCRAFT-004 (unknown-top-level-field)"
+    assert make_title(PLAN, {"CHARMCRAFT-004"}) == (
+        "fix: update CHARMCRAFT-004 (unknown-top-level-field)"
+    )
+
+
+def test_a_changed_rule_is_counted_by_everything_it_still_reports() -> None:
+    # An FP fix: three findings on main, one removed, two kept (one of them still an FP).
+    base = [row(line=n) for n in (1, 2, 3)]
+    cand = [row(line=n) for n in (1, 2)]
+    delta = finding_delta(base, cand)
+    rows = delta + kept_findings(base, cand, delta)
+    labels = {("removed", 3): "TP", ("kept", 1): "TP", ("kept", 2): "FP"}
+    classified = [dict(r, severity="warning", label=labels[r["change"], r["line"]]) for r in rows]
+    block = counts_block({"charms": 10, "fatal": 0}, classified)
+    assert "2 findings, all warning, 0 of them new. 1 findings no longer reported." in block
+    assert "| R-001 | 1 | 0 | 1 | 0 | 2 |" in block
+    assert "**Totals: 2 findings, 1 FP (50%).**" in block
