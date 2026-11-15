@@ -33,7 +33,7 @@ import urllib.parse
 from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from run import RULE_CODE, allowed_path, forbidden_uses  # ruff: ignore[E402]
+from run import check_tree  # ruff: ignore[E402]
 from trigger import (  # ruff: ignore[E402]
     BUILT_MARKER,
     FAILED,
@@ -206,48 +206,6 @@ def fenced(text: str, info: str = "") -> str:
     """TEXT in a backtick fence longer than any backtick run inside it, so it can't close early."""
     fence = "`" * max(4, max((len(m) for m in re.findall(r"`{3,}", text)), default=0) + 1)
     return f"{fence}{info}\n{text}\n{fence}"
-
-
-def check_tree(repo: pathlib.Path, start: str) -> list[str]:
-    """Problems with the applied change, read from git rather than from the patch."""
-    problems = []
-    raw = git(repo, "diff", "--cached", "--raw", "-z", "--no-renames", start)
-    fields = raw.split("\0")
-    for meta, path in zip(fields[0::2], fields[1::2], strict=False):
-        if not meta:
-            continue
-        old_mode, new_mode, _, _, status = meta.lstrip(":").split()
-        if re.search(r"[\x00-\x1f\x7f]", path):
-            # Not echoed: the failure comment shows these, and a newline could
-            # make one look like something else, such as a plan.
-            problems.append(f"a path with control characters ({json.dumps(path)[:200]})")
-            continue
-        if status not in ("A", "M", "D"):
-            problems.append(f"{path}: change type {status} isn't allowed")
-        if {old_mode, new_mode} - {"000000", "100644"}:
-            problems.append(f"{path}: mode {old_mode} -> {new_mode} isn't allowed")
-        if not allowed_path(path):
-            problems.append(f"{path}: outside what the agent may change")
-        if status != "D" and new_mode == "100644" and path.endswith(".py"):
-            # The staged blob, as bytes, which is how Python reads them (see
-            # forbidden_uses). Not the work tree: a symlink there could point
-            # at /dev/zero.
-            source = subprocess.run(
-                ["git", "show", f":{path}"], cwd=repo, capture_output=True, check=True
-            ).stdout
-            base = (
-                b""
-                if status == "A"
-                else subprocess.run(
-                    ["git", "show", f"{start}:{path}"], cwd=repo, capture_output=True, check=True
-                ).stdout
-            )
-            rule_code = path.startswith(RULE_CODE)
-            for line, what in forbidden_uses(source, base, rule_code=rule_code, path=path):
-                problems.append(
-                    f"{path}:{line}: {what} isn't allowed in {'rule code' if rule_code else 'tests'}"
-                )
-    return problems
 
 
 def apply(repo: pathlib.Path, agent: pathlib.Path, trigger: dict, message: str) -> bool:

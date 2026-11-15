@@ -62,6 +62,10 @@ PROMPTS = HERE / "prompts"
 CORPUS_RUN = HERE / "corpus_run.py"
 RECALL_GREP = HERE / "recall_grep.py"
 LOOSE_PREFIX = "(?i)^(?=.*\\b"  # how a loosened pattern starts
+# For every ``make test``, the implementer's and the checks': the pipeline's
+# own tests are in testpaths too, but a change can't touch them, and the
+# firewall stops the ones that serve on loopback.
+TEST_ENV = {"PYTEST_ADDOPTS": "--deselect=.github/agent/tests"}
 
 
 def allowed_path(path: str) -> bool:
@@ -288,7 +292,7 @@ class Pipeline:
         (self.agent_dir / "models.json").write_text(
             json.dumps({"providers": {"openrouter": openrouter}}, indent=2)
         )
-        self.env = {**os.environ, "PI_CODING_AGENT_DIR": str(self.agent_dir)}
+        self.env = {**os.environ, **TEST_ENV, "PI_CODING_AGENT_DIR": str(self.agent_dir)}
         key_file = os.environ.get("CLA_OPENROUTER_KEY_FILE")
         if key_file:
             self.env["OPENROUTER_API_KEY"] = (
@@ -877,33 +881,19 @@ class Pipeline:
         if "docs" in targets:
             run_bounded(["make", "docs"], self.repo, timeout=10 * 60)
         failures = {}
-        # The pipeline's own tests are in testpaths too, but this change can't
-        # touch them, and the firewall stops the ones that serve on loopback.
-        env = {**os.environ, "PYTEST_ADDOPTS": "--deselect=.github/agent/tests"}
+        env = {**os.environ, **TEST_ENV}
         for target in ("lint", "test", "docs-check"):
             if target not in targets:
                 continue
             rc, output = run_bounded(["make", target], self.repo, timeout=20 * 60, env=env)
             if rc:
                 failures[target] = output
-        changed = self.changed_files()
-        outside = [f for f in changed if not allowed_path(f)]
-        if outside:
-            failures["allowlist"] = (
-                "These files are outside what this change may touch; revert them and do it without them:\n"
-                + "\n".join(outside)
-            )
-        # Checked here, not only at review, so a fix round after the review
-        # can't add what the publish job would refuse.
-        uses = [
-            f"{x['file']}:{x['line']}: {x['problem']}"
-            for x in deterministic_review(self.own_diff(), self.repo, self.start_sha)
-            if allowed_path(x["file"])
-        ]
-        if uses:
-            failures["imports"] = (
-                "The publish job refuses these new imports and calls; remove them:\n"
-                + "\n".join(uses)
+        # The publish job's own check, so no fix round can leave what it refuses.
+        git(self.repo, "add", "-A")
+        if problems := check_tree(self.repo, self.start_sha):
+            failures["publish checks"] = (
+                "The publish job would refuse this change. Revert any file outside what "
+                "it may touch, and fix the rest:\n" + "\n".join(problems)
             )
         return failures
 
@@ -1515,6 +1505,48 @@ def counts_block(summary: dict, classified: list[dict]) -> str:
         f"**Totals: {len(current)} findings, {total.get('FP', 0)} FP ({fp_rate:.0f}%).**",
     ]
     return "\n".join(lines) + "\n"
+
+
+def check_tree(repo: pathlib.Path, start: str) -> list[str]:
+    """Problems with the applied change, read from git rather than from the patch."""
+    problems = []
+    raw = git(repo, "diff", "--cached", "--raw", "-z", "--no-renames", start)
+    fields = raw.split("\0")
+    for meta, path in zip(fields[0::2], fields[1::2], strict=False):
+        if not meta:
+            continue
+        old_mode, new_mode, _, _, status = meta.lstrip(":").split()
+        if re.search(r"[\x00-\x1f\x7f]", path):
+            # Not echoed: the failure comment shows these, and a newline could
+            # make one look like something else, such as a plan.
+            problems.append(f"a path with control characters ({json.dumps(path)[:200]})")
+            continue
+        if status not in ("A", "M", "D"):
+            problems.append(f"{path}: change type {status} isn't allowed")
+        if {old_mode, new_mode} - {"000000", "100644"}:
+            problems.append(f"{path}: mode {old_mode} -> {new_mode} isn't allowed")
+        if not allowed_path(path):
+            problems.append(f"{path}: outside what the agent may change")
+        if status != "D" and new_mode == "100644" and path.endswith(".py"):
+            # The staged blob, as bytes, which is how Python reads them (see
+            # forbidden_uses). Not the work tree: a symlink there could point
+            # at /dev/zero.
+            source = subprocess.run(
+                ["git", "show", f":{path}"], cwd=repo, capture_output=True, check=True
+            ).stdout
+            base = (
+                b""
+                if status == "A"
+                else subprocess.run(
+                    ["git", "show", f"{start}:{path}"], cwd=repo, capture_output=True, check=True
+                ).stdout
+            )
+            rule_code = path.startswith(RULE_CODE)
+            for line, what in forbidden_uses(source, base, rule_code=rule_code, path=path):
+                problems.append(
+                    f"{path}:{line}: {what} isn't allowed in {'rule code' if rule_code else 'tests'}"
+                )
+    return problems
 
 
 def deterministic_review(diff: str, repo: pathlib.Path, base: str = "HEAD") -> list[dict]:
