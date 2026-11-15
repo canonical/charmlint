@@ -77,14 +77,6 @@ class Skip(Exception):
         self.notice = notice
 
 
-# A fenced code block, to its closing fence or, unclosed, the end.
-# A backtick fence's info string can't hold a backtick: "```x``` is" is
-# inline code, not a fence.
-FENCE = re.compile(
-    r"^ {0,3}(?:(`{3,})[^`\n]*|(~{3,})[^\n]*)"
-    r"(?:\n.*?^ {0,3}(?:\1`*|\2~*)[ \t]*$|\Z|\n.*\Z)",
-    re.M | re.S,
-)
 # A link reference definition, also in a quote or a list item, with a label
 # that may span lines; not a footnote, which GitHub shows.
 LINK_DEFINITION = re.compile(
@@ -240,19 +232,14 @@ def visible(text: str | None) -> str:
     reference definitions such as ``[//]: # (...)``, whose title can run on
     until a blank line, and invisible characters (see ``shown``). Comments and
     definitions leave a note, so a reader of the task can tell something was
-    there. A definition inside a code fence is shown as code, so it stays; one
-    the approximation here misses, or a line it takes too many, is the price of
-    not parsing Markdown.
+    there. This approximates Markdown rather than parsing it, so it errs
+    towards removing: a definition-shaped line in a code block goes too, since
+    what looks like a fence can itself be hidden, in an HTML block.
     """
     text = (text or "").replace("\r\n", "\n")
     text = re.sub(r"<!--.*?(?:-->|\Z)", "(HTML comment removed)", text, flags=re.S)
-    kept, last = [], 0
-    for fence in FENCE.finditer(text):
-        kept += [LINK_DEFINITION.sub("(link definition removed)", text[last : fence.start()])]
-        kept += [fence.group()]
-        last = fence.end()
-    kept += [LINK_DEFINITION.sub("(link definition removed)", text[last:])]
-    return shown("".join(kept)).strip()
+    text = LINK_DEFINITION.sub("(link definition removed)", text)
+    return shown(text).strip()
 
 
 def shown(text: str) -> str:

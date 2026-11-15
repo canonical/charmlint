@@ -84,16 +84,14 @@ def test_visible_drops_link_definitions_in_quotes_lists_and_over_lines(text: str
 
 
 def test_visible_keeps_what_github_shows_that_looks_like_a_definition() -> None:
-    fenced = "```yaml\n[a]: b\n```\nShown"
-    assert trigger.visible(fenced) == fenced
     footnote = "Text[^1].\n\n[^1]: Shown at the bottom."
     assert trigger.visible(footnote) == footnote
     assert trigger.visible("- [ ] a task\n- [x] done") == "- [ ] a task\n- [x] done"
 
 
-def test_visible_does_not_take_inline_code_for_a_fence() -> None:
-    text = "```x``` is the key\n\n[//]: # (hidden)\n\nThanks"
-    assert trigger.visible(text) == "```x``` is the key\n\n(link definition removed)\n\nThanks"
+def test_visible_drops_a_definition_after_a_fence_hidden_in_html() -> None:
+    text = 'Intro\n\n<div title="\n```\n"></div>\n\n[x]: # (hidden)\n\nMore'
+    assert "hidden" not in trigger.visible(text)
 
 
 def test_snapshot_drops_text_the_approver_could_not_see(
