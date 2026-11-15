@@ -15,7 +15,7 @@ format:  ## Format code with ruff
 	uv run --group dev ruff check --fix
 
 test:  ## Run unit tests
-	uv run --group dev pytest tests/ --cov=charmlint --cov-report=term-missing
+	uv run --group dev pytest --cov=charmlint --cov-report=term-missing
 
 docs:  ## Regenerate docs/rules.md from the rule registry
 	uv run python tools/generate_rules_doc.py
