@@ -260,10 +260,14 @@ def find_plan(comments: list[dict], out: pathlib.Path, *, revising: bool = False
         for c in comments
         if c["user"]["login"].lower() == BOT and c["body"].startswith(PLAN_MARKER)
     ]
+    built = f"{PLAN_MARKER}\n{BUILT_MARKER}"
+    if revising:
+        # Not a plan-only run's, made while the PR was open.
+        plans = [c for c in plans if c["body"].replace("\r\n", "\n").startswith(built)]
     if not plans:
         return False
     body = plans[-1]["body"].replace("\r\n", "\n")
-    if not revising and body.startswith(f"{PLAN_MARKER}\n{BUILT_MARKER}"):
+    if not revising and body.startswith(built):
         return False
     if not edits_allowed(plans[-1]):
         print(

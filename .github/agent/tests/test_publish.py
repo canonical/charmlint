@@ -129,7 +129,7 @@ def test_long_plan_is_truncated_visibly_and_still_round_trips(
 ) -> None:
     monkeypatch.setattr(trigger, "edits_allowed", lambda c: True)
     (tmp_path / "plan.md").write_text("# Plan\n\n" + "word " * 20_000)
-    body = publish.plan_comment(tmp_path, "intro")
+    body = publish.plan_comment(tmp_path, "intro", built=True)
     assert len(body) <= publish.MAX_BODY
     comments = [{"user": {"login": trigger.BOT}, "body": body}]
     assert trigger.find_plan(comments, tmp_path, revising=True)
@@ -267,6 +267,20 @@ def test_the_plan_a_pr_was_built_from_is_only_reused_by_a_revision(
     (tmp_path / "plan.md").unlink()
     assert not trigger.find_plan(comments, tmp_path)
     assert trigger.find_plan(comments, tmp_path, revising=True)
+
+
+def test_a_revision_uses_the_built_plan_not_a_later_plan_only_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    monkeypatch.setattr(trigger, "edits_allowed", lambda c: True)
+    (tmp_path / "plan.md").write_text("## Verdict\nPROCEED\nbuilt\n")
+    built = publish.plan_comment(tmp_path, "intro", built=True)
+    (tmp_path / "plan.md").write_text("## Verdict\nPROCEED\nlater\n")
+    later = publish.plan_comment(tmp_path, "intro")
+    comments = [{"user": {"login": trigger.BOT}, "body": b} for b in (built, later)]
+    (tmp_path / "plan.md").unlink()
+    assert trigger.find_plan(comments, tmp_path, revising=True)
+    assert "built" in (tmp_path / "plan.md").read_text()
 
 
 @pytest.mark.parametrize("url", ["http://[::1]:8080/x", "https://[host]/path", "https://[::1"])
