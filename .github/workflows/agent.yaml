@@ -51,11 +51,17 @@ jobs:
     timeout-minutes: 10
     # One triage at a time, so two events can't both claim the same issue.
     # GitHub keeps only the newest pending run in a group and cancels the one
-    # it replaces; the drain picks that issue up later. A review only starts a
-    # run that comes back through here, so it waits in a group of its own and
-    # can't replace a pending label or drain.
+    # it replaces; the drain picks that issue up later. Nothing picks up a
+    # cancelled revision, so a review, and the revision run it starts, wait
+    # in a group for their PR, and can't replace a pending label or drain or
+    # be replaced by one.
     concurrency:
-      group: ${{ github.event_name == 'pull_request_review' && format('agent-review-{0}', github.event.pull_request.number) || 'agent-triage' }}
+      group: >-
+        ${{ github.event_name == 'pull_request_review'
+            && format('agent-review-{0}', github.event.pull_request.number)
+            || (github.event_name == 'workflow_dispatch' && inputs.mode == 'revise'
+                && format('agent-revise-{0}', inputs.pr))
+            || 'agent-triage' }}
       cancel-in-progress: false
     permissions:
       contents: read

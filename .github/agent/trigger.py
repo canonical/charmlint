@@ -299,6 +299,10 @@ def revision(number: int, review_id: int, out: pathlib.Path) -> dict:
         for c in gh(f"repos/{REPO}/issues/{number}/comments", paginate=True)
         if c["user"]["login"].lower() == BOT and REVISION_MARKER in c["body"]
     ]
+    # A review is acted on once: replaying an old one would run the agent on
+    # feedback a maintainer has already seen answered.
+    if any(c["created_at"] > review["submitted_at"] for c in done):
+        raise Skip(f"review {review_id} has already been addressed")
     if len(done) >= MAX_REVISIONS:
         raise Skip(
             "revision limit reached",
@@ -370,7 +374,11 @@ def dispatched(event: dict, out: pathlib.Path) -> dict:
     inputs = event.get("inputs") or {}
     mode = inputs.get("mode") or "full"
     if mode == "revise":
-        # Started by queue_revision (or by hand); the review is what's checked.
+        # Started by queue_revision (as github-actions[bot]) or by a maintainer;
+        # the review is checked too.
+        triggering = os.environ.get("GITHUB_TRIGGERING_ACTOR") or os.environ.get("GITHUB_ACTOR")
+        if triggering != "github-actions[bot]" and not allowed(triggering):
+            raise Skip("revision started by someone not on the allowlist")
         return revision(int(inputs["pr"]), int(inputs["review"]), out)
     # A re-run keeps the original run's GITHUB_ACTOR, and approval is as of
     # now, so whoever started this attempt has to be on the allowlist too.
