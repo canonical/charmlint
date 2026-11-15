@@ -110,7 +110,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: agent-publish
-    permissions: {}
+    # The report is posted with the workflow's own token: the bot's may be
+    # the credential that has stopped working.
+    permissions:
+      issues: write
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
         with:
@@ -120,7 +123,7 @@ jobs:
         shell: bash  # with pipefail, so a rejected token isn't read as one with no expiry
         run: |
           pat_check=success
-          pat_expiry=$(curl -fsSI -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/user \
+          pat_expiry=$(curl -fsSI -H "Authorization: Bearer $AGENT_PAT" https://api.github.com/user \
             | awk -F': ' 'tolower($1)=="github-authentication-token-expiration" {print $2}' | tr -d '\r') \
             || pat_check=failure
           PAT_CHECK="$pat_check" PAT_EXPIRY="$pat_expiry" python3 - <<'EOF' > "$RUNNER_TEMP/body.md"
@@ -148,16 +151,16 @@ jobs:
           EOF
           if [ ! -s "$RUNNER_TEMP/body.md" ]; then echo "All fine."; exit 0; fi
           title="Agent credentials need attention"
-          number=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&creator=${AGENT_BOT:-prints-charming-bot}" \
-            --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          number=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
+            --jq ".[] | select(.title == \"$title\" and .user.login == \"github-actions[bot]\") | .number" | head -1)
           if [ -n "$number" ]; then
             gh api "repos/$GITHUB_REPOSITORY/issues/$number/comments" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
           else
             gh api "repos/$GITHUB_REPOSITORY/issues" -f title="$title" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
           fi
         env:
-          GH_TOKEN: ${{ secrets.AGENT_PAT }}
-          AGENT_BOT: ${{ vars.AGENT_BOT }}
+          GH_TOKEN: ${{ github.token }}
+          AGENT_PAT: ${{ secrets.AGENT_PAT }}
           KEY_RESULT: ${{ needs.openrouter-key.result }}
           KEY_REMAINING: ${{ needs.openrouter-key.outputs.remaining }}
           KEY_EXPIRES: ${{ needs.openrouter-key.outputs.expires }}
