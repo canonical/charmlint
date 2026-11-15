@@ -434,3 +434,56 @@ def test_a_review_someone_else_edited_is_not_acted_on(
     with pytest.raises(trigger.Skip, match="edited") as e:
         trigger.revision(20, 5, tmp_path)
     assert (e.value.notice or {})["number"] == 20
+
+
+def test_a_title_change_by_someone_else_after_approval_stops_triage_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    no_edits = {"data": {"repository": {"issue": {"userContentEdits": {
+        "pageInfo": {"hasNextPage": False},
+        "nodes": [],
+    }}}}}  # fmt: skip
+    renamed = [
+        {"event": "renamed", "created_at": "2026-01-01T10:30:00Z", "actor": {"login": "someone"}},
+    ]
+    monkeypatch.setattr(trigger, "gh", lambda *a, **k: no_edits if a[0] == "graphql" else renamed)
+    with pytest.raises(trigger.Skip) as e:
+        trigger.check_not_edited(12, "2026-01-01T10:01:00Z", "Why.")
+    assert e.value.notice == {
+        "number": 12,
+        "body": "#12 was edited after it was approved, so the agent didn't run. Why.",
+        "remove": [trigger.LABEL, trigger.PLAN_ONLY],
+    }
+
+
+def test_a_revision_limit_stops_a_fourth_revision_and_says_so_on_the_pr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    done = [
+        {
+            "user": {"login": trigger.BOT},
+            "body": trigger.REVISION_MARKER,
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+    ] * trigger.MAX_REVISIONS
+
+    def gh(path: str, **_: object) -> object:
+        if path.endswith("/reviews/5"):
+            return {**review(), "submitted_at": "2026-01-02T00:00:00Z"}
+        if path.endswith("/comments"):
+            return done
+        return pr(number=20)
+
+    monkeypatch.setattr(trigger, "gh", gh)
+    with pytest.raises(trigger.Skip, match="revision limit") as e:
+        trigger.revision(20, 5, tmp_path)
+    assert (e.value.notice or {})["number"] == 20
+
+
+@pytest.mark.parametrize(
+    "issue", [{"state": "closed"}, {"state": "open", "pull_request": {"url": "u"}}]
+)
+def test_a_closed_issue_or_a_pull_request_is_not_run(tmp_path: pathlib.Path, issue: dict) -> None:
+    approved = {"issue": {"labels": [], **issue}, "at": "2026-01-01", "by": "m"}
+    with pytest.raises(trigger.Skip, match="not an open issue"):
+        trigger.issue_run(1, "full", tmp_path, approved=approved)
