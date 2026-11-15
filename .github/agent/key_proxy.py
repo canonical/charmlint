@@ -146,11 +146,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.clean_path() not in POST_PATHS:
             self.send_error(403, "not forwarded")
             return
-        length = int(self.headers.get("Content-Length") or 0)
         try:
+            length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length))
         except ValueError:
-            self.send_error(400, "not JSON")
+            self.send_error(400, "bad Content-Length or not JSON")
             return
         try:
             data, reserve = prepare(body)
