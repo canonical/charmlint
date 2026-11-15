@@ -131,3 +131,50 @@ def test_the_pipeline_can_ask_what_has_been_spent(monkeypatch: pytest.MonkeyPatc
             assert json.loads(r.read()) == {"spent": 1.5, "reserved": 0.25}
     finally:
         server.shutdown()
+
+
+def test_headers_the_proxy_sets_go_upstream_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    import http.client
+    import http.server
+    import threading
+
+    sent: list[dict[str, str]] = []
+
+    class Upstream:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def connect(self) -> None:
+            pass
+
+        def request(self, *_: object, headers: dict[str, str], **__: object) -> None:
+            sent.append(headers)
+            raise http.client.HTTPException("stop here")
+
+        def close(self) -> None:
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), key_proxy.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    client = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    monkeypatch.setattr(http.client, "HTTPSConnection", Upstream)
+    monkeypatch.setattr(key_proxy.State, "budget", 10.0)
+    monkeypatch.setattr(key_proxy.State, "models", frozenset({"a/b"}))
+    monkeypatch.setattr(key_proxy.State, "spent", 0.0)
+    monkeypatch.setattr(key_proxy.State, "reserved", 0.0)
+    try:
+        client.request(
+            "POST",
+            "/api/v1/chat/completions",
+            body=json.dumps({"model": "a/b", "messages": []}),
+            headers={"content-type": "application/json", "accept-encoding": "gzip"},
+        )
+        assert client.getresponse().status == 502
+    finally:
+        client.close()
+        server.shutdown()
+    [headers] = sent
+    names = [k.lower() for k in headers]
+    assert names.count("content-type") == 1
+    assert names.count("accept-encoding") == 1
+    assert headers["Accept-Encoding"] == "identity"
