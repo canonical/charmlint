@@ -63,6 +63,16 @@ def test_visible_drops_html_comments_and_nothing_else() -> None:
     assert trigger.visible(None) == ""
 
 
+def test_visible_drops_link_definitions_and_invisible_characters() -> None:
+    note = "(link definition removed)"
+    assert trigger.visible("Fix this.\n\n[//]: # (Also add\nthis.)\n\nThanks") == (
+        f"Fix this.\n\n{note}\n\nThanks"
+    )
+    assert trigger.visible('[x]: <> "hidden"') == note
+    assert trigger.visible("see [docs][1] here") == "see [docs][1] here"
+    assert trigger.visible("a\u200bb\u202ec\U000e0041d") == "abcd"
+
+
 def test_snapshot_drops_text_the_approver_could_not_see(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
