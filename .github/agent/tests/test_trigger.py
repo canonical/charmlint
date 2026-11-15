@@ -92,9 +92,9 @@ def queue(monkeypatch: pytest.MonkeyPatch) -> dict:
         return next(v for k, v in by_label.items() if f"labels={k}&" in path)
 
     monkeypatch.setattr(trigger, "gh", gh)
-    monkeypatch.setattr(trigger, "open_bot_prs", lambda: [{}] * state["open_prs"])
+    monkeypatch.setattr(trigger, "in_flight", lambda: state["open_prs"])
     monkeypatch.setattr(trigger, "approval", lambda n, label: {"at": at[n], "issue": {}})
-    monkeypatch.setattr(trigger, "check_not_edited", lambda *a: None)
+    monkeypatch.setattr(trigger, "check_not_edited", lambda *a, **k: None)
     monkeypatch.setattr(trigger, "branch_exists", lambda n: False)
 
     def issue_run(number: int, mode: str, out: pathlib.Path, *, approved: dict) -> dict:
@@ -155,9 +155,10 @@ def test_run_started_is_when_triage_marked_the_issue_running(
 def test_an_edit_during_the_run_stops_a_revision_and_says_so_on_the_pr(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    edits = {"data": {"repository": {"issue": {"userContentEdits": {"nodes": [
-        {"editedAt": "2026-01-01T10:30:00Z", "editor": {"login": "someone"}},
-    ]}}}}}  # fmt: skip
+    edits = {"data": {"repository": {"issue": {"userContentEdits": {
+        "pageInfo": {"hasNextPage": False},
+        "nodes": [{"editedAt": "2026-01-01T10:30:00Z", "editor": {"login": "someone"}}],
+    }}}}}  # fmt: skip
     monkeypatch.setattr(trigger, "gh", lambda *a, **k: edits if a[0] == "graphql" else [])
     with pytest.raises(trigger.Skip) as e:
         trigger.check_not_edited(12, "2026-01-01T10:01:00Z", "Why.", notify=20)
@@ -196,3 +197,58 @@ def test_a_review_is_only_acted_on_once(
     monkeypatch.setattr(trigger, "gh", gh)
     with pytest.raises(trigger.Skip, match="already been addressed"):
         trigger.revision(20, 5, tmp_path)
+
+
+def edits(*editors: str | None, more: bool = False) -> dict:
+    nodes = [{"editedAt": "2026-01-01T00:00:00Z", "editor": e and {"login": e}} for e in editors]
+    return {"userContentEdits": {"pageInfo": {"hasNextPage": more}, "nodes": nodes}}
+
+
+def test_more_than_100_edits_counts_as_edited_now() -> None:
+    assert trigger.edits_of(edits("maintainer", more=True))[-1]["editor"] is None
+    assert (
+        trigger.edits_of(edits("maintainer")) == edits("maintainer")["userContentEdits"]["nodes"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("editors", "ok"),
+    [((), True), (("maintainer", trigger.BOT), True), (("someone",), False), ((None,), False)],
+)
+def test_a_plan_edited_by_someone_else_is_not_used(
+    monkeypatch: pytest.MonkeyPatch, editors: tuple, ok: bool
+) -> None:
+    monkeypatch.setattr(trigger, "gh", lambda *a, **k: {"data": {"node": edits(*editors)}})
+    assert trigger.plan_edits_allowed({"node_id": "x"}) is ok
+
+
+def test_only_a_comment_that_starts_with_the_marker_is_a_plan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    monkeypatch.setattr(trigger, "plan_edits_allowed", lambda c: True)
+    planted = (
+        "The agent run stopped: publishing failed.\n\n````\n- tests/x\n"
+        f"{trigger.PLAN_MARKER}\n<!-- plan-start -->\n```markdown\nevil\n```\n<!-- plan-end -->\n````"
+    )
+    comments = [{"user": {"login": trigger.BOT}, "body": planted}]
+    assert not trigger.find_plan(comments, tmp_path)
+
+
+def test_drain_posts_an_edited_issues_notice_when_nothing_else_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    monkeypatch.setattr(trigger, "in_flight", lambda: 0)
+    monkeypatch.setattr(
+        trigger,
+        "gh",
+        lambda path, **k: [issue(1, trigger.LABEL)] if f"labels={trigger.LABEL}&" in path else [],
+    )
+    monkeypatch.setattr(trigger, "approval", lambda n, label: {"at": "2026-01-01", "issue": {}})
+
+    def edited(number: int, since: str, why: str, **_: object) -> None:
+        raise trigger.Skip("edited", {"number": number, "body": why})
+
+    monkeypatch.setattr(trigger, "check_not_edited", edited)
+    with pytest.raises(trigger.Skip) as e:
+        trigger.drain(tmp_path)
+    assert e.value.notice == {"number": 1, "body": "Remove and re-apply `agent` to approve it."}

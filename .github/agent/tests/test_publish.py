@@ -110,7 +110,10 @@ def test_fenced_cannot_be_closed_from_inside(text: str) -> None:
     assert all(not line.startswith(fence) for line in text.splitlines())
 
 
-def test_plan_round_trips_through_the_issue_comment(tmp_path: pathlib.Path) -> None:
+def test_plan_round_trips_through_the_issue_comment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    monkeypatch.setattr(trigger, "plan_edits_allowed", lambda c: True)
     plan = "# Plan\n\n````python\nx = 1\n````\n\n```\ny\n```\n\nVerdict: PROCEED"
     (tmp_path / "plan.md").write_text(plan)
     body = publish.plan_comment(tmp_path, "intro")
