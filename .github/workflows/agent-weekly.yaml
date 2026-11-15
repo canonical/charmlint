@@ -55,8 +55,23 @@ jobs:
       - name: Snapshot and pack
         run: |
           python3 .github/agent/snapshot_corpus.py --source "$RUNNER_TEMP/charms" --dest "$RUNNER_TEMP/corpus"
+          # Clones that fail don't fail get-charms, and every agent run takes
+          # the newest snapshot, so a partial one isn't saved.
+          charms=$(uv run --no-project --python 3.12 --with pyyaml python -I -c '
+          import pathlib, sys
+          sys.path.insert(0, ".github/agent")
+          from corpus_run import charm_dirs
+          print(sum(1 for _ in charm_dirs(pathlib.Path(sys.argv[1]))))
+          ' "$RUNNER_TEMP/corpus")
+          echo "$charms charms"
+          if [ "$charms" -lt "$MIN_CHARMS" ]; then
+            echo "::error::only $charms charms, fewer than $MIN_CHARMS; not saving a partial corpus"
+            exit 1
+          fi
           tar -C "$RUNNER_TEMP" -I 'zstd -T0 -10' -cf ~/agent-corpus.tar.zst corpus
           ls -lh ~/agent-corpus.tar.zst
+        env:
+          MIN_CHARMS: ${{ vars.AGENT_MIN_CHARMS || '600' }}
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/agent-corpus.tar.zst

@@ -184,6 +184,10 @@ jobs:
           # The corpus as `agent`, without owners, modes or anything outside corpus/.
           sudo cat "$HOME/agent-corpus.tar.zst" | sudo -u agent tar -C /srv/agent -I zstd -xf - \
             --no-same-owner --no-same-permissions --no-overwrite-dir corpus
+          # Then read-only to `agent`, so a stage can't change what the base and
+          # candidate runs are measured against. (chown -R doesn't follow links.)
+          sudo chown -R root:root /srv/agent/corpus
+          sudo chmod -R a-w,a+rX /srv/agent/corpus
           sudo cp -r pipeline/.github/agent /opt/agent/pipeline
           sudo env PATH="$PATH" npm ci --prefix /opt/agent/pipeline/pi --no-fund --no-audit --ignore-scripts
           sudo ln -s /opt/agent/pipeline/pi/node_modules/.bin/pi /usr/local/bin/pi
