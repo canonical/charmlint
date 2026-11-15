@@ -166,3 +166,33 @@ def test_an_edit_during_the_run_stops_a_revision_and_says_so_on_the_pr(
         "body": "#12 was edited after it was approved, so the agent didn't run. Why.",
         "remove": [],
     }
+
+
+def test_a_revision_needs_a_trusted_starter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTOR", "maintainer")
+    monkeypatch.setenv("GITHUB_TRIGGERING_ACTOR", "someone")
+    with pytest.raises(trigger.Skip, match="allowlist"):
+        trigger.dispatched({"inputs": {"mode": "revise", "pr": "20", "review": "5"}}, tmp_path)
+
+
+def test_a_review_is_only_acted_on_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    answered = {
+        "user": {"login": trigger.BOT},
+        "body": trigger.REVISION_MARKER,
+        "created_at": "2026-01-02T00:00:00Z",
+    }
+
+    def gh(path: str, **_: object) -> object:
+        if path.endswith("/reviews/5"):
+            return {**review(), "submitted_at": "2026-01-01T00:00:00Z"}
+        if path.endswith("/comments"):
+            return [answered]
+        return pr(number=20)
+
+    monkeypatch.setattr(trigger, "gh", gh)
+    with pytest.raises(trigger.Skip, match="already been addressed"):
+        trigger.revision(20, 5, tmp_path)
