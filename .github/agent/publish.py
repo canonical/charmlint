@@ -74,7 +74,7 @@ SECRET = re.compile(
 # owner/repo#N, GH-N or an issue or PR URL. The keyword goes; the reference stays.
 CLOSING = re.compile(
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s*:?\s+"
-    r"(?=\S*(?:#\d|GH-\d|/issues/\d|/pull/\d))",
+    r"(?=\S{0,200}?(?:#\d|GH-\d|/issues/\d|/pull/\d))",
     re.I,
 )
 # Anything a browser or Markdown could read as a link: any http(s) scheme,
@@ -149,7 +149,9 @@ def clean_text(text: str, *, markdown: bool = True) -> str:
         )
         return found if ok else "(link removed)"
 
-    text = SECRET.sub("(removed)", text)
+    # Cut first: GitHub won't take more, and the regexes below aren't all
+    # linear on text an agent picked to be slow.
+    text = SECRET.sub("(removed)", text[:MAX_BODY])
     text = CLOSING.sub("", text)
     if markdown:
         text = text.replace("&", "&amp;").replace("<", "&lt;")
@@ -202,15 +204,24 @@ def check_tree(repo: pathlib.Path, start: str) -> list[str]:
         if not meta:
             continue
         old_mode, new_mode, _, _, status = meta.lstrip(":").split()
+        if re.search(r"[\x00-\x1f\x7f]", path):
+            # Not echoed: the failure comment shows these, and a newline could
+            # make one look like something else, such as a plan.
+            problems.append(f"a path with control characters ({json.dumps(path)[:200]})")
+            continue
         if status not in ("A", "M", "D"):
             problems.append(f"{path}: change type {status} isn't allowed")
         if {old_mode, new_mode} - {"000000", "100644"}:
             problems.append(f"{path}: mode {old_mode} -> {new_mode} isn't allowed")
         if not allowed_path(path):
             problems.append(f"{path}: outside what the agent may change")
-        if status != "D" and path.endswith(".py"):
-            # As bytes, which is how Python reads them: see forbidden_uses.
-            source = (repo / path).read_bytes()
+        if status != "D" and new_mode == "100644" and path.endswith(".py"):
+            # The staged blob, as bytes, which is how Python reads them (see
+            # forbidden_uses). Not the work tree: a symlink there could point
+            # at /dev/zero.
+            source = subprocess.run(
+                ["git", "show", f":{path}"], cwd=repo, capture_output=True, check=True
+            ).stdout
             base = (
                 b""
                 if status == "A"
@@ -340,7 +351,12 @@ def publish(args: argparse.Namespace, trigger: dict) -> None:
             else "needs a design decision first"
         )
         comment(
-            issue, plan_comment(args.agent, f"The agent thinks this {verdict}; the plan says why.")
+            issue,
+            plan_comment(
+                args.agent,
+                f"The agent thinks this {verdict}; the plan says why. To go ahead anyway, change "
+                f"the plan's verdict to `PROCEED` in this comment and label the issue `{LABEL}`.",
+            ),
         )
         set_labels(
             issue,
@@ -364,7 +380,9 @@ def publish(args: argparse.Namespace, trigger: dict) -> None:
             "-f",
             f"body={body}",
             "-F",
-            f"draft={'true' if meta.get('draft') or meta.get('unreviewed') else 'false'}",
+            # Always a draft: CONTRIBUTING.md asks for a person to review a
+            # tool-written PR before it leaves draft.
+            "draft=true",
         )
         set_labels(issue, remove=(LABEL,))
     else:  # revision
