@@ -154,7 +154,7 @@ jobs:
           if [ ! -s "$RUNNER_TEMP/body.md" ]; then echo "All fine."; exit 0; fi
           title="Agent credentials need attention"
           number=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
-            --jq ".[] | select(.title == \"$title\" and .user.login == \"github-actions[bot]\") | .number" | head -1)
+            --jq ".[] | select(.title == \"$title\" and .user.login == \"github-actions[bot]\" and .pull_request == null) | .number" | head -1)
           if [ -n "$number" ]; then
             gh api "repos/$GITHUB_REPOSITORY/issues/$number/comments" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
           else
