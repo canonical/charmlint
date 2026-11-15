@@ -434,8 +434,7 @@ def main() -> int:
             print(f"couldn't report the failure: {e2}", file=sys.stderr)
         return 1
     finally:
-        if not revising:
-            set_labels(trigger["issue"], remove=(RUNNING,))
+        set_labels(trigger["issue"], remove=(RUNNING,))
     return 0
 
 

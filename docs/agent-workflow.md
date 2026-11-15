@@ -12,7 +12,7 @@ To revise a PR, submit a review that requests changes. The agent addresses the r
 
 Only labels and reviews from users in the `AGENT_ALLOWLIST` variable count. If someone else edits the issue after it's labelled, the agent doesn't run, and comments to say so. The same goes for revisions: an edit since the run that opened the PR stops them, with a comment on the PR.
 
-At most `AGENT_MAX_OPEN_PRS` agent PRs are open at a time. An issue labelled while that many are open waits. A scheduled run twice a day picks up the oldest waiting issue, including a plan-only one. It also catches labels that GitHub dropped: only one triage runs at a time, and GitHub keeps only the newest one waiting, so labelling several issues at once can leave some for the scheduled run.
+At most `AGENT_MAX_OPEN_PRS` agent PRs are open or being made at a time. An issue labelled while that many are open waits. A scheduled run twice a day picks up the oldest waiting issue, including a plan-only one. It also catches labels that GitHub dropped: only one triage runs at a time, and GitHub keeps only the newest one waiting, so labelling several issues at once can leave some for the scheduled run.
 
 The workflow can also be run by hand, with an issue number, from the Actions tab.
 

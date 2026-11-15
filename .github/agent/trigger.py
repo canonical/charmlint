@@ -109,7 +109,7 @@ def check_not_edited(number: int, since: str, why: str, *, notify: int | None = 
         "graphql",
         "-f",
         "query=query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){issue(number:$i)"
-        "{userContentEdits(last:100){nodes{editedAt editor{login}}}}}}",
+        f"{{{EDITS}}}}}}}",
         "-f",
         f"o={owner}",
         "-f",
@@ -117,9 +117,10 @@ def check_not_edited(number: int, since: str, why: str, *, notify: int | None = 
         "-F",
         f"i={number}",
     )
-    edits = data["data"]["repository"]["issue"]["userContentEdits"]["nodes"]
     late = [
-        e for e in edits if e["editedAt"] > since and not allowed((e["editor"] or {}).get("login"))
+        e
+        for e in edits_of(data["data"]["repository"]["issue"])
+        if e["editedAt"] > since and not allowed((e["editor"] or {}).get("login"))
     ]
     renames = [
         e
@@ -138,6 +139,24 @@ def check_not_edited(number: int, since: str, why: str, *, notify: int | None = 
                 "remove": [] if notify else [LABEL, PLAN_ONLY],
             },
         )
+
+
+# The newest 100 edits: the connection is newest first.
+EDITS = "userContentEdits(first:100){pageInfo{hasNextPage} nodes{editedAt editor{login}}}"
+
+
+def edits_of(node: dict) -> list[dict]:
+    """The edits in NODE's EDITS connection.
+
+    With more than 100, the oldest can't be seen, and one is made up that
+    counts as an edit by someone else just now: refusing is safer than
+    guessing.
+    """
+    connection = node["userContentEdits"]
+    edits = list(connection["nodes"])
+    if connection["pageInfo"]["hasNextPage"]:
+        edits.append({"editedAt": "9999", "editor": None})
+    return edits
 
 
 def snapshot(issue: dict, before: str, out: pathlib.Path) -> list[dict]:
@@ -160,15 +179,50 @@ def snapshot(issue: dict, before: str, out: pathlib.Path) -> list[dict]:
 
 
 def find_plan(comments: list[dict], out: pathlib.Path) -> bool:
-    """The plan from the agent's latest plan comment, as a maintainer may have edited it."""
-    plans = [c for c in comments if c["user"]["login"].lower() == BOT and PLAN_MARKER in c["body"]]
+    """The plan from the agent's latest plan comment, as a maintainer may have edited it.
+
+    Only a comment that starts with the marker: a failure comment quotes
+    text the agent chose, which could contain one. And only if nobody
+    outside the allowlist has edited it, since anyone with write access can.
+    """
+    plans = [
+        c
+        for c in comments
+        if c["user"]["login"].lower() == BOT and c["body"].startswith(PLAN_MARKER)
+    ]
     if not plans:
+        return False
+    if not plan_edits_allowed(plans[-1]):
+        print(
+            "the latest plan comment was edited by someone not on the allowlist", file=sys.stderr
+        )
         return False
     match = PLAN_BLOCK.search(plans[-1]["body"].replace("\r\n", "\n"))
     if not match:
         return False
     (out / "plan.md").write_text(match.group(2).strip() + "\n")
     return True
+
+
+def plan_edits_allowed(comment: dict) -> bool:
+    data = gh(
+        "graphql",
+        "-f",
+        f"query=query($id:ID!){{node(id:$id){{... on IssueComment{{{EDITS}}}}}}}",
+        "-f",
+        f"id={comment['node_id']}",
+    )
+    return all(
+        allowed((e["editor"] or {}).get("login"))
+        or (e["editor"] or {}).get("login", "").lower() == BOT
+        for e in edits_of(data["data"]["node"])
+    )
+
+
+def in_flight() -> int:
+    """Agent PRs open, plus issues with a run in progress that may open one."""
+    running = gh(f"repos/{REPO}/issues?state=open&labels={RUNNING}&per_page=100", paginate=True)
+    return len(open_bot_prs()) + len(running)
 
 
 def open_bot_prs() -> list[dict]:
@@ -185,6 +239,8 @@ def branch_exists(number: int) -> bool:
         capture_output=True,
         text=True,
     )
+    if proc.returncode and "404" not in proc.stderr:
+        raise RuntimeError(f"couldn't check for agent/issue-{number}: {proc.stderr.strip()}")
     return proc.returncode == 0
 
 
@@ -203,15 +259,24 @@ def issue_run(number: int, mode: str, out: pathlib.Path, *, approved: dict | Non
         raise Skip(f"#{number} already has a run in progress")
     if "needs design" in labels:
         raise Skip(f"#{number} is labelled needs design")
+    # Before the capacity check, so an issue left waiting is told now.
+    check_not_edited(number, approved["at"], f"Remove and re-apply `{label}` to approve it.")
     if mode == "full":
         if branch_exists(number):
-            raise Skip(f"agent/issue-{number} already exists")
-        if len(open_bot_prs()) >= MAX_OPEN:
             raise Skip(
-                f"{MAX_OPEN} agent PRs are already open; "
+                f"agent/issue-{number} already exists",
+                {
+                    "number": number,
+                    "body": f"The branch `agent/issue-{number}` is left from an earlier run, so "
+                    f"the agent didn't run. Delete it and label the issue `{LABEL}` again.",
+                    "remove": [LABEL],
+                },
+            )
+        if in_flight() >= MAX_OPEN:
+            raise Skip(
+                f"{MAX_OPEN} agent PRs are already open or being made; "
                 f"the scheduled run will pick #{number} up later"
             )
-    check_not_edited(number, approved["at"], f"Remove and re-apply `{label}` to approve it.")
     comments = snapshot(issue, approved["at"], out)
     has_plan = mode == "full" and find_plan(comments, out)
     return {
@@ -231,26 +296,36 @@ def drain(out: pathlib.Path) -> dict:
     pending when another one queued was cancelled, and this is its retry.
     """
     modes = [(PLAN_ONLY, "plan-only")]
-    if len(open_bot_prs()) < MAX_OPEN:
+    if in_flight() < MAX_OPEN:
         modes.append((LABEL, "full"))
     candidates = []
+    notice = None
     for label, mode in modes:
         for issue in gh(
             f"repos/{REPO}/issues?state=open&labels={label}&per_page=100", paginate=True
         ):
+            # Not agent:failed: a failed run removes the approval label, so an
+            # issue that has both was approved again.
             labels = {lab["name"] for lab in issue["labels"]}
-            if issue.get("pull_request") or labels & {FAILED, RUNNING, "needs design"}:
+            if issue.get("pull_request") or labels & {RUNNING, "needs design"}:
                 continue
             try:
                 approved = approval(issue["number"], label)
                 # Checked here too, so one edited issue can't block the queue.
-                check_not_edited(issue["number"], approved["at"], "")
-            except Skip:
+                check_not_edited(
+                    issue["number"],
+                    approved["at"],
+                    f"Remove and re-apply `{label}` to approve it.",
+                )
+            except Skip as e:
+                notice = notice or e.notice
                 continue
             if mode == "plan-only" or not branch_exists(issue["number"]):
                 candidates.append((approved["at"], issue["number"], mode, approved))
     if not candidates:
-        raise Skip("no approved issues waiting")
+        # One notice a run; each removes its issue's label, so the next run
+        # gets to the next one.
+        raise Skip("no approved issues waiting", notice)
     _, number, mode, approved = min(candidates)
     return issue_run(number, mode, out, approved=approved)
 
@@ -321,6 +396,15 @@ def revision(number: int, review_id: int, out: pathlib.Path) -> dict:
         raise Skip("the review has no comments to act on")
     (out / "feedback.md").write_text("\n\n---\n\n".join(parts) + "\n")
     issue = gh(f"repos/{REPO}/issues/{issue_number}")
+    if RUNNING in {lab["name"] for lab in issue["labels"]}:
+        raise Skip(
+            f"#{issue_number} already has a run in progress",
+            {
+                "number": number,
+                "body": "The agent is already working on this PR, so it didn't start on this "
+                "review. Request changes again once it has posted its revision.",
+            },
+        )
     # The PR was built from the issue as it was approved; an edit since, by
     # someone else, isn't something a maintainer read.
     check_not_edited(
@@ -416,13 +500,26 @@ def main() -> int:
             raise Skip(f"event {name} isn't handled")
         if not re.fullmatch(r"[0-9a-f]{40}", result["start_sha"]):
             raise Skip(f"unexpected start commit {result['start_sha']!r}")
-        if result["mode"] != "revise":
-            gh(
-                "-X",
-                "POST",
-                f"repos/{REPO}/issues/{result['issue']}/labels",
-                "-f",
-                f"labels[]={RUNNING}",
+        # On the issue for revisions too, so a second review waits for this one.
+        gh(
+            "-X",
+            "POST",
+            f"repos/{REPO}/issues/{result['issue']}/labels",
+            "-f",
+            f"labels[]={RUNNING}",
+        )
+        if result["mode"] == "full":
+            # A run that's approved again after one failed.
+            subprocess.run(
+                [
+                    "gh",
+                    "api",
+                    "-X",
+                    "DELETE",
+                    f"repos/{REPO}/issues/{result['issue']}/labels/{FAILED}",
+                ],
+                capture_output=True,
+                check=False,
             )
     except Skip as e:
         result = {"run": False, "reason": str(e), "notice": e.notice}
