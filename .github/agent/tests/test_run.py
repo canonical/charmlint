@@ -316,7 +316,7 @@ def test_stop_session_stops_what_the_stage_started(tmp_path: pathlib.Path) -> No
     def alive() -> bool:
         try:
             return pathlib.Path(f"/proc/{child}/stat").read_text().split()[2] != "Z"
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):  # gone, or reaped mid-read
             return False
 
     # SIGKILL is delivered asynchronously.
