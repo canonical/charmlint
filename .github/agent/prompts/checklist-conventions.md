@@ -16,5 +16,5 @@ Tests and house conventions:
   subject; kebab-case name; severity justified.
 - `reference_url` is a real stable docs page that covers the problem.
 - No comments that restate the code; no unnecessary defensive code.
-- Only files under `src/charmlint/_rules/`, `_ast.py`, `_yaml.py`, `tests/`
-  and `docs/rules.md` changed.
+- Only Python files under `src/charmlint/_rules/` and `tests/`, `_ast.py`,
+  `_yaml.py` and `docs/rules.md` changed.
