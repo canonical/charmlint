@@ -220,9 +220,16 @@ def plan_edits_allowed(comment: dict) -> bool:
 
 
 def in_flight() -> int:
-    """Agent PRs open, plus issues with a run in progress that may open one."""
-    running = gh(f"repos/{REPO}/issues?state=open&labels={RUNNING}&per_page=100", paginate=True)
-    return len(open_bot_prs()) + len(running)
+    """Agent PRs open, plus issues with a run in progress that may open one.
+
+    An issue whose PR is open and being revised is counted once.
+    """
+    prs = {int(m.group(1)) for p in open_bot_prs() if (m := BRANCH.match(p["head"]["ref"]))}
+    running = {
+        i["number"]
+        for i in gh(f"repos/{REPO}/issues?state=open&labels={RUNNING}&per_page=100", paginate=True)
+    }
+    return len(prs | running)
 
 
 def open_bot_prs() -> list[dict]:
