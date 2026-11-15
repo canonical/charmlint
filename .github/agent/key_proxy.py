@@ -290,6 +290,9 @@ def main() -> None:
         raise SystemExit("no key on standard input")
     State.budget = args.budget
     State.models = frozenset(m.strip() for m in args.models.split(",") if m.strip())
+    # Every model is pinned to its own provider: refuse one that can't be.
+    if unpinned := sorted(m for m in State.models if not any(m.startswith(p) for p in ROUTING)):
+        raise SystemExit(f"no provider pin for {', '.join(unpinned)}")
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.serve_forever()
 
