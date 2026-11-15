@@ -38,6 +38,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import urllib.parse
 from typing import Any
 
 LABEL = "agent"
@@ -625,7 +626,7 @@ def main() -> int:
                     "api",
                     "-X",
                     "DELETE",
-                    f"repos/{REPO}/issues/{result['issue']}/labels/{FAILED}",
+                    f"repos/{REPO}/issues/{result['issue']}/labels/{urllib.parse.quote(FAILED, safe='')}",
                 ],
                 capture_output=True,
                 check=False,
