@@ -79,16 +79,10 @@ CLOSING = re.compile(
 )
 # Anything a browser or Markdown could read as a link: any http(s) scheme,
 # whatever follows it (browsers read "https:evil.example" and "https:\\evil"
-# as links to evil.example), a scheme-relative //host, or a bare www. host.
-URL = re.compile(r"\bhttps?:[^\s)>\]]*|(?<![\w:])//[^\s)>\]]+|\bwww\.[^\s)>\]]+", re.I)
-# Fenced code blocks (to the end of the text if unclosed, as CommonMark does)
-# and inline code spans: GitHub renders these literally. A span can't cross a
-# blank line, which ends the paragraph it's in.
-CODE = re.compile(
-    r"^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^ {0,3}\1[`~]*[ \t]*$|\Z)"
-    r"|(`+)(?!`)(?:(?!\n[ \t]*\n).)+?(?<!`)\2(?!`)",
-    re.M | re.S,
-)
+# as links to evil.example, and Markdown reads "https\:" as "https:"), a
+# scheme-relative //host in any mix of slashes and backslashes, or a bare
+# www. host.
+URL = re.compile(r"\bhttps?\\?:[^\s)>\]]*|(?<![\w:])[/\\]{2}[^\s)>\]]+|\bwww\.[^\s)>\]]+", re.I)
 MODEL = re.compile(r"[a-z0-9.-]+/[a-z0-9.:-]+")
 STAGE = re.compile(r"[0-9]{2}-[a-z0-9-]+")
 MAX_BODY = 60_000
@@ -130,12 +124,16 @@ def set_labels(number: int, *, add: tuple[str, ...] = (), remove: tuple[str, ...
 def clean_text(text: str, *, markdown: bool = True) -> str:
     """PR or comment text from the agent, made safe to post.
 
-    Secrets and closing keywords are removed everywhere. Outside code, ``&``
-    and ``<`` are escaped, so there is no raw HTML (hidden comments,
-    ``<details>``, links) and no character references to spell a link or a
-    mention with; links off the short list are removed; and @-mentions are
-    put in code so they don't notify anyone. ``markdown=False`` is for plain
-    text such as a title, which GitHub doesn't render as HTML.
+    Secrets and closing keywords are removed; ``&`` and ``<`` are escaped, so
+    there is no raw HTML (hidden comments, ``<details>``, links) and no
+    character references to spell a link or a mention with; links off the
+    short list are removed; and a zero-width space after each ``@`` keeps a
+    mention from notifying anyone. ``markdown=False`` is for plain text such
+    as a title, which GitHub doesn't render as HTML.
+
+    All of this applies inside code too. Deciding what GitHub will render as
+    code takes a full CommonMark parser, and any text this got wrong would be
+    posted unescaped, so a ``<`` in a code span shows as ``&lt;`` instead.
     """
 
     def link(match: re.Match) -> str:
@@ -151,21 +149,13 @@ def clean_text(text: str, *, markdown: bool = True) -> str:
         )
         return found if ok else "(link removed)"
 
-    def prose(part: str) -> str:
-        if markdown:
-            part = part.replace("&", "&amp;").replace("<", "&lt;")
-        part = URL.sub(link, part)
-        # An @-mention notifies whoever it names; keep the text, lose the ping.
-        return re.sub(r"(?<!\w)@([A-Za-z0-9][\w./-]*)", r"`@\1`", part)
-
     text = SECRET.sub("(removed)", text)
     text = CLOSING.sub("", text)
-    out, pos = [], 0
-    for match in CODE.finditer(text):
-        out += [prose(text[pos : match.start()]), match.group(0)]
-        pos = match.end()
-    out.append(prose(text[pos:]))
-    return "".join(out)
+    if markdown:
+        text = text.replace("&", "&amp;").replace("<", "&lt;")
+    text = URL.sub(link, text)
+    # An @-mention notifies whoever it names; keep the text, lose the ping.
+    return re.sub(r"@(?=[A-Za-z0-9])", "@\u200b", text)
 
 
 def footer(meta: dict) -> str:
