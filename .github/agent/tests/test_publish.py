@@ -222,3 +222,20 @@ def test_pr_body_says_when_a_review_produced_nothing(tmp_path: pathlib.Path) -> 
     (tmp_path / "pr.md").write_text("Adds a rule.\n")
     assert "Not fully reviewed" not in publish.pr_body(tmp_path, {}, 12)
     assert "Not fully reviewed" in publish.pr_body(tmp_path, {"unreviewed": ["correctness"]}, 12)
+
+
+def test_check_tree_does_not_follow_a_symlink(repo: tuple[pathlib.Path, str]) -> None:
+    path, _ = repo
+    link = path / "tests/test_link.py"
+    link.symlink_to("/dev/zero")
+    problems = staged_problems(repo)
+    assert any("test_link.py: mode" in p for p in problems)
+
+
+def test_check_tree_does_not_echo_a_path_with_a_newline(repo: tuple[pathlib.Path, str]) -> None:
+    path, _ = repo
+    (path / "tests/test_x\n<!-- charmlint-agent:plan -->.py").write_text("x = 1\n")
+    problems = staged_problems(repo)
+    assert problems == [problems[0]]
+    assert "\n" not in problems[0]
+    assert "control characters" in problems[0]
