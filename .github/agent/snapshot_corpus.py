@@ -1,16 +1,16 @@
 """Freeze a slim copy of the hyrum charm cache for reproducible corpus runs.
 
-The live cache (``~/.cache/hyrum/charms``) changes whenever hyrum refreshes,
-so two pipeline runs a week apart would be scored against different
-corpora. A snapshot fixes that, and is the shape the GitHub
-Actions corpus cache needs too.
+The live cache (``~/.cache/hyrum/charms``) holds build trees and virtual
+environments that no rule reads; a slim copy is small enough for the GitHub
+Actions cache, and every run in a week measures against the same one.
 
 Kept: every file outside the noise directories, as is if it's at most
 ``--max-bytes``; larger files become empty placeholders, so rules that only
 check a file exists (an icon, a licence, a lock file) still see it.
 Dropped: ``.git`` (left as an empty directory, as a repository-root
 marker), ``.tox``, ``.venv``, ``venv``, ``node_modules``,
-``__pycache__``, ``build`` and ``dist`` directories. Symlinks to files are
+``__pycache__``, ``build``, ``dist`` and the mypy, ruff and pytest cache
+directories. Symlinks to files are
 kept as symlinks when they point inside the cache (reactive charms link
 ``metadata.yaml`` to ``src/metadata.yaml``, and without the link the charm's
 name can't be read), and dropped when they point outside it.
@@ -85,9 +85,8 @@ def main() -> None:
                 (out_dir / name).touch()
                 placeholders += 1
             else:
-                shutil.copy2(
-                    src, out_dir / name
-                )  # keeps the mode: CHARMCRAFT-003 checks the executable bit
+                # copy2 keeps the mode: CHARMCRAFT-003 checks the executable bit.
+                shutil.copy2(src, out_dir / name)
                 kept += 1
                 total += size
     manifest = {

@@ -1,4 +1,6 @@
-"""The import and call checks that the pipeline and the publish job share."""
+"""The pipeline's helpers: the import and call checks it shares with the publish job,
+how corpus findings are compared and classified, plan and review parsing, the PR
+title, recall patterns, and restoring the repository and stopping a stage."""
 
 from __future__ import annotations
 

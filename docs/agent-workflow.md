@@ -26,7 +26,7 @@ The workflow has three jobs.
 
 | Job | Credentials | What it does |
 |---|---|---|
-| triage | read-only token, plus adding `agent:running` | Checks who applied the label and whether the issue changed since, and snapshots the issue. No model. |
+| triage | read-only token, plus adding `agent:running` and starting a revision run | Checks who applied the label and whether the issue changed since, and snapshots the issue. No model. |
 | agent | the OpenRouter key, held by a proxy | Runs the pipeline. No GitHub write access. |
 | publish | the bot's token | Checks the patch, commits it as the bot, pushes `agent/issue-N` and opens the PR. No model. |
 
@@ -34,7 +34,7 @@ The pipeline and every tool the models use run as an `agent` user, in a systemd 
 
 The OpenRouter key is held by a proxy that runs as a third user and reads the key from standard input. The proxy only forwards the configured models, pinned to their first-party providers. Each request reserves a worst-case cost before it is sent, and the proxy refuses requests once the run's spending and reservations reach one and a half times `AGENT_BUDGET_USD`.
 
-Because the agent could write any of the agent job's output, the publish job checks all of it. It builds on the commit triage recorded, not one the agent names. It applies the patch and then checks the result: only the rule code, tests and `docs/rules.md` may change, and only as ordinary files. Rule code may only import a short list of modules, and new tests may not import modules such as `subprocess` or `os`, because they run in CI on the bot's PR. These checks catch the obvious cases; a maintainer's review is still what stops harmful code. It writes the commit message itself. In the PR text it escapes raw HTML, and removes links to unexpected sites, anything shaped like a secret, @-mentions and closing keywords, and then adds `Fixes #N` itself. Plans are posted inside a fenced block, so what a maintainer reads on the issue is exactly what a later run uses.
+Because the agent could write any of the agent job's output, the publish job checks all of it. It builds on the commit triage recorded, not one the agent names. It applies the patch and then checks the result: only the rule code, tests and `docs/rules.md` may change, and only as ordinary files. Rule code may only import a short list of modules, and new tests may not import modules such as `subprocess` or `os`, because they run in CI on the bot's PR. These checks catch the obvious cases; a maintainer's review is still what stops harmful code. It writes the commit message itself. In the PR text it escapes raw HTML, and removes links to unexpected sites, anything shaped like a secret and closing keywords, breaks @-mentions so they notify no one, and then adds `Fixes #N` itself. Plans are posted inside a fenced block, so what a maintainer reads on the issue is exactly what a later run uses.
 
 | Item | Answer |
 |---|---|
@@ -69,4 +69,4 @@ The agent measures every rule over the same charm corpus that [corpus.md](corpus
 6. Check that the branch rules for the default branch require a review that the bot can't give, so its PRs can't be merged without a maintainer, and add a ruleset for `agent/issue-*` that blocks force-pushes, so the bot can't rewrite a maintainer's commits on its own branches. (A revision already stops if its branch moved while the agent worked, so this is a second line of defence.) Canonical manages this repository's branch rules centrally rather than in its settings, so both are a change there.
 7. Run the "Agent upkeep" workflow by hand once, to build the corpus.
 
-The weekly upkeep workflow also opens an issue when either credential expires within 14 days or has stopped working, or when the key has less credit left than a week's spending. It opens the issue as `github-actions[bot]`, not as the bot, whose token may be the one that failed.
+The weekly upkeep workflow also opens an issue when either credential expires within 14 days or has stopped working, or when the key has less credit left than a week's spending or $10. It opens the issue as `github-actions[bot]`, not as the bot, whose token may be the one that failed.
