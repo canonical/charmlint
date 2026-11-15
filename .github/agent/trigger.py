@@ -99,8 +99,11 @@ def approval(number: int, label: str) -> dict:
     return {"issue": issue, "at": events[-1]["created_at"], "by": events[-1]["actor"]["login"]}
 
 
-def check_not_edited(number: int, since: str, relabel: str) -> None:
-    """Refuse if anyone outside the allowlist changed the title or body after SINCE."""
+def check_not_edited(number: int, since: str, why: str, *, notify: int | None = None) -> None:
+    """Refuse if anyone outside the allowlist changed the title or body after SINCE.
+
+    The notice goes on NOTIFY (the issue by default) and ends with WHY.
+    """
     owner, name = REPO.split("/")
     data = gh(
         "graphql",
@@ -129,10 +132,10 @@ def check_not_edited(number: int, since: str, relabel: str) -> None:
         raise Skip(
             f"#{number} was edited after approval",
             {
-                "number": number,
-                "body": "The issue was edited after it was approved, so the agent didn't run. "
-                f"{relabel}",
-                "remove": [LABEL, PLAN_ONLY],
+                "number": notify or number,
+                "body": f"#{number} was edited after it was approved, so the agent didn't run. "
+                f"{why}".strip(),
+                "remove": [] if notify else [LABEL, PLAN_ONLY],
             },
         )
 
@@ -314,9 +317,14 @@ def revision(number: int, review_id: int, out: pathlib.Path) -> dict:
         raise Skip("the review has no comments to act on")
     (out / "feedback.md").write_text("\n\n---\n\n".join(parts) + "\n")
     issue = gh(f"repos/{REPO}/issues/{issue_number}")
-    # The PR was opened from the issue as it was then; a later edit by someone
-    # else isn't something a maintainer approved.
-    check_not_edited(issue_number, pr["created_at"], "")
+    # The PR was built from the issue as it was approved; an edit since, by
+    # someone else, isn't something a maintainer read.
+    check_not_edited(
+        issue_number,
+        run_started(issue_number, pr["created_at"]),
+        "Push changes to the branch directly, or close this PR and approve the issue again.",
+        notify=number,
+    )
     comments = snapshot(issue, pr["created_at"], out)
     if not find_plan(comments, out):
         raise Skip(
@@ -337,6 +345,25 @@ def revision(number: int, review_id: int, out: pathlib.Path) -> dict:
         "start_sha": pr["head"]["sha"],
         "reason": f"review {review_id} by {review['user']['login']}",
     }
+
+
+def run_started(number: int, before: str) -> str:
+    """When triage started the run that opened a PR at BEFORE.
+
+    That's when it added agent:running, straight after checking the issue
+    for edits since its approval.
+    """
+    started = [
+        e["created_at"]
+        for e in gh(f"repos/{REPO}/issues/{number}/timeline", paginate=True)
+        if e.get("event") == "labeled"
+        and e.get("label", {}).get("name") == RUNNING
+        and (e.get("actor") or {}).get("login") == "github-actions[bot]"
+        and e["created_at"] <= before
+    ]
+    if not started:
+        raise Skip(f"no run of #{number} found before {before}")
+    return max(started)
 
 
 def dispatched(event: dict, out: pathlib.Path) -> dict:

@@ -131,3 +131,38 @@ def test_dispatch_needs_both_actors_on_the_allowlist(
     monkeypatch.setenv("GITHUB_TRIGGERING_ACTOR", triggering)
     with pytest.raises(trigger.Skip, match="allowlist"):
         trigger.dispatched({"inputs": {"mode": "full", "issue": "12"}}, tmp_path)
+
+
+def labelled(label: str, at: str, by: str = "github-actions[bot]") -> dict:
+    return {"event": "labeled", "label": {"name": label}, "actor": {"login": by}, "created_at": at}
+
+
+def test_run_started_is_when_triage_marked_the_issue_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timeline = [
+        labelled(trigger.LABEL, "2026-01-01T10:00:00Z", "maintainer"),
+        labelled(trigger.RUNNING, "2026-01-01T10:01:00Z"),
+        labelled(trigger.RUNNING, "2026-01-01T11:00:00Z", "someone"),
+        labelled(trigger.RUNNING, "2026-01-03T00:00:00Z"),  # a later run
+    ]
+    monkeypatch.setattr(trigger, "gh", lambda *a, **k: timeline)
+    assert trigger.run_started(12, "2026-01-01T12:00:00Z") == "2026-01-01T10:01:00Z"
+    with pytest.raises(trigger.Skip):
+        trigger.run_started(12, "2026-01-01T09:00:00Z")
+
+
+def test_an_edit_during_the_run_stops_a_revision_and_says_so_on_the_pr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    edits = {"data": {"repository": {"issue": {"userContentEdits": {"nodes": [
+        {"editedAt": "2026-01-01T10:30:00Z", "editor": {"login": "someone"}},
+    ]}}}}}  # fmt: skip
+    monkeypatch.setattr(trigger, "gh", lambda *a, **k: edits if a[0] == "graphql" else [])
+    with pytest.raises(trigger.Skip) as e:
+        trigger.check_not_edited(12, "2026-01-01T10:01:00Z", "Why.", notify=20)
+    assert e.value.notice == {
+        "number": 20,
+        "body": "#12 was edited after it was approved, so the agent didn't run. Why.",
+        "remove": [],
+    }
