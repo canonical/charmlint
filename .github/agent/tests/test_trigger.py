@@ -70,7 +70,30 @@ def test_visible_drops_link_definitions_and_invisible_characters() -> None:
     )
     assert trigger.visible('[x]: <> "hidden"') == note
     assert trigger.visible("see [docs][1] here") == "see [docs][1] here"
-    assert trigger.visible("a\u200bb\u202ec\U000e0041d") == "abcd"
+    assert trigger.visible("a\u200bb\u202ec\U000e0041d\ufe0fe\U000e0100f") == "abcdef"
+
+
+def test_visible_reads_crlf_text_past_a_link_definition() -> None:
+    text = "Intro\r\n\r\n[//]: # (note)\r\n\r\nThe real request."
+    assert trigger.visible(text) == "Intro\n\n(link definition removed)\n\nThe real request."
+
+
+@pytest.mark.parametrize("text", ["> [x]: # (hidden)", "- [x]: # (hidden)", "[a\nb]: # (hidden)"])
+def test_visible_drops_link_definitions_in_quotes_lists_and_over_lines(text: str) -> None:
+    assert "hidden" not in trigger.visible(text)
+
+
+def test_visible_keeps_what_github_shows_that_looks_like_a_definition() -> None:
+    fenced = "```yaml\n[a]: b\n```\nShown"
+    assert trigger.visible(fenced) == fenced
+    footnote = "Text[^1].\n\n[^1]: Shown at the bottom."
+    assert trigger.visible(footnote) == footnote
+    assert trigger.visible("- [ ] a task\n- [x] done") == "- [ ] a task\n- [x] done"
+
+
+def test_visible_does_not_take_inline_code_for_a_fence() -> None:
+    text = "```x``` is the key\n\n[//]: # (hidden)\n\nThanks"
+    assert trigger.visible(text) == "```x``` is the key\n\n(link definition removed)\n\nThanks"
 
 
 def test_snapshot_drops_text_the_approver_could_not_see(
