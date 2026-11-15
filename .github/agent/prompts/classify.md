@@ -5,7 +5,8 @@ independently of whoever wrote the rule.
 What the rule is meant to do (its plan and docstring) is in `{rule_doc}`.
 The findings are in `{findings}`, one JSON object per line, with `id`,
 `charm`, `path`, `line`, `rule_id`, `message`, `change` (`added` or
-`removed` relative to main) and `snippet` (the lines around the finding,
+`removed` relative to main, or `kept`: a changed rule reports it both
+before and after) and `snippet` (the lines around the finding,
 with the flagged line marked `>>`). The corpus is at `{corpus}` if you need
 more context than the snippet: open the file under `{corpus}/<charm>/<path>`.
 

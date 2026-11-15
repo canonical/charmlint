@@ -489,9 +489,11 @@ class Pipeline:
 
         classified = self.evaluate()
         for round_ in range(self.config.fp_rounds):
-            fps = [c for c in classified if c["label"] == "FP"]
+            fps = [c for c in classified if c["label"] == "FP" and c["change"] != "removed"]
+            # A removed finding labelled FP is a real problem no longer reported.
+            lost = [c for c in classified if c["label"] == "FP" and c["change"] == "removed"]
             misses = self.recall(plan_md, classified)
-            if not fps and not misses and not self.crashes:
+            if not fps and not misses and not self.crashes and not lost:
                 break
             log(
                 f"corpus round {round_ + 1}: {len(fps)} false positives, {len(misses)} misses, "
@@ -500,7 +502,7 @@ class Pipeline:
             self.pi(
                 "02-implement",
                 self.config.impl_model,
-                corpus_feedback(fps, misses, self.crashes),
+                corpus_feedback(fps, misses, self.crashes, lost),
                 tools="read,bash,edit,write,grep,find,ls",
                 resume=True,
                 timeout=45 * 60,
@@ -635,7 +637,12 @@ class Pipeline:
             log("PR stage edited the repository; restoring")
             git(self.repo, "checkout", "--", ".")
             git(self.repo, "clean", "-fdq")
-        title = make_title(plan_md.read_text())
+        existing = set(
+            re.findall(
+                r"\b[A-Z]+-\d{3}\b", git(self.repo, "show", f"{self.base_sha}:docs/rules.md")
+            )
+        )
+        title = make_title(plan_md.read_text(), existing)
         (self.work / "title.txt").write_text(title + "\n")
         self.commit(title)
         self.write_publish_diff()
@@ -887,6 +894,10 @@ class Pipeline:
         )
         self.crashes = new_crashes(self.base_findings, self.cand_findings)
         delta = finding_delta(self.base_findings, self.cand_findings)
+        # For a rule that already existed, what it still reports is classified
+        # too: the PR's table is of everything the rule reports, not just what
+        # changed, or an FP fix would hide the false positives it left.
+        delta += kept_findings(self.base_findings, self.cand_findings, delta)
         for i, f in enumerate(delta):
             f["id"] = i
             f["snippet"] = snippet(self.config.corpus / f["charm"], f["path"], f["line"])
@@ -1238,10 +1249,13 @@ def parse_verdict(plan: str) -> str:
     return match.group(1) if match else "PROCEED"
 
 
-def make_title(plan: str) -> str:
+def make_title(plan: str, existing: set[str]) -> str:
+    """The PR title: adding the plan's rule, or changing it if EXISTING (rule IDs on main) has it."""
     rule_id = re.search(r"-\s*ID:\s*`?([A-Z]+-\d+)", plan)
     name = re.search(r"-\s*Name:\s*`?([a-z0-9-]+)", plan)
     if rule_id and name:
+        if rule_id.group(1) in existing:
+            return f"fix: update {rule_id.group(1)} ({name.group(1)})"
         return f"feat: add {rule_id.group(1)} ({name.group(1)})"
     return "fix: update a rule"
 
@@ -1327,6 +1341,23 @@ def finding_delta(base: list[dict], cand: list[dict]) -> list[dict]:
     return added + removed
 
 
+def kept_findings(base: list[dict], cand: list[dict], delta: list[dict]) -> list[dict]:
+    """What a changed rule still reports: rows for rules in DELTA that main has, not in DELTA."""
+    on_main = {r["rule_id"] for r in base}
+    touched = {r["rule_id"] for r in delta} & on_main
+    crashed = {r["charm"] for r in new_crashes(base, cand)}
+
+    def key(r: dict) -> tuple:
+        return (r["rule_id"], r["charm"], r["path"], r["line"], r["message"])
+
+    added = {key(r) for r in delta if r["change"] == "added"}
+    return [
+        dict(r, change="kept")
+        for r in cand
+        if r["rule_id"] in touched and r["charm"] not in crashed and key(r) not in added
+    ]
+
+
 def new_crashes(base: list[dict], cand: list[dict]) -> list[dict]:
     """The ``CRASH`` rows for charms that charmlint didn't crash on before the change."""
     before = {r["charm"] for r in base if r["rule_id"] == "CRASH"}
@@ -1360,28 +1391,45 @@ def count_labels(classified: list[dict]) -> dict:
 
 
 def counts_block(summary: dict, classified: list[dict]) -> str:
+    """The corpus table for the PR: every finding of each rule the change touched.
+
+    For a new rule that's what it adds; for a changed one it's what it still
+    reports (new findings and kept ones), with a count of what it no longer does.
+    """
     charms, fatal = summary["charms"], summary["fatal"]
-    added = [c for c in classified if c["change"] == "added"]
+    current = [c for c in classified if c["change"] in ("added", "kept")]
+    added = [c for c in current if c["change"] == "added"]
     removed = [c for c in classified if c["change"] == "removed"]
-    with_findings = len({c["charm"] for c in added})
-    severities = sorted({c["severity"] for c in added})
-    lines = [
+    with_findings = len({c["charm"] for c in current})
+    severities = sorted({c["severity"] for c in current})
+    head = (
         f"{charms} charms scanned ({fatal} `FATAL`, pre-existing), {with_findings} with findings, "
-        f"{len(added)} findings{', all ' + severities[0] if len(severities) == 1 else ''}."
-        + (f" {len(removed)} findings no longer reported." if removed else ""),
+        f"{len(current)} findings{', all ' + severities[0] if len(severities) == 1 else ''}"
+        + (f", {len(added)} of them new." if len(added) != len(current) else ".")
+    )
+    if removed:
+        lost = count_labels(removed).get("FP", 0)
+        head += f" {len(removed)} findings no longer reported" + (
+            f", {lost} of them real problems." if lost else "."
+        )
+    lines = [
+        head,
         "",
         "| Rule | TP | Expected to suppress | FP | UNK | Total |",
         "|---|---|---|---|---|---|",
     ]
-    for rule_id in sorted({c["rule_id"] for c in added}):
-        rows = [c for c in added if c["rule_id"] == rule_id]
+    for rule_id in sorted({c["rule_id"] for c in current}):
+        rows = [c for c in current if c["rule_id"] == rule_id]
         n = count_labels(rows)
         lines.append(
             f"| {rule_id} | {n.get('TP', 0)} | {n.get('EXPECTED', 0)} | {n.get('FP', 0)} | {n.get('UNK', 0)} | {len(rows)} |"
         )
-    total = count_labels(added)
-    fp_rate = 100 * total.get("FP", 0) / len(added) if added else 0
-    lines += ["", f"**Totals: {len(added)} findings, {total.get('FP', 0)} FP ({fp_rate:.0f}%).**"]
+    total = count_labels(current)
+    fp_rate = 100 * total.get("FP", 0) / len(current) if current else 0
+    lines += [
+        "",
+        f"**Totals: {len(current)} findings, {total.get('FP', 0)} FP ({fp_rate:.0f}%).**",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -1527,8 +1575,21 @@ def _uses(
     return found, lines
 
 
-def corpus_feedback(fps: list[dict], misses: list[dict], crashes: list[dict]) -> str:
+def corpus_feedback(
+    fps: list[dict], misses: list[dict], crashes: list[dict], lost: list[dict]
+) -> str:
     text = ""
+    if lost:
+        text += (
+            "The change stopped reporting these, and each is a real problem the rule should still "
+            "report. Bring them back without bringing back the false positives the change removed, and "
+            "add a positive test for each distinct pattern.\n\n"
+            + "\n".join(
+                f"- {f['charm']}/{f['path']}:{f['line']}: {f['message']} -- {f['reason']}"
+                for f in lost[:30]
+            )
+            + "\n\n"
+        )
     if crashes:
         text += (
             "charmlint now crashes on these charms, so none of their findings are reported. Fix the "
