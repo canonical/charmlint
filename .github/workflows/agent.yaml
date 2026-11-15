@@ -198,7 +198,9 @@ jobs:
           as_agent uv run --no-project --python 3.14 --with pyyaml python -c pass
           # A chain of our own, jumped to first, so no ACCEPT that harden-runner
           # (or anything else) put in OUTPUT applies to `agent`. Loopback only to
-          # the proxy's port: the local DNS resolver would be a way out.
+          # the proxy's port: the local DNS resolver would be a way out. Rules
+          # inserted later can still go above it, so the pipeline's unit also
+          # has a cgroup filter that allows only localhost.
           agent_uid=$(id -u agent)
           for t in iptables ip6tables; do
             sudo "$t" -N AGENT_OUT
@@ -225,6 +227,20 @@ jobs:
             echo "::error::agent can resolve names"
             fail=1
           fi
+          # harden-runner keeps inserting ACCEPT rules at the top of OUTPUT
+          # (and `agent` can make it, by resolving a name through
+          # systemd-resolved's D-Bus API), so the pipeline's unit doesn't rely
+          # on the chain's order: its cgroup only reaches localhost. Checked
+          # with an ACCEPT for the address put above our chain.
+          addr=$(getent ahostsv4 api.github.com | awk 'NR == 1 {print $1}')
+          sudo iptables -I OUTPUT 1 -d "$addr" -p tcp --dport 443 -j ACCEPT
+          if sudo systemd-run --quiet --wait --pipe --collect --uid=agent --gid=agent \
+              -p IPAddressDeny=any -p IPAddressAllow=localhost \
+              curl -sS -m 5 -o /dev/null --resolve "api.github.com:443:$addr" https://api.github.com/zen; then
+            echo "::error::the pipeline's unit reached api.github.com past an ACCEPT rule"
+            fail=1
+          fi
+          sudo iptables -D OUTPUT -d "$addr" -p tcp --dport 443 -j ACCEPT
           exit "$fail"
       - name: Start the key proxy
         run: |
@@ -256,6 +272,7 @@ jobs:
           sudo systemd-run --quiet --wait --pipe --collect --unit=agent-pipeline \
             --uid=agent --gid=agent --working-directory=/srv/agent \
             -p KillMode=control-group -p RuntimeMaxSec=170min \
+            -p IPAddressDeny=any -p IPAddressAllow=localhost \
             --setenv=PATH="$PATH" --setenv=HOME=/srv/agent/home --setenv=LANG=C.UTF-8 \
             --setenv=UV_OFFLINE=1 --setenv=PI_OFFLINE=1 --setenv=PI_SKIP_VERSION_CHECK=1 \
             --setenv=CLA_CORPUS=/srv/agent/corpus \
