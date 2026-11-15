@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pathlib
 import subprocess
+import time
 
 import pytest
 import run
@@ -241,3 +242,19 @@ def test_restore_undoes_commits_stashes_and_staged_edits(tmp_path: pathlib.Path)
     pipeline.restore(before, "a reviewer")
     assert pipeline.state() == before
     assert sorted(p.name for p in tmp_path.iterdir() if p.name != ".git") == ["rule.py"]
+
+
+def test_stop_session_stops_what_the_stage_started(tmp_path: pathlib.Path) -> None:
+    pid_file = tmp_path / "pid"
+    proc = subprocess.Popen(
+        ["sh", "-c", f"trap '' TERM; sleep 300 & echo $! > {pid_file}; wait"],
+        start_new_session=True,
+    )
+    while not pid_file.exists() or not pid_file.read_text().strip():
+        time.sleep(0.05)
+    child = int(pid_file.read_text())
+    run.stop_session(proc, grace=0.5)
+    assert (
+        not pathlib.Path(f"/proc/{child}").exists()
+        or "Z" in pathlib.Path(f"/proc/{child}/stat").read_text().split()[2]
+    )

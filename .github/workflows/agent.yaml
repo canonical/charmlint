@@ -287,6 +287,7 @@ jobs:
             --setenv=CLA_OPENROUTER_BASE_URL=http://127.0.0.1:8787/api/v1 \
             --setenv=OPENROUTER_API_KEY=held-by-proxy \
             --setenv=CLA_BUDGET_USD="${BUDGET:-8}" \
+            --setenv=CLA_DEADLINE_MINUTES=160 \
             python3 /opt/agent/pipeline/run.py /srv/agent/repo /srv/agent/in/task.json /srv/agent/work "${args[@]}" \
             || rc=$?
           # 3 is a plan to post (plan-only, out of scope, needs design), not a failure.

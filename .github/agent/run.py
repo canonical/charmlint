@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import ast
 import collections
+import contextlib
 import dataclasses
 import io
 import json
@@ -42,10 +43,13 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
 import tokenize
+import urllib.parse
+import urllib.request
 from typing import Any
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -189,6 +193,9 @@ class Config:
         os.environ.get("CLA_CORPUS", pathlib.Path.home() / ".cache/hyrum/charms")
     )
     budget_usd: float = float(os.environ.get("CLA_BUDGET_USD", "8"))
+    # Stop starting stages after this, leaving time to write the outputs
+    # before whatever runs the pipeline stops it. 0 for no limit.
+    deadline_minutes: float = float(os.environ.get("CLA_DEADLINE_MINUTES", "0"))
     check_rounds: int = 3
     fp_rounds: int = 2
     review_rounds: int = 2
@@ -219,6 +226,14 @@ class BudgetExceeded(Exception):
     pass
 
 
+class OutOfTime(BudgetExceeded):
+    """The run's deadline passed, or the unit it runs in is being stopped."""
+
+
+def stopped(signum: int, _frame: object) -> None:
+    raise OutOfTime(f"stopped by signal {signum}")
+
+
 class Pipeline:
     def __init__(
         self,
@@ -245,10 +260,9 @@ class Pipeline:
         self.misses: list[dict] = []
         self.deferred: list[dict] = []
         self.shoulds: list[dict] = []
-        self.unreviewed: list[str] = []
-        self.crashes: list[
-            dict
-        ] = []  # charms charmlint now crashes on  # review focuses whose reviewer produced nothing usable
+        self.unreviewed: list[str] = []  # review focuses whose reviewer produced nothing usable
+        self.crashes: list[dict] = []  # charms charmlint now crashes on
+        self.started = time.monotonic()
         self.agent_dir = self.work / "pi-agent"
         self._setup_pi()
         self.task_md = self.work / "task.md"
@@ -305,8 +319,14 @@ class Pipeline:
         timeout: int = 30 * 60,
     ) -> str:
         """Run one pi turn in REPO; return the final assistant text."""
-        if self.cost >= self.config.budget_usd:
-            raise BudgetExceeded(f"spent ${self.cost:.2f} before {stage}")
+        spent = max(self.cost, proxy_spent())
+        if spent >= self.config.budget_usd:
+            raise BudgetExceeded(f"spent ${spent:.2f} before {stage}")
+        if self.config.deadline_minutes:
+            left = self.config.deadline_minutes * 60 - (time.monotonic() - self.started)
+            if left < 60:
+                raise OutOfTime(f"out of time before {stage}")
+            timeout = min(timeout, int(left))
         stage_dir = self.work / stage
         stage_dir.mkdir(parents=True, exist_ok=True)
         n = len(list(stage_dir.glob("events-*.jsonl")))
@@ -336,20 +356,24 @@ class Pipeline:
         start = time.monotonic()
         events_path = stage_dir / f"events-{n}.jsonl"
         with events_path.open("w") as out, (stage_dir / f"stderr-{n}.txt").open("w") as err:
+            # In a session of its own, so a timeout can stop what it started.
+            proc = subprocess.Popen(
+                cmd,
+                cwd=self.repo,
+                env=self.env,
+                stdin=subprocess.DEVNULL,
+                stdout=out,
+                stderr=err,
+                start_new_session=True,
+            )
             try:
-                subprocess.run(
-                    cmd,
-                    cwd=self.repo,
-                    env=self.env,
-                    stdin=subprocess.DEVNULL,
-                    stdout=out,
-                    stderr=err,
-                    timeout=timeout,
-                    check=False,
-                )
+                proc.wait(timeout=timeout)
                 timed_out = False
             except subprocess.TimeoutExpired:
                 timed_out = True
+            finally:
+                if proc.poll() is None:
+                    stop_session(proc)
         cost, tokens, text, errors, tool_calls = 0.0, 0, "", [], 0
         for line in events_path.read_text().splitlines():
             try:
@@ -400,8 +424,13 @@ class Pipeline:
     # --- stages --------------------------------------------------------------
 
     def run(self) -> int:
+        signal.signal(signal.SIGTERM, stopped)
         try:
             return self._run()
+        except OutOfTime as e:
+            log(f"out of time: {e}")
+            self.write_meta(outcome="out-of-time")
+            return 1
         except BudgetExceeded as e:
             log(f"budget exceeded: {e}")
             self.write_meta(outcome="budget-exceeded")
@@ -1746,6 +1775,40 @@ def review_findings(result: object) -> list[dict]:
         for f in findings
         if isinstance(f, dict)
     ]
+
+
+def stop_session(proc: subprocess.Popen, grace: float = 15) -> None:
+    """Stop PROC and what it started.
+
+    SIGTERM first, which pi passes on to the commands it's running (they're
+    in sessions of their own), then SIGKILL for the rest of its session.
+    """
+    proc.terminate()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=grace)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait()
+
+
+def proxy_spent() -> float:
+    """What the key proxy has spent and reserved: it sees calls pi doesn't report.
+
+    0 without a proxy (a local run).
+    """
+    base = os.environ.get("CLA_OPENROUTER_BASE_URL", "")
+    if not base:
+        return 0.0
+    root = urllib.parse.urlsplit(base)
+    if root.scheme not in ("http", "https"):
+        return 0.0
+    try:
+        url = f"{root.scheme}://{root.netloc}/proxy/spent"
+        with urllib.request.urlopen(url, timeout=10) as r:  # ruff: ignore[S310] - scheme checked
+            data = json.loads(r.read())
+        return float(data["spent"]) + float(data["reserved"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0.0
 
 
 def read_jsonl(path: pathlib.Path) -> list[dict]:

@@ -121,6 +121,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
+        if self.path == "/proxy/spent":
+            # For the pipeline's own budget check: it doesn't see every call.
+            with State.lock:
+                data = json.dumps({"spent": State.spent, "reserved": State.reserved}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if self.clean_path() not in GET_PATHS:
             self.send_error(403, "not forwarded")
             return
