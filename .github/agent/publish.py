@@ -209,8 +209,15 @@ def check_tree(repo: pathlib.Path, start: str) -> list[str]:
         if not allowed_path(path):
             problems.append(f"{path}: outside what the agent may change")
         if status != "D" and path.endswith(".py"):
-            source = (repo / path).read_text(errors="replace")
-            base = "" if status == "A" else git(repo, "show", f"{start}:{path}")
+            # As bytes, which is how Python reads them: see forbidden_uses.
+            source = (repo / path).read_bytes()
+            base = (
+                b""
+                if status == "A"
+                else subprocess.run(
+                    ["git", "show", f"{start}:{path}"], cwd=repo, capture_output=True, check=True
+                ).stdout
+            )
             rule_code = path.startswith(RULE_CODE)
             for line, what in forbidden_uses(source, base, rule_code=rule_code, path=path):
                 problems.append(
