@@ -896,10 +896,13 @@ class Pipeline:
         if "docs" in targets:
             run_bounded(["make", "docs"], self.repo, timeout=10 * 60)
         failures = {}
+        # The pipeline's own tests are in testpaths too, but this change can't
+        # touch them, and the firewall stops the ones that serve on loopback.
+        env = {**os.environ, "PYTEST_ADDOPTS": "--deselect=.github/agent/tests"}
         for target in ("lint", "test", "docs-check"):
             if target not in targets:
                 continue
-            rc, output = run_bounded(["make", target], self.repo, timeout=20 * 60)
+            rc, output = run_bounded(["make", target], self.repo, timeout=20 * 60, env=env)
             if rc:
                 failures[target] = output
         changed = self.changed_files()
@@ -908,6 +911,18 @@ class Pipeline:
             failures["allowlist"] = (
                 "These files are outside what this change may touch; revert them and do it without them:\n"
                 + "\n".join(outside)
+            )
+        # Checked here, not only at review, so a fix round after the review
+        # can't add what the publish job would refuse.
+        uses = [
+            f"{x['file']}:{x['line']}: {x['problem']}"
+            for x in deterministic_review(self.own_diff(), self.repo, self.start_sha)
+            if allowed_path(x["file"])
+        ]
+        if uses:
+            failures["imports"] = (
+                "The publish job refuses these new imports and calls; remove them:\n"
+                + "\n".join(uses)
             )
         return failures
 
@@ -1793,11 +1808,14 @@ def corpus_run(tree: pathlib.Path, out: pathlib.Path, corpus: pathlib.Path) -> l
     return read_jsonl(out)
 
 
-def run_bounded(cmd: list[str], cwd: pathlib.Path, *, timeout: float) -> tuple[int, str]:
+def run_bounded(
+    cmd: list[str], cwd: pathlib.Path, *, timeout: float, env: dict[str, str] | None = None
+) -> tuple[int, str]:
     """Run CMD and return its exit code and output; stop it and all it started after TIMEOUT."""
     proc = subprocess.Popen(
         cmd,
         cwd=cwd,
+        env=env,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
