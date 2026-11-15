@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import pathlib
+import subprocess
+
 import pytest
+import run
 from run import (
     allowed_path,
     counts_block,
@@ -215,3 +219,25 @@ def test_review_findings_fills_in_what_a_model_left_out() -> None:
 def test_review_findings_rejects_what_isnt_a_review(result: object) -> None:
     with pytest.raises((TypeError, KeyError)):
         review_findings(result)
+
+
+def test_restore_undoes_commits_stashes_and_staged_edits(tmp_path: pathlib.Path) -> None:
+    def sh(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    sh("init", "-q")
+    sh("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base")
+    pipeline = object.__new__(run.Pipeline)
+    pipeline.repo = tmp_path
+    (tmp_path / "rule.py").write_text("change = 1\n")  # the agent's change, uncommitted
+    before = pipeline.state()
+    # What a reviewer might do: stash it, commit something, stage an edit.
+    sh("stash", "-u", "-q")
+    (tmp_path / "other.py").write_text("x = 1\n")
+    sh("add", "-A")
+    sh("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "reviewer")
+    (tmp_path / "new.py").write_text("y = 1\n")
+    sh("add", "new.py")
+    pipeline.restore(before, "a reviewer")
+    assert pipeline.state() == before
+    assert sorted(p.name for p in tmp_path.iterdir() if p.name != ".git") == ["rule.py"]
