@@ -7,7 +7,10 @@ runner enforces lives here, because the agent can rewrite or stop anything
 running as its own user:
 
 - only the listed models, each pinned to its first-party provider;
-- no fallback models, plugins (such as web search) or routing overrides;
+- no fallback models, plugins (such as web search), routing overrides,
+  server-side tools or files and images for OpenRouter to fetch: they reach
+  other models or the network, or are billed in ways the reservation
+  doesn't cover;
 - a spending cap, from the cost OpenRouter reports for each response. Each
   request reserves a worst-case cost before it is sent, and a response that
   doesn't finish is charged that reservation, so cutting streams short or
@@ -77,6 +80,43 @@ def cost_of(usage: dict) -> float:
     return tokens * FALLBACK_USD_PER_TOKEN
 
 
+def prepare(body: object) -> tuple[bytes, float]:
+    """The request to send upstream, and what to reserve for it.
+
+    PermissionError, with the reason, for a request that isn't allowed.
+    """
+    model = body.get("model") if isinstance(body, dict) else None
+    if not isinstance(body, dict) or model not in State.models:
+        raise PermissionError("model not allowed")
+    for field in ("models", "plugins", "route", "provider", "usage", "web_search_options"):
+        body.pop(field, None)
+    tools = body.get("tools")
+    if tools is not None and (
+        not isinstance(tools, list)
+        or any(not isinstance(t, dict) or t.get("type") != "function" for t in tools)
+    ):
+        raise PermissionError("only function tools are allowed")
+    for message in body.get("messages") or []:
+        content = message.get("content") if isinstance(message, dict) else None
+        for part in content if isinstance(content, list) else []:
+            kind = part.get("type") if isinstance(part, dict) else None
+            url = str((part.get("image_url") or {}).get("url", "")) if kind == "image_url" else ""
+            if kind != "text" and not (kind == "image_url" and url.startswith("data:")):
+                raise PermissionError(f"content of type {kind} isn't allowed")
+    routing = next((r for prefix, r in ROUTING.items() if model.startswith(prefix)), None)
+    if routing:
+        body["provider"] = routing
+    # Always report the cost, so the cap can count it.
+    body["usage"] = {"include": True}
+    requested = body.pop("max_completion_tokens", None) or body.get("max_tokens")
+    # type(), not isinstance: True is an int.
+    if type(requested) is not int or not 0 < requested <= MAX_OUTPUT_TOKENS:
+        requested = MAX_OUTPUT_TOKENS
+    body["max_tokens"] = requested
+    data = json.dumps(body).encode()
+    return data, len(data) * RESERVE_USD_PER_INPUT_BYTE + requested * RESERVE_USD_PER_OUTPUT_TOKEN
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -96,23 +136,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except ValueError:
             self.send_error(400, "not JSON")
             return
-        model = body.get("model") if isinstance(body, dict) else None
-        if model not in State.models:
-            self.send_error(403, "model not allowed")
+        try:
+            data, reserve = prepare(body)
+        except PermissionError as e:
+            self.send_error(403, str(e))
             return
-        for field in ("models", "plugins", "route", "provider", "usage"):
-            body.pop(field, None)
-        routing = next((r for prefix, r in ROUTING.items() if model.startswith(prefix)), None)
-        if routing:
-            body["provider"] = routing
-        # Always report the cost, so the cap can count it.
-        body["usage"] = {"include": True}
-        requested = body.pop("max_completion_tokens", None) or body.get("max_tokens")
-        if not isinstance(requested, int) or not 0 < requested <= MAX_OUTPUT_TOKENS:
-            requested = MAX_OUTPUT_TOKENS
-        body["max_tokens"] = requested
-        data = json.dumps(body).encode()
-        reserve = len(data) * RESERVE_USD_PER_INPUT_BYTE + requested * RESERVE_USD_PER_OUTPUT_TOKEN
         self.forward(data, reserve)
 
     def clean_path(self) -> str | None:
@@ -161,8 +189,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 UPSTREAM, timeout=900, context=ssl.create_default_context()
             )
             try:
+                # Nothing is sent, so nothing is billed, until this succeeds.
+                conn.connect()
+            except OSError as e:
+                conn.close()
+                self.charge(0.0, reserve)
+                self.log_error("couldn't connect upstream: %s", e)
+                self.send_error(502, "couldn't reach OpenRouter")
+                return
+            responded = False
+            try:
                 conn.request(self.command, self.target(), body=body, headers=headers)
                 resp = conn.getresponse()
+                responded = True
                 self.send_response(resp.status, resp.reason)
                 for k, v in resp.getheaders():
                     if k.lower() not in HOP_BY_HOP:
@@ -183,6 +222,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     cost = reserve
             except (OSError, http.client.HTTPException) as e:
                 self.log_error("upstream error: %s", e)
+                if not responded:
+                    self.send_error(502, "upstream error")
                 self.close_connection = True
             finally:
                 conn.close()
