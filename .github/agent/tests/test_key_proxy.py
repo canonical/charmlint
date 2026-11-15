@@ -109,3 +109,20 @@ def test_prepare_allows_function_tools_and_inline_images() -> None:
         messages=[{"role": "user", "content": [{"type": "text", "text": "x"}, image]}],
     )
     key_proxy.prepare(body)
+
+
+def test_the_pipeline_can_ask_what_has_been_spent(monkeypatch: pytest.MonkeyPatch) -> None:
+    import http.server
+    import threading
+    import urllib.request
+
+    monkeypatch.setattr(key_proxy.State, "spent", 1.5)
+    monkeypatch.setattr(key_proxy.State, "reserved", 0.25)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), key_proxy.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/proxy/spent"
+        with urllib.request.urlopen(url, timeout=5) as r:
+            assert json.loads(r.read()) == {"spent": 1.5, "reserved": 0.25}
+    finally:
+        server.shutdown()
