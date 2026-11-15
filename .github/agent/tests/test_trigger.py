@@ -116,3 +116,18 @@ def test_drain_takes_plan_only_issues_when_prs_are_full(
     queue["open_prs"] = trigger.MAX_OPEN
     trigger.drain(tmp_path)
     assert queue["ran"] == (2, "plan-only")
+
+
+@pytest.mark.parametrize(
+    ("actor", "triggering"),
+    [("someone", "someone"), ("maintainer", "someone"), ("someone", "maintainer")],
+)
+def test_dispatch_needs_both_actors_on_the_allowlist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, actor: str, triggering: str
+) -> None:
+    # A re-run keeps GITHUB_ACTOR from the first attempt; GITHUB_TRIGGERING_ACTOR
+    # is whoever clicked re-run.
+    monkeypatch.setenv("GITHUB_ACTOR", actor)
+    monkeypatch.setenv("GITHUB_TRIGGERING_ACTOR", triggering)
+    with pytest.raises(trigger.Skip, match="allowlist"):
+        trigger.dispatched({"inputs": {"mode": "full", "issue": "12"}}, tmp_path)
