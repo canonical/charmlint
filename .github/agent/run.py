@@ -235,6 +235,7 @@ class Pipeline:
         self.misses: list[dict] = []
         self.deferred: list[dict] = []
         self.shoulds: list[dict] = []
+        self.unreviewed: list[str] = []  # review focuses whose reviewer produced nothing usable
         self.agent_dir = self.work / "pi-agent"
         self._setup_pi()
         self.task_md = self.work / "task.md"
@@ -556,6 +557,10 @@ class Pipeline:
                 f"- Deferred by the plan, not flagged: {m['charm']}/{m['path']}:{m['line']}: `{m['text']}` ({m['reason']})"
                 for m in self.deferred
             ]
+            + [
+                f"- Not reviewed for {focus}: the reviewer produced no readable output."
+                for focus in self.unreviewed
+            ]
         )
         if self.feedback:
             # The PR body is the maintainer's to edit by now; a revision reports in a comment.
@@ -571,7 +576,8 @@ class Pipeline:
             self.write_publish_diff()
             self.write_meta(
                 outcome="revision",
-                draft=bool(blocking or self.misses),
+                draft=bool(blocking or self.misses or self.unreviewed),
+                unreviewed=self.unreviewed,
                 blocking=blocking,
                 misses=self.misses,
                 deferred=self.deferred,
@@ -625,7 +631,8 @@ class Pipeline:
         self.write_publish_diff()
         self.write_meta(
             outcome="pr",
-            draft=bool(blocking or self.misses),
+            draft=bool(blocking or self.misses or self.unreviewed),
+            unreviewed=self.unreviewed,
             blocking=blocking,
             misses=self.misses,
             deferred=self.deferred,
@@ -970,8 +977,14 @@ class Pipeline:
                 git(self.repo, "clean", "-fdq")
             try:
                 findings = self.read_json(stage, out)["findings"]
+                if not isinstance(findings, list) or not all(
+                    isinstance(f, dict) for f in findings
+                ):
+                    raise TypeError("findings isn't a list of objects")
             except (OSError, json.JSONDecodeError, KeyError, TypeError):
+                # No review isn't a clean review: the PR opens as a draft and says so.
                 log(f"  {out.name}: unreadable review output")
+                self.unreviewed.append(focus)
                 continue
             blocking += [f for f in findings if f.get("severity") == "blocking"]
             self.shoulds += [f for f in findings if f.get("severity") == "should"]

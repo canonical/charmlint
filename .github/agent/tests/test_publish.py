@@ -216,3 +216,9 @@ def test_check_tree_rejects_source_that_does_not_parse(repo: tuple[pathlib.Path,
     (path / "src/charmlint/_rules/new.py").write_text("import subprocess\ndef (:\n")
     problems = staged_problems(repo)
     assert any("doesn't parse" in p for p in problems)
+
+
+def test_pr_body_says_when_a_review_produced_nothing(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "pr.md").write_text("Adds a rule.\n")
+    assert "Not fully reviewed" not in publish.pr_body(tmp_path, {}, 12)
+    assert "Not fully reviewed" in publish.pr_body(tmp_path, {"unreviewed": ["correctness"]}, 12)
