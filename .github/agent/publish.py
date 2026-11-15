@@ -212,7 +212,7 @@ def check_tree(repo: pathlib.Path, start: str) -> list[str]:
             source = (repo / path).read_text(errors="replace")
             base = "" if status == "A" else git(repo, "show", f"{start}:{path}")
             rule_code = path.startswith(RULE_CODE)
-            for line, what in forbidden_uses(source, base, rule_code=rule_code):
+            for line, what in forbidden_uses(source, base, rule_code=rule_code, path=path):
                 problems.append(
                     f"{path}:{line}: {what} isn't allowed in {'rule code' if rule_code else 'tests'}"
                 )

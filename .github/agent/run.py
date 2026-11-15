@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import collections
 import dataclasses
 import json
 import os
@@ -110,7 +111,14 @@ RULE_IMPORTS = {
     "urllib.parse",
     "warnings",
     "yaml",
-    "charmlint",
+    # Only the parts of charmlint that rules use: the rest (the CLI, config
+    # loading) imports modules that rules may not.
+    "charmlint._ast",
+    "charmlint._dependencies",
+    "charmlint._models",
+    "charmlint._rules",
+    "charmlint._toml",
+    "charmlint._yaml",
 }
 TEST_FORBIDDEN_MODULES = {
     "subprocess",
@@ -131,10 +139,33 @@ TEST_FORBIDDEN_MODULES = {
     "ctypes",
     "shutil",
     "signal",
+    "gc",
+    "inspect",
+    "marshal",
+    "pickle",
 }
+# Modules that no rule or test may reach under another name: imported from an
+# allowed module that imports them (``from charmlint._x import os``) or as an
+# attribute (``pathlib.os``). Not ``urllib`` or ``http``, whose other
+# submodules are fine.
+REACHABLE_MODULES = {m for m in TEST_FORBIDDEN_MODULES if "." not in m}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "globals", "vars", "breakpoint"}
 FORBIDDEN_NAMES = {"__builtins__"}
-FORBIDDEN_ATTRS = {"__subclasses__", "__globals__", "__builtins__", "__code__", "__import__"}
+FORBIDDEN_ATTRS = {
+    "__subclasses__",
+    "__globals__",
+    "__builtins__",
+    "__code__",
+    "__import__",
+    # PyYAML's loaders that build arbitrary Python objects.
+    "unsafe_load",
+    "unsafe_load_all",
+    "full_load",
+    "full_load_all",
+    "Loader",
+    "FullLoader",
+    "UnsafeLoader",
+}
 RULE_CODE = ("src/charmlint/_rules/", "src/charmlint/_ast.py", "src/charmlint/_yaml.py")
 
 
@@ -1303,7 +1334,9 @@ def deterministic_review(diff: str, repo: pathlib.Path, base: str = "HEAD") -> l
                 text=True,
                 check=False,
             ).stdout
-            for line, what in forbidden_uses((repo / f).read_text(), old, rule_code=rule_code):
+            for line, what in forbidden_uses(
+                (repo / f).read_text(), old, rule_code=rule_code, path=f
+            ):
                 findings.append({
                     "severity": "blocking",
                     "file": f,
@@ -1320,55 +1353,98 @@ def deterministic_review(diff: str, repo: pathlib.Path, base: str = "HEAD") -> l
 
 
 def forbidden_uses(
-    source: str, base: str = "", *, rule_code: bool = True
+    source: str, base: str = "", *, rule_code: bool = True, path: str = ""
 ) -> list[tuple[int, str]]:
     """Imports and calls that run, fetch or reach around things, that ``base`` didn't have.
 
     Rule code may only import ``RULE_IMPORTS``; tests may not import
-    ``TEST_FORBIDDEN_MODULES``. Uses already in ``base`` (the file before the
-    change) aren't reported, so editing an existing test that runs a
-    subprocess is fine. Source that doesn't parse is reported too.
+    ``TEST_FORBIDDEN_MODULES``. ``from a import b`` is checked as ``a.b``,
+    relative imports are resolved against PATH (the file's path in the
+    repository), and ``REACHABLE_MODULES`` are reported however they're
+    reached: imported by name from an allowed module, or as an attribute.
+
+    Uses already in ``base`` (the file before the change) aren't reported, so
+    editing an existing test that runs a subprocess is fine. They're counted,
+    and a module the file already imports has each of its attributes counted
+    too, so a new ``os.system`` call in a file that has always imported ``os``
+    is reported. Source that doesn't parse is reported as well.
     """
+    package = pathlib.PurePosixPath(path.removeprefix("src/")).parent.parts if path else ()
+    new, lines = _uses(source, rule_code, package)
+    old = _uses(base, rule_code, package)[0] if base else collections.Counter()
+    return sorted((lines[what], what) for what, n in new.items() if n > old[what])
+
+
+def _uses(
+    text: str, rule_code: bool, package: tuple[str, ...]
+) -> tuple[collections.Counter[str], dict[str, int]]:
+    """What ``forbidden_uses`` looks for in TEXT: a count of each, and the line of the first."""
 
     def under(name: str, modules: set[str]) -> bool:
         return any(name == m or name.startswith(m + ".") for m in modules)
 
-    def uses(text: str) -> dict[str, int]:
-        try:
-            tree = ast.parse(text)
-        except SyntaxError as e:
-            # charmlint supports 3.12, so its code must parse there; checking
-            # nothing would let newer syntax carry any import past the checks.
-            return {"source that doesn't parse on this Python": e.lineno or 0}
-        found: dict[str, int] = {}
-        for node in ast.walk(tree):
-            names: list[str] = []
-            if isinstance(node, ast.Import):
-                names = [a.name for a in node.names]
-            elif isinstance(node, ast.ImportFrom) and not node.level:
-                names = [node.module or ""]
-            elif (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id in FORBIDDEN_CALLS
-            ):
-                found.setdefault(f"`{node.func.id}()`", node.lineno)
-            elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:
-                found.setdefault(f"`{node.id}`", node.lineno)
-            elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_ATTRS:
-                found.setdefault(f"`.{node.attr}`", node.lineno)
-            for name in names:
-                bad = (
-                    not under(name, RULE_IMPORTS)
-                    if rule_code
-                    else under(name, TEST_FORBIDDEN_MODULES)
-                )
-                if bad:
-                    found.setdefault(f"`import {name}`", getattr(node, "lineno", 0))
-        return found
+    def bad(name: str) -> bool:
+        return not under(name, RULE_IMPORTS) if rule_code else under(name, TEST_FORBIDDEN_MODULES)
 
-    old = uses(base) if base else {}
-    return sorted((line, what) for what, line in uses(source).items() if what not in old)
+    found: collections.Counter[str] = collections.Counter()
+    lines: dict[str, int] = {}
+
+    def add(what: str, node: ast.AST) -> None:
+        found[what] += 1
+        lines.setdefault(what, getattr(node, "lineno", 0))
+
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as e:
+        # charmlint supports 3.12, so its code must parse there; checking
+        # nothing would let newer syntax carry any import past the checks.
+        what = "source that doesn't parse on this Python"
+        return collections.Counter({what: 1}), {what: e.lineno or 0}
+    bound: dict[str, str] = {}  # names this file binds to a forbidden module, and the module
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if bad(alias.name):
+                    add(f"`import {alias.name}`", node)
+                    if alias.asname:
+                        bound[alias.asname] = alias.name
+                    else:
+                        top = alias.name.split(".")[0]
+                        bound[top] = top
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level and package:
+                parent = package[: len(package) - node.level + 1]
+                module = ".".join([*parent, module] if module else parent)
+            known = bool(module) and (not node.level or bool(package))
+            for alias in node.names:
+                full = f"{module}.{alias.name}" if module else alias.name
+                if (known and bad(full)) or alias.name in REACHABLE_MODULES:
+                    dots = "." * node.level if not known else ""
+                    add(f"`from {dots}{module} import {alias.name}`", node)
+                    reached = alias.name if alias.name in REACHABLE_MODULES else full
+                    bound[alias.asname or alias.name] = reached
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in FORBIDDEN_CALLS
+        ):
+            add(f"`{node.func.id}()`", node)
+        elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:
+            add(f"`{node.id}`", node)
+        elif isinstance(node, ast.Attribute) and (
+            node.attr in FORBIDDEN_ATTRS or node.attr in REACHABLE_MODULES
+        ):
+            add(f"`.{node.attr}`", node)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in bound
+            and bad(f"{bound[node.value.id]}.{node.attr}")
+        ):
+            add(f"`{node.value.id}.{node.attr}`", node)
+    return found, lines
 
 
 def corpus_feedback(fps: list[dict], misses: list[dict]) -> str:

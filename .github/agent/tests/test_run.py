@@ -7,7 +7,8 @@ from run import allowed_path, forbidden_uses
 
 
 def whats(source: str, base: str = "", *, rule_code: bool = True) -> list[str]:
-    return [what for _, what in forbidden_uses(source, base, rule_code=rule_code)]
+    path = "src/charmlint/_rules/new.py" if rule_code else "tests/test_new.py"
+    return [what for _, what in forbidden_uses(source, base, rule_code=rule_code, path=path)]
 
 
 @pytest.mark.parametrize(
@@ -15,6 +16,8 @@ def whats(source: str, base: str = "", *, rule_code: bool = True) -> list[str]:
     [
         "import ast\nimport yaml\nfrom charmlint import _ast\nimport urllib.parse\n",
         "from . import _base\n",
+        "from .. import _ast, _yaml\nfrom ._base import Rule\nfrom .. import _models as models\n",
+        "from charmlint._rules._base import Rule\n",
         "CHECK = 'exec'\nd = {'exec': 1}\n",
     ],
 )
@@ -27,7 +30,16 @@ def test_rule_code_allowed(source: str) -> None:
     [
         ("import os\n", "`import os`"),
         ("import urllib.request\n", "`import urllib.request`"),
-        ("from subprocess import run\n", "`import subprocess`"),
+        ("from subprocess import run\n", "`from subprocess import run`"),
+        ("from charmlint import _cli\n", "`from charmlint import _cli`"),
+        ("from .._cli import main\n", "`from charmlint._cli import main`"),
+        (
+            "from charmlint._rules.charmcraft_compat import os\n",
+            "`from charmlint._rules.charmcraft_compat import os`",
+        ),
+        ("import yaml\nyaml.unsafe_load(x)\n", "`.unsafe_load`"),
+        ("import yaml\nyaml.load(x, Loader=yaml.Loader)\n", "`.Loader`"),
+        ("import pathlib\npathlib.os.system('x')\n", "`.os`"),
         ("exec('x')\n", "`exec()`"),
         ("__import__('os')\n", "`__import__()`"),
         ("x = ().__class__.__subclasses__\n", "`.__subclasses__`"),
@@ -41,6 +53,29 @@ def test_rule_code_forbidden(source: str, what: str) -> None:
 def test_tests_may_import_what_rules_may_not() -> None:
     assert whats("import pytest\nimport pathlib\n", rule_code=False) == []
     assert whats("import os.path\n", rule_code=False) == ["`import os.path`"]
+
+
+@pytest.mark.parametrize(
+    ("source", "what"),
+    [
+        ("from urllib import request\n", "`from urllib import request`"),
+        ("from http import client\n", "`from http import client`"),
+        ("from .test_cli import subprocess\n", "`from tests.test_cli import subprocess`"),
+        ("import inspect\n", "`import inspect`"),
+    ],
+)
+def test_tests_forbidden(source: str, what: str) -> None:
+    assert what in whats(source, rule_code=False)
+
+
+def test_tests_may_use_harmless_parts_of_a_package() -> None:
+    assert whats("import urllib.parse\nurllib.parse.quote('x')\n", rule_code=False) == []
+
+
+def test_new_calls_through_an_existing_import_are_reported() -> None:
+    base = "import os\n\nos.access('x', os.X_OK)\n"
+    assert whats(base + "os.system('x')\n", base) == ["`os.system`"]
+    assert whats(base + "os.access('y', os.X_OK)\n", base) == ["`os.X_OK`", "`os.access`"]
 
 
 def test_uses_already_in_the_file_are_not_reported() -> None:

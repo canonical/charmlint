@@ -206,7 +206,9 @@ def test_check_tree_rejects_new_imports(repo: tuple[pathlib.Path, str]) -> None:
     (path / "tests/test_new.py").write_text("from subprocess import run\n")
     problems = staged_problems(repo)
     assert any("existing.py:2: `import os` isn't allowed in rule code" in p for p in problems)
-    assert any("test_new.py:1: `import subprocess` isn't allowed in tests" in p for p in problems)
+    assert any(
+        "test_new.py:1: `from subprocess import run` isn't allowed in tests" in p for p in problems
+    )
 
 
 def test_check_tree_rejects_source_that_does_not_parse(repo: tuple[pathlib.Path, str]) -> None:
