@@ -199,6 +199,12 @@ class Config:
     recall_sample: int = 40
 
 
+def models() -> list[str]:
+    """Every model the stages use, which is what the key proxy may forward."""
+    config = Config()
+    return sorted({v for k, v in dataclasses.asdict(config).items() if k.endswith("_model")})
+
+
 # Pin each model to its first-party provider: the cheap OpenRouter providers
 # serve these models at fp4, and routing between providers is the largest
 # source of run-to-run variation. `order` is not honoured reliably once other

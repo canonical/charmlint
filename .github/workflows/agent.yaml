@@ -253,14 +253,16 @@ jobs:
           # The pipeline stops itself at the budget; the proxy is the hard stop, with
           # room for the call in flight when the pipeline's own check passed.
           cap=$(python3 -c 'import os; print(float(os.environ["BUDGET"]) * 1.5)')
+          # The models the pipeline's stages use, from the pipeline itself, so
+          # the two can't disagree.
+          models=$(python3 -c 'import sys; sys.path.insert(0, "/opt/agent/pipeline"); import run; print(",".join(run.models()))')
           printf '%s\n' "$OPENROUTER_API_KEY" | sudo -u keyproxy python3 /opt/agent/pipeline/key_proxy.py \
-            --port 8787 --budget "$cap" --models "$MODELS" > "$RUNNER_TEMP/proxy.log" 2>&1 &
+            --port 8787 --budget "$cap" --models "$models" > "$RUNNER_TEMP/proxy.log" 2>&1 &
           for _ in $(seq 20); do curl -fsS -o /dev/null http://127.0.0.1:8787/api/v1/models && exit 0; sleep 1; done
           exit 1
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           BUDGET: ${{ vars.AGENT_BUDGET_USD || '8' }}
-          MODELS: ${{ vars.AGENT_MODELS || 'z-ai/glm-5.3,moonshotai/kimi-k2.7-code' }}
       - name: Run the pipeline
         run: |
           cd /srv/agent

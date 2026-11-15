@@ -61,7 +61,7 @@ The agent measures every rule over the same charm corpus that [corpus.md](corpus
    - `AGENT_ALLOWLIST`: GitHub logins whose labels and reviews count, separated by commas.
    - `AGENT_BOT`: the bot's login (`prints-charming-bot`).
    - `AGENT_BOT_NAME` and `AGENT_BOT_EMAIL`: the commit author for the bot's commits. Use the bot's `noreply` address.
-   - `AGENT_MAX_OPEN_PRS` (optional, default 2), `AGENT_BUDGET_USD` (optional, default 8; a hard issue costs $6-8) and `AGENT_MODELS` (optional, the OpenRouter models the proxy forwards, separated by commas).
+   - `AGENT_MAX_OPEN_PRS` (optional, default 2) and `AGENT_BUDGET_USD` (optional, default 8; a hard issue costs $6-8). The models each stage uses are set in `.github/agent/run.py`, and the key proxy forwards exactly those.
 5. Create the labels `agent`, `agent:plan-only`, `agent:running` and `agent:failed`.
 6. Check that the branch rules for the default branch require a review that the bot can't give, so its PRs can't be merged without a maintainer.
 7. Run the "Agent upkeep" workflow by hand once, to build the corpus.
