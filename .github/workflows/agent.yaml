@@ -74,6 +74,7 @@ jobs:
       issue: ${{ steps.trigger.outputs.issue }}
       mode: ${{ steps.trigger.outputs.mode }}
       start_sha: ${{ steps.trigger.outputs.start_sha }}
+      attempt: ${{ steps.trigger.outputs.attempt }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
         with:
@@ -106,7 +107,13 @@ jobs:
 
   agent:
     needs: triage
-    if: needs.triage.outputs.run == 'true'
+    # Only in the attempt triage ran in: "Re-run failed jobs" keeps triage's
+    # outputs from the first attempt, and would run this without its checks
+    # (who started it, the approval, the open-PR cap). "Re-run all jobs" runs
+    # triage again.
+    if: >-
+      needs.triage.outputs.run == 'true'
+      && needs.triage.outputs.attempt == format('{0}', github.run_attempt)
     runs-on: ubuntu-latest
     timeout-minutes: 180
     environment: agent-llm
@@ -197,6 +204,18 @@ jobs:
           sudo chown -R agent:agent /srv/agent/repo
           sudo chmod -R a+rX /opt/agent /srv/agent/in
           sudo chmod 700 "$HOME"
+          # The steps after the pipeline run commands as `runner` and root, so
+          # nothing on PATH may be `agent`'s to replace: not a directory, not
+          # one above it (sticky ones aside, where only an owner can rename),
+          # and not a file in it. The tool cache is the one to worry about.
+          IFS=: read -ra dirs <<< "$PATH"
+          for dir in "${dirs[@]}"; do
+            [ -d "$dir" ] || continue
+            sudo find "$dir" -maxdepth 1 ! -type l -perm -0002 -exec chmod o-w {} +
+            while dir=$(dirname "$dir") && [ "$dir" != / ]; do
+              [ -k "$dir" ] || sudo chmod o-w "$dir"
+            done
+          done
       # Everything the pipeline needs from the network is fetched now; after
       # this, `agent` can only reach the proxy.
       - name: Prepare the agent's Python environments
@@ -251,6 +270,20 @@ jobs:
             fail=1
           fi
           sudo iptables -D OUTPUT -d "$addr" -p tcp --dport 443 -j ACCEPT
+          # Nor can it put a command of its own on PATH, for a later step to
+          # run as `runner` (see the workspace step).
+          IFS=: read -ra dirs <<< "$PATH"
+          for dir in "${dirs[@]}"; do
+            [ -d "$dir" ] || continue
+            while :; do
+              if [ ! -k "$dir" ] && sudo -u agent test -w "$dir"; then
+                echo "::error::agent can write to $dir, which is on or above PATH"
+                fail=1
+              fi
+              [ "$dir" != / ] || break
+              dir=$(dirname "$dir")
+            done
+          done
           exit "$fail"
       - name: Start the key proxy
         run: |
@@ -305,6 +338,9 @@ jobs:
       - name: Collect the outputs
         if: always()
         run: |
+          # Only the system's own commands from here on, whatever the tool
+          # setup steps put on PATH.
+          export PATH=/usr/sbin:/usr/bin:/sbin:/bin
           cd /srv/agent
           sudo systemctl kill --signal=KILL agent-pipeline.service 2> /dev/null || true
           sudo pkill -KILL -u keyproxy || true
@@ -339,6 +375,7 @@ jobs:
     needs: [triage, agent]
     if: >-
       always()
+      && needs.triage.outputs.attempt == format('{0}', github.run_attempt)
       && (needs.triage.outputs.run == 'true' || needs.triage.outputs.notice == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
