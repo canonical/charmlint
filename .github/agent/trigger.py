@@ -345,14 +345,16 @@ def dispatched(event: dict, out: pathlib.Path) -> dict:
     if mode == "revise":
         # Started by queue_revision (or by hand); the review is what's checked.
         return revision(int(inputs["pr"]), int(inputs["review"]), out)
-    if not allowed(os.environ.get("GITHUB_ACTOR")):
-        raise Skip("dispatched by someone not on the allowlist")
+    # A re-run keeps the original run's GITHUB_ACTOR, and approval is as of
+    # now, so whoever started this attempt has to be on the allowlist too.
+    actor = os.environ.get("GITHUB_ACTOR")
+    triggering = os.environ.get("GITHUB_TRIGGERING_ACTOR") or actor
+    if not (allowed(actor) and allowed(triggering)):
+        raise Skip("dispatched or re-run by someone not on the allowlist")
     number = int(inputs["issue"])
     issue = gh(f"repos/{REPO}/issues/{number}")
     now = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return issue_run(
-        number, mode, out, approved={"issue": issue, "at": now, "by": os.environ["GITHUB_ACTOR"]}
-    )
+    return issue_run(number, mode, out, approved={"issue": issue, "at": now, "by": triggering})
 
 
 def main() -> int:
