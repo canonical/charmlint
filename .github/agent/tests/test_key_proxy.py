@@ -178,3 +178,33 @@ def test_headers_the_proxy_sets_go_upstream_once(monkeypatch: pytest.MonkeyPatch
     assert names.count("content-type") == 1
     assert names.count("accept-encoding") == 1
     assert headers["Accept-Encoding"] == "identity"
+
+
+def test_a_request_once_the_budget_is_spent_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    import http.client
+    import http.server
+    import threading
+
+    def upstream(*_: object, **__: object) -> None:
+        raise AssertionError("nothing should be sent upstream")
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), key_proxy.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    client = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    monkeypatch.setattr(http.client, "HTTPSConnection", upstream)
+    monkeypatch.setattr(key_proxy.State, "budget", 10.0)
+    monkeypatch.setattr(key_proxy.State, "models", frozenset({"a/b"}))
+    monkeypatch.setattr(key_proxy.State, "spent", 9.5)
+    monkeypatch.setattr(key_proxy.State, "reserved", 0.5)
+    try:
+        client.request(
+            "POST",
+            "/api/v1/chat/completions",
+            body=json.dumps({"model": "a/b", "messages": []}),
+            headers={"Content-Type": "application/json"},
+        )
+        assert client.getresponse().status == 402
+    finally:
+        client.close()
+        server.shutdown()
+    assert key_proxy.State.reserved == 0.5

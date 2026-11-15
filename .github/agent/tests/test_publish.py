@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import pathlib
 import subprocess
 
@@ -271,3 +272,36 @@ def test_the_plan_a_pr_was_built_from_is_only_reused_by_a_revision(
 @pytest.mark.parametrize("url", ["http://[::1]:8080/x", "https://[host]/path", "https://[::1"])
 def test_clean_text_removes_a_link_urlsplit_cannot_read(url: str) -> None:
     assert publish.clean_text(f"see {url} for more").startswith("see (link removed)")
+
+
+def test_an_outcome_the_mode_cannot_produce_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    (tmp_path / "meta.json").write_text('{"outcome": "revision"}')
+    failed = []
+    monkeypatch.setattr(publish, "fail", lambda *a, **k: failed.append((a, k)))
+    args = argparse.Namespace(agent=tmp_path, agent_result="success")
+    publish.publish(args, {"issue": 1, "mode": "full"})
+    assert failed == [((1, "`revision`."), {"issue": True})]
+
+
+def test_a_branch_that_moved_during_the_run_is_refused(tmp_path: pathlib.Path) -> None:
+    origin, repo = tmp_path / "origin.git", tmp_path / "repo"
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    git(tmp_path, "clone", "-q", str(origin), str(repo))
+    git(repo, "checkout", "-qb", "main")
+    (repo / "a.txt").write_text("a\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "start")
+    start = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "push", "-q", "origin", "main")
+    git(repo, "checkout", "-qb", "agent/issue-1")
+    (repo / "a.txt").write_text("b\n")
+    git(repo, "commit", "-qam", "someone pushed")
+    git(repo, "push", "-q", "origin", "agent/issue-1")
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    (agent / "publish.diff").write_text("not applied\n")
+    trig = {"start_sha": start, "branch": "agent/issue-1", "mode": "revise"}
+    with pytest.raises(RuntimeError, match="the branch moved"):
+        publish.apply(repo, agent, trig, "msg")
