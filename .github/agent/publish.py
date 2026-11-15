@@ -296,7 +296,14 @@ def pr_title(agent: pathlib.Path) -> str:
 def pr_body(agent: pathlib.Path, meta: dict, issue: int) -> str:
     body = clean_text((agent / "pr.md").read_text().strip()) if (agent / "pr.md").exists() else ""
     body = re.sub(r"\n*#\d+\s*$", "", body.strip())  # what's left of a closing line
-    return body[: MAX_BODY - 2000] + footer(meta) + f"\nFixes #{issue}\n"
+    # Said here as well as in the agent's text, which might leave it out.
+    unreviewed = (
+        "\n\n**Not fully reviewed:** at least one of the agent's review passes "
+        "produced no usable output, so this change has had less checking than usual."
+        if meta.get("unreviewed")
+        else ""
+    )
+    return body[: MAX_BODY - 2000] + unreviewed + footer(meta) + f"\nFixes #{issue}\n"
 
 
 def publish(args: argparse.Namespace, trigger: dict) -> None:
@@ -357,7 +364,7 @@ def publish(args: argparse.Namespace, trigger: dict) -> None:
             "-f",
             f"body={body}",
             "-F",
-            f"draft={'true' if meta.get('draft') else 'false'}",
+            f"draft={'true' if meta.get('draft') or meta.get('unreviewed') else 'false'}",
         )
         set_labels(issue, remove=(LABEL,))
     else:  # revision
