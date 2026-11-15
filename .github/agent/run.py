@@ -428,16 +428,14 @@ class Pipeline:
                 return 3
             return self._implement(plan_md)
         log("plan")
+        before = self.state()
         self.pi(
             "01-plan",
             self.config.plan_model,
             self.prompt("plan", task_md=self.task_md, corpus=self.config.corpus, out=plan_md),
             tools="read,grep,find,ls,write",
         )
-        if git(self.repo, "status", "--porcelain").strip():
-            log("plan stage edited the repository; discarding")
-            git(self.repo, "checkout", "--", ".")
-            git(self.repo, "clean", "-fdq")
+        self.restore(before, "the plan stage")
         if not plan_md.exists():
             self.write_meta(outcome="no-plan")
             return 1
@@ -623,6 +621,7 @@ class Pipeline:
         review_md = self.work / "remaining-review.md"
         review_md.write_text("\n".join(remaining) or "None")
         pr_md = self.work / "pr.md"
+        before = self.state()
         self.pi(
             "07-pr",
             self.config.pr_model,
@@ -646,10 +645,7 @@ class Pipeline:
                 f"Adds the rule planned in #{self.task['issue']}.\n\n{counts_md.read_text()}\n\n"
                 f"Fixes #{self.task['issue']}\n"
             )
-        if git(self.repo, "status", "--porcelain").strip() != self.status_after_change:
-            log("PR stage edited the repository; restoring")
-            git(self.repo, "checkout", "--", ".")
-            git(self.repo, "clean", "-fdq")
+        self.restore(before, "the PR stage")
         existing = set(
             re.findall(
                 r"\b[A-Z]+-\d{3}\b", git(self.repo, "show", f"{self.base_sha}:docs/rules.md")
@@ -804,7 +800,7 @@ class Pipeline:
     def trim(self, plan_md: pathlib.Path, classified: list[dict]) -> list[dict]:
         """Have a fresh session cut the change down; keep the cut only if nothing observable changed."""
         log("trim")
-        before_tree = self.snapshot()
+        before_state = self.state()
         before_files = set(self.changed_files())
         before_findings = finding_keys(self.cand_findings)
         before_added = added_lines(self.diff_text())
@@ -843,9 +839,7 @@ class Pipeline:
             "reason": reason,
         }
         if reason:
-            log(f"  trim rejected ({reason}); restoring")
-            git(self.repo, "read-tree", "--reset", "-u", before_tree)
-            git(self.repo, "clean", "-fdq")
+            self.restore(before_state, f"the rejected trim ({reason})")
             self.trim_result["after"] = before_added
             return classified
         log(
@@ -1010,6 +1004,7 @@ class Pipeline:
         ):
             out = self.work / stage / f"review-{checklist.split('-')[1]}.json"
             out.parent.mkdir(parents=True, exist_ok=True)
+            before = self.state()
             self.pi(
                 stage,
                 self.config.review_model,
@@ -1025,10 +1020,7 @@ class Pipeline:
                 ),
                 tools="read,bash,grep,find,ls,write",
             )
-            if git(self.repo, "status", "--porcelain").strip() != self.status_after_change:
-                log("reviewer edited the repository; restoring")
-                git(self.repo, "checkout", "--", ".")
-                git(self.repo, "clean", "-fdq")
+            self.restore(before, "a reviewer")
             try:
                 findings = review_findings(self.read_json(stage, out))
             except (OSError, json.JSONDecodeError, KeyError, TypeError):
@@ -1060,6 +1052,7 @@ class Pipeline:
         response_md = stage_dir / "response.md"
         response_md.write_text(response or "(no response text)")
         out = stage_dir / "rereview.json"
+        before = self.state()
         self.pi(
             stage,
             self.config.review_model,
@@ -1073,10 +1066,7 @@ class Pipeline:
             ),
             tools="read,bash,grep,find,ls,write",
         )
-        if git(self.repo, "status", "--porcelain").strip() != self.status_after_change:
-            log("reviewer edited the repository; restoring")
-            git(self.repo, "checkout", "--", ".")
-            git(self.repo, "clean", "-fdq")
+        self.restore(before, "the re-reviewer")
         blocking = deterministic_review(self.own_diff(), self.repo, self.start_sha)
         try:
             result = self.read_json(stage, out)
@@ -1112,6 +1102,7 @@ class Pipeline:
         log("critique")
         out = self.work / "01-critique" / "critique.json"
         out.parent.mkdir(parents=True, exist_ok=True)
+        before = self.state()
         self.pi(
             "01-critique",
             self.config.critique_model,
@@ -1124,9 +1115,7 @@ class Pipeline:
             ),
             tools="read,grep,find,ls,write",
         )
-        if git(self.repo, "status", "--porcelain").strip():
-            git(self.repo, "checkout", "--", ".")
-            git(self.repo, "clean", "-fdq")
+        self.restore(before, "the critique")
         if not out.exists():
             log("critique: no output")
             return
@@ -1140,6 +1129,7 @@ class Pipeline:
             return
         log(f"critique: {len(points)} points")
         before = plan_md.read_text()
+        repo_before = self.state()
         self.pi(
             "01-plan",
             self.config.plan_model,
@@ -1147,9 +1137,7 @@ class Pipeline:
             tools="read,grep,find,ls,write",
             resume=True,
         )
-        if git(self.repo, "status", "--porcelain").strip():
-            git(self.repo, "checkout", "--", ".")
-            git(self.repo, "clean", "-fdq")
+        self.restore(repo_before, "the plan revision")
         if not plan_md.exists() or not all(
             h in plan_md.read_text() for h in ("## Verdict", "## What it matches")
         ):
@@ -1173,6 +1161,20 @@ class Pipeline:
                 timeout=10 * 60,
             )
             return json.loads(out.read_text())
+
+    def state(self) -> tuple[str, str]:
+        """HEAD and the working tree, to put back after a stage that shouldn't change them."""
+        return git(self.repo, "rev-parse", "HEAD").strip(), self.snapshot()
+
+    def restore(self, before: tuple[str, str], what: str) -> None:
+        """Undo whatever WHAT did to the repository, including commits, stashes and the index."""
+        if self.state() == before:
+            return
+        log(f"{what} changed the repository; restoring")
+        head, tree = before
+        git(self.repo, "reset", "-q", "--hard", head)
+        git(self.repo, "read-tree", "--reset", "-u", tree)
+        git(self.repo, "clean", "-fdq")
 
     def snapshot(self) -> str:
         """A tree object for the current working state, to diff a fix against."""
@@ -1203,7 +1205,6 @@ class Pipeline:
     def write_diff(self) -> pathlib.Path:
         path = self.work / "change.diff"
         path.write_text(self.diff_text())
-        self.status_after_change = git(self.repo, "status", "--porcelain").strip()
         return path
 
     def commit(self, title: str, *, fixes: bool = True) -> None:
