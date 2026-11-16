@@ -508,3 +508,42 @@ def test_a_run_that_does_not_stop_says_nothing_about_stopping(
     pipeline = stopping(tmp_path, monkeypatch, "")
     assert pipeline.stopped == ""
     assert '"stopped": ""' in (pipeline.work / "meta.json").read_text()
+
+
+def recall_row(text: str, label: str = "MISSED", path: str = "src/client.py") -> dict:
+    return {
+        "charm": "c",
+        "path": path,
+        "line": 10,
+        "text": text,
+        "label": label,
+        "reason": "r",
+        "pattern": "p",
+    }
+
+
+def finding(line: int, path: str = "src/client.py") -> dict:
+    return {"charm": "c", "path": path, "line": line, "rule_id": "R-001"}
+
+
+@pytest.mark.parametrize("text", ["import time", "  from time import sleep", "import time as t"])
+def test_a_missed_import_in_a_reported_file_is_ok(text: str) -> None:
+    row = run.overrule_import_miss(recall_row(text), [finding(82), finding(90)])
+    assert row["label"] == "OK"
+    assert row["reason"] == "an import; the rule reports this file at lines 82, 90"
+
+
+@pytest.mark.parametrize(
+    ("row", "flagged"),
+    [
+        # The rule reports nothing in this file, so the import may be the only sign.
+        (recall_row("import time"), [finding(82, path="src/other.py")]),
+        # Not an import: the model's judgement stands.
+        (recall_row("time.sleep(1)"), [finding(82)]),
+        (recall_row("important = 1"), [finding(82)]),
+        # Only a miss is overruled.
+        (recall_row("import time", label="DEFERRED"), [finding(82)]),
+    ],
+)
+def test_other_recall_labels_stand(row: dict, flagged: list[dict]) -> None:
+    assert run.overrule_import_miss(row, flagged) == row
