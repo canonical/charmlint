@@ -8,10 +8,16 @@ lines around it, the matching line marked `>>`). They come from a broad
 grep, and the rule flagged nothing near any of them. The corpus is at
 `{corpus}` if you need more context: open `{corpus}/<charm>/<path>`.
 
+Judge each candidate by its own line, not by the file it's in. A line
+that only supports the problem, such as the import a call needs, isn't a
+miss even when the file has the problem elsewhere: the rule reports the
+line that has it, and if that line isn't among the candidates, it isn't
+yours to judge.
+
 For each candidate, decide:
 
-- `MISSED` - this is a case the rule, as its plan and docstring describe
-  it, should report, and it doesn't.
+- `MISSED` - this line is a case the rule, as its plan and docstring
+  describe it, should report on this line, and it doesn't.
 - `DEFERRED` - it is the problem, but the plan explicitly leaves this way
   of writing it for later. Say which part of the plan.
 - `OK` - the rule is right not to report it: it isn't the problem (a

@@ -849,6 +849,7 @@ class Pipeline:
             }
             for h in sample
         ]
+        labelled = [overrule_import_miss(r, flagged) for r in labelled]
         (self.work / "recall.jsonl").write_text("".join(json.dumps(r) + "\n" for r in labelled))
         misses = [r for r in labelled if r["label"] == "MISSED"]
         self.deferred = [r for r in labelled if r["label"] == "DEFERRED"]
@@ -1421,6 +1422,37 @@ def loose_words(pattern: str) -> list[str]:
         return []
     literal = re.sub(r"\w*\[(?:\\.|[^\]])*\]\w*|\\.|\(\?[^)]*\)", " ", pattern)
     return sorted(set(re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", literal)))
+
+
+IMPORT_LINE = re.compile(r"^\s*(?:from\s+[\w.]+\s+import\b|import\s+[\w.])")
+
+
+def overrule_import_miss(row: dict, flagged: list[dict]) -> dict:
+    """ROW as OK if it's a "miss" on an import in a file the rule already reports.
+
+    A recall pattern for the import a call needs matches the import line,
+    and the model can label that line by what the file does: the file
+    calls it, so it's a miss. The calls are what the rule reports, and
+    an import isn't a call, so while the rule reports something in that
+    file the import itself isn't missed. Checked on every recall, not
+    cached: the findings change with each fix.
+    """
+    if row.get("label") != "MISSED" or not IMPORT_LINE.match(str(row.get("text", ""))):
+        return row
+    lines = sorted(
+        f["line"]
+        for f in flagged
+        if (f["charm"], f["path"]) == (row["charm"], row["path"]) and f.get("line") is not None
+    )
+    if not lines:
+        return row
+    return {
+        **row,
+        "label": "OK",
+        "reason": f"an import; the rule reports this file at line{'s' * (len(lines) > 1)} "
+        + ", ".join(map(str, lines)),
+        "pattern": "import in a reported file",
+    }
 
 
 def recall_key(h: dict) -> tuple:
