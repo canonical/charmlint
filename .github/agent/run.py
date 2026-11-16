@@ -545,8 +545,10 @@ class Pipeline:
                 self.write_meta(outcome="checks-failed")
                 return 1
             classified = self.evaluate()
-        # Labels are cached and the candidates can only shrink, so this costs nothing.
-        self.misses = self.recall(plan_md, classified)
+        else:
+            # The rounds ran out, so the last fix hasn't been checked for misses.
+            misses = self.recall(plan_md, classified)
+        self.misses = misses
 
         if trim:
             classified = self.trim(plan_md, classified)
