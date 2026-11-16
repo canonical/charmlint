@@ -28,6 +28,7 @@ jobs:
             objects.githubusercontent.com:443
             raw.githubusercontent.com:443
             release-assets.githubusercontent.com:443
+            releases.astral.sh:443
             opendev.org:443
             git.launchpad.net:443
             pypi.org:443
@@ -54,6 +55,9 @@ jobs:
           # Pinned so the charm list only changes in a reviewed commit. Dependabot
           # doesn't update it: bump it by hand when hyrum's list moves on.
           HYRUM_LIST_SHA: 592b85093a6331a96617c707f2e2e3fe652ad262
+          # LFS objects are media the snapshot replaces with placeholders, and
+          # their host isn't allowed, so a smudge fails the whole clone.
+          GIT_LFS_SKIP_SMUDGE: "1"
       - name: Snapshot and pack
         run: |
           python3 .github/agent/snapshot_corpus.py --source "$RUNNER_TEMP/charms" --dest "$RUNNER_TEMP/corpus"
