@@ -18,6 +18,8 @@ At most `AGENT_MAX_OPEN_PRS` agent PRs are open or being made at a time. An issu
 
 The workflow can also be run by hand, with an issue number, from the Actions tab. Re-running a run doesn't help: a failure removes the `agent` label, so a re-run of a labelled run finds nothing to do, and "Re-run failed jobs" doesn't run the agent and publish jobs again, because they only run in the attempt that triage ran in, so that each run is checked. Label the issue again, or run the workflow by hand.
 
+A run that runs out of budget or time once its change has passed the checks and the corpus rounds still opens a PR, from the last version of the change that passed them. The first item in the PR's open list then says which steps didn't happen, such as the review or the re-review of a fix.
+
 When a run fails, the agent comments on the issue with a link to the run, removes `agent` and adds `agent:failed`. Every stage's prompt, transcript and output is kept as an artefact of the run for 90 days. If the publish job itself is cancelled or times out, `agent:running` stays on the issue and nothing will run it again; remove that label by hand.
 
 ## How it runs
@@ -63,7 +65,7 @@ The agent measures every rule over the same charm corpus that [corpus.md](corpus
    - `AGENT_ALLOWLIST`: GitHub logins whose labels and reviews count, separated by commas.
    - `AGENT_BOT`: the bot's login (`prints-charming-bot`).
    - `AGENT_BOT_NAME` and `AGENT_BOT_EMAIL`: the commit author for the bot's commits. Use the bot's `noreply` address.
-   - `AGENT_MAX_OPEN_PRS` (optional, default 2) and `AGENT_BUDGET_USD` (optional, default 8; a hard issue costs $6-8). The models each stage uses are set in `.github/agent/run.py`, and the key proxy forwards exactly those.
+   - `AGENT_MAX_OPEN_PRS` (optional, default 2) and `AGENT_BUDGET_USD` (optional, default 8; a hard issue costs $6-9, so give it more if its runs stop before the review fixes). The models each stage uses are set in `.github/agent/run.py`, and the key proxy forwards exactly those.
    - `AGENT_MIN_CHARMS` (optional, default 600): the fewest charms a weekly corpus snapshot may have before it's saved; a snapshot with fewer means clones failed.
 5. Create the labels `agent`, `agent:plan-only`, `agent:running`, `agent:failed` and `needs design`.
 6. Check that the branch rules for the default branch require a review that the bot can't give, so its PRs can't be merged without a maintainer, and add a ruleset for `agent/issue-*` that blocks force-pushes, so the bot can't rewrite a maintainer's commits on its own branches. (A revision already stops if its branch moved while the agent worked, so this is a second line of defence.) Canonical manages this repository's branch rules centrally rather than in its settings, so both are a change there.

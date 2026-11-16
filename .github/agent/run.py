@@ -14,13 +14,13 @@ plus ``plan.md``, ``pr.md`` (or ``revision-comment.md``), ``title.txt``,
 ``publish.diff`` (from REPO's starting commit to the result) and
 ``meta.json``. Leaves the change committed in REPO.
 
-``--plan-only`` stops after the plan and its critique; ``--plan`` skips
-both and uses a plan made earlier (posted on the issue by a plan-only run).
+``--plan-only`` stops after the plan (and its critique, when that's on);
+``--plan`` skips both and uses a plan made earlier (posted on the issue by a plan-only run).
 
 Exit codes: 0 a PR or a revision, 3 the plan says out of scope or needs
 design, or ``--plan-only``, 1 the pipeline failed.
 
-Stages: plan (+ critique) → implement (+ deterministic checks, bounded fix
+Stages: plan (+ critique, off by default) → implement (+ deterministic checks, bounded fix
 rounds) → corpus run (deterministic) → classify and recall (+ FP and miss fix
 rounds) → trim → review (two focused reviewers + deterministic checks, fix
 rounds checked by re-review) → PR text. Each model call is a fresh pi process;
@@ -198,7 +198,9 @@ class Config:
     trim_model: str = os.environ.get("CLA_TRIM_MODEL", "moonshotai/kimi-k2.7-code")
     # The plan is checked by the other family, so its blind spots differ.
     critique_model: str = os.environ.get("CLA_CRITIQUE_MODEL", "z-ai/glm-5.3")
-    critique: bool = os.environ.get("CLA_CRITIQUE", "1") != "0"
+    # Off by default: in its first runs on real issues it never raised a
+    # point, at about $1 each, which a run's budget needs for review fixes.
+    critique: bool = os.environ.get("CLA_CRITIQUE", "0") != "0"
     trim: bool = os.environ.get("CLA_TRIM", "1") != "0"
     thinking: str = os.environ.get("CLA_THINKING", "high")
     corpus: pathlib.Path = pathlib.Path(
@@ -227,7 +229,7 @@ def models(config: Config | None = None) -> list[str]:
 # What a run that stops after the corpus rounds publishes without, by where it stopped.
 STOPPED = {
     "before-review": "before the agent's review, so the change hasn't been reviewed",
-    "during-fix": "while the agent was addressing the review, so that fix is left out",
+    "during-fix": "before the agent finished addressing the review",
     "before-rereview": "before the agent's last review fix was re-reviewed",
     "before-recall": "before the review's fixes were checked for missed cases",
 }
@@ -627,7 +629,7 @@ class Pipeline:
         counts_md.write_text(counts_block(self.corpus_summary(), classified))
         remaining = (
             ([f"- {self.stopped}"] if self.stopped else [])
-            + [f"- {b['file']}:{b.get('line')}: {b['problem']}" for b in blocking]
+            + [f"- {where(b)}: {b['problem']}" for b in blocking]
             + [
                 f"- Possible miss, not flagged: {m['charm']}/{m['path']}:{m['line']}: {m['reason']}"
                 for m in self.misses
@@ -1119,7 +1121,7 @@ class Pipeline:
         previous_md = stage_dir / "previous.md"
         previous_md.write_text(
             "\n".join(
-                f"{i}. [{b['file']}:{b.get('line')}] {b['problem']} Suggested fix: {b.get('fix', '')}"
+                f"{i}. [{where(b)}] {b['problem']} Suggested fix: {b.get('fix', '')}"
                 for i, b in enumerate(previous)
             )
         )
@@ -1855,12 +1857,15 @@ def critique_feedback(points: list[dict], plan_md: pathlib.Path) -> str:
     )
 
 
+def where(finding: dict) -> str:
+    """A review finding's file, and its line if it has one."""
+    line = finding.get("line")
+    return finding["file"] + (f":{line}" if line is not None else "")
+
+
 def review_feedback(blocking: list[dict], shoulds: list[dict]) -> str:
     def rows(findings: list[dict]) -> str:
-        return "\n".join(
-            f"- {b['file']}:{b.get('line')}: {b['problem']} Fix: {b.get('fix', '')}"
-            for b in findings
-        )
+        return "\n".join(f"- {where(b)}: {b['problem']} Fix: {b.get('fix', '')}" for b in findings)
 
     text = (
         "The files may have changed since your last turn, so read them again before editing.\n\n"
