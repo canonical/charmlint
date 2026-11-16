@@ -349,3 +349,159 @@ def test_run_bounded_stops_a_command_that_hangs(tmp_path: pathlib.Path) -> None:
     rc, output = run.run_bounded(["sleep", "30"], tmp_path, timeout=0.5)
     assert rc == -1
     assert "timed out" in output
+
+
+class Stopping(run.Pipeline):
+    """A pipeline whose stages are stand-ins: each fix edits ``rule.py``, and the
+    stage named in ``stop_at`` runs out of budget."""
+
+    def __init__(self, repo: pathlib.Path, work: pathlib.Path, stop_at: str, rounds: int = 2):
+        self.repo, self.work, self.stop_at = repo, work, stop_at
+        self.config = run.Config(review_rounds=rounds)
+        self.task = {"issue": 7}
+        self.calls, self.cost = [], 0.0
+        self.misses, self.deferred, self.shoulds, self.unreviewed, self.crashes = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
+        self.cand_findings, self.feedback, self.stopped = [], None, ""
+        self.start_sha = self.base_sha = git_out(repo, "rev-parse", "HEAD")
+        self.fixes = 0
+        self.task_md = work / "task.md"
+        self.task_md.write_text("task")
+
+    def stage(self, name: str) -> None:
+        if name == self.stop_at:
+            raise run.BudgetExceeded(f"spent $8.55 before {name}")
+
+    def pi(self, stage: str, *_args: object, **_kwargs: object) -> str:
+        self.stage(stage)
+        return ""
+
+    def recall_grep(self, plan_md: pathlib.Path) -> list[dict]:
+        return []
+
+    def recall(self, plan_md: pathlib.Path, classified: list[dict]) -> list[dict]:
+        self.stage("recall")
+        return []
+
+    def evaluate(self) -> list[dict]:
+        # The fix's corpus results are written before its findings are classified.
+        (self.work / "findings.summary.json").write_text(
+            f'{{"charms": {10 + self.fixes}, "fatal": 0}}'
+        )
+        self.stage(f"classify-{self.fixes}")
+        classified = [
+            {
+                "rule_id": "R-001",
+                "change": "added",
+                "label": "TP",
+                "severity": "warning",
+                "charm": "c",
+                "line": n,
+            }
+            for n in range(self.fixes + 1)
+        ]
+        (self.work / "classified.jsonl").write_text("")
+        return classified
+
+    def trim(self, plan_md: pathlib.Path, classified: list[dict]) -> list[dict]:
+        self.stage("trim")
+        return classified
+
+    def review(self, stage: str) -> list[dict]:
+        self.stage(stage)
+        return [{"file": "rule.py", "line": 1, "problem": "Wrong."}]
+
+    def review_fix(self, feedback: str) -> str | None:
+        self.fixes += 1
+        (self.repo / "rule.py").write_text(f"fix = {self.fixes}\n")
+        self.stage(f"fix-{self.fixes}")
+        return "Fixed."
+
+    def rereview(
+        self, stage: str, previous: list[dict], response: str, before_fix: str
+    ) -> list[dict]:
+        self.stage(stage)
+        return [{"file": "rule.py", "line": 2, "problem": "Still wrong."}]
+
+
+def git_out(repo: pathlib.Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def stopping(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, stop_at: str) -> Stopping:
+    repo, work = tmp_path / "repo", tmp_path / "work"
+    (repo / "docs").mkdir(parents=True)
+    work.mkdir()
+    (repo / "docs" / "rules.md").write_text("# Rules\n")
+    git_out(repo, "init", "-q")
+    git_out(repo, "config", "user.name", "t")
+    git_out(repo, "config", "user.email", "t@t")
+    git_out(repo, "add", "-A")
+    git_out(repo, "commit", "-q", "-m", "base")
+    (repo / "rule.py").write_text("fix = 0\n")  # the change after the corpus rounds
+    monkeypatch.setattr(run, "export_tree", lambda *_: None)
+    monkeypatch.setattr(run, "corpus_run", lambda *_: [])
+    pipeline = Stopping(repo, work, stop_at)
+    plan = work / "01-plan" / "plan.md"
+    plan.parent.mkdir()
+    plan.write_text("- ID: `R-001`\n- Name: `a-rule`\n")
+    assert pipeline._evaluate_and_review(plan, trim=True) == 0
+    assert git_out(repo, "status", "--porcelain") == ""
+    return pipeline
+
+
+def test_a_run_that_stops_before_the_rereview_publishes_the_fix_unchecked(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipeline = stopping(tmp_path, monkeypatch, "06-re-review-1")
+    assert git_out(pipeline.repo, "show", "HEAD:rule.py") == "fix = 1"
+    body = (pipeline.work / "pr.md").read_text()
+    assert (
+        "The run stopped before the agent's last review fix was re-reviewed (spent $8.55 before 06-re-review-1)."
+        in body
+    )
+    assert "rule.py:1: Wrong. (addressed by the last fix, not re-reviewed)" in body
+    assert '"charms": 11' in (pipeline.work / "findings.summary.json").read_text()
+    meta = (pipeline.work / "meta.json").read_text()
+    assert '"outcome": "pr"' in meta
+    assert "re-reviewed" in meta
+
+
+def test_a_run_that_stops_before_a_fix_is_classified_leaves_the_fix_out(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipeline = stopping(tmp_path, monkeypatch, "classify-2")
+    # The second fix's corpus run finished but its classification didn't, so
+    # the PR is the first fix with the first fix's corpus results.
+    assert git_out(pipeline.repo, "show", "HEAD:rule.py") == "fix = 1"
+    assert '"charms": 11' in (pipeline.work / "findings.summary.json").read_text()
+    body = (pipeline.work / "pr.md").read_text()
+    assert "while the agent was addressing the review, so that fix is left out" in body
+    assert "rule.py:2: Still wrong." in body
+
+
+def test_a_run_that_stops_before_the_review_says_it_wasnt_reviewed(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipeline = stopping(tmp_path, monkeypatch, "05-review")
+    assert git_out(pipeline.repo, "show", "HEAD:rule.py") == "fix = 0"
+    assert pipeline.unreviewed == list(run.REVIEW_FOCUSES)
+    assert (
+        "before the agent's review, so the change hasn't been reviewed"
+        in (pipeline.work / "pr.md").read_text()
+    )
+
+
+def test_a_run_that_does_not_stop_says_nothing_about_stopping(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipeline = stopping(tmp_path, monkeypatch, "")
+    assert pipeline.stopped == ""
+    assert '"stopped": ""' in (pipeline.work / "meta.json").read_text()

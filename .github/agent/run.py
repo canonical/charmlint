@@ -224,6 +224,19 @@ def models(config: Config | None = None) -> list[str]:
     return sorted({v for k, v in dataclasses.asdict(config).items() if k.endswith("_model")})
 
 
+# What a run that stops after the corpus rounds publishes without, by where it stopped.
+STOPPED = {
+    "before-review": "before the agent's review, so the change hasn't been reviewed",
+    "during-fix": "while the agent was addressing the review, so that fix is left out",
+    "before-rereview": "before the agent's last review fix was re-reviewed",
+    "before-recall": "before the review's fixes were checked for missed cases",
+}
+REVIEW_FOCUSES = {
+    "correctness": "checklist-correctness",
+    "tests and conventions": "checklist-conventions",
+}
+
+
 class BudgetExceeded(Exception):
     pass
 
@@ -264,6 +277,7 @@ class Pipeline:
         self.shoulds: list[dict] = []
         self.unreviewed: list[str] = []  # review focuses whose reviewer produced nothing usable
         self.crashes: list[dict] = []  # charms charmlint now crashes on
+        self.stopped = ""  # what the run left undone when it stopped after the corpus rounds
         self.started = time.monotonic()
         self.agent_dir = self.work / "pi-agent"
         self._setup_pi()
@@ -550,38 +564,70 @@ class Pipeline:
             misses = self.recall(plan_md, classified)
         self.misses = misses
 
-        if trim:
-            classified = self.trim(plan_md, classified)
+        # The change has passed the checks and the corpus rounds by now, so
+        # running out of budget or time from here publishes the last state
+        # that passed them, saying what didn't happen, rather than nothing.
+        good = self.checkpoint(classified)
+        blocking: list[dict] = []
+        stop = "before-review"
+        try:
+            if trim:
+                classified = self.trim(plan_md, classified)
+                good = self.checkpoint(classified)
 
-        log("review")
-        reviewed = self.snapshot()
-        blocking = self.review("05-review")
-        # The first fix round also gets the "should" findings: a maintainer
-        # would ask for them too. Only blocking ones are re-checked.
-        if not blocking and self.shoulds:
-            log(f"review fix round 0: {len(self.shoulds)} should findings")
-            if self.review_fix(review_feedback([], self.shoulds)) is not None:
+            log("review")
+            reviewed = self.snapshot()
+            blocking = self.review("05-review")
+            stop = "during-fix"
+            # The first fix round also gets the "should" findings: a maintainer
+            # would ask for them too. Only blocking ones are re-checked.
+            if not blocking and self.shoulds:
+                log(f"review fix round 0: {len(self.shoulds)} should findings")
+                if self.review_fix(review_feedback([], self.shoulds)) is not None:
+                    classified = self.evaluate()
+                    good = self.checkpoint(classified)
+            for round_ in range(self.config.review_rounds):
+                if not blocking:
+                    break
+                log(f"review fix round {round_ + 1}: {len(blocking)} blocking findings")
+                before_fix = self.snapshot()
+                shoulds = self.shoulds if round_ == 0 else []
+                stop = "during-fix"
+                response = self.review_fix(review_feedback(blocking, shoulds))
+                if response is None:
+                    break  # what's still blocking is listed as open
                 classified = self.evaluate()
-        for round_ in range(self.config.review_rounds):
-            if not blocking:
-                break
-            log(f"review fix round {round_ + 1}: {len(blocking)} blocking findings")
-            before_fix = self.snapshot()
-            shoulds = self.shoulds if round_ == 0 else []
-            response = self.review_fix(review_feedback(blocking, shoulds))
-            if response is None:
-                break  # what's still blocking is listed as open
-            classified = self.evaluate()
-            blocking = self.rereview(f"06-re-review-{round_ + 1}", blocking, response, before_fix)
-        if self.snapshot() != reviewed:
-            # The review's fixes changed the rule, so what it misses may have too.
-            self.misses = self.recall(plan_md, classified)
+                good = self.checkpoint(classified)
+                stop = "before-rereview"
+                blocking = self.rereview(
+                    f"06-re-review-{round_ + 1}", blocking, response, before_fix
+                )
+            stop = "before-recall"
+            if self.snapshot() != reviewed:
+                # The review's fixes changed the rule, so what it misses may have too.
+                self.misses = self.recall(plan_md, classified)
+            stop = ""
+        except BudgetExceeded as e:
+            log(f"stopped {stop.replace('-', ' ')}: {e}; publishing the last change that passed")
+            classified = self.roll_back(good)
+            self.stopped = f"The run stopped {STOPPED[stop]} ({e})."
+            if stop == "before-review":
+                self.unreviewed = list(dict.fromkeys([*self.unreviewed, *REVIEW_FOCUSES]))
+            elif stop == "before-rereview":
+                blocking = [
+                    {
+                        **b,
+                        "problem": b["problem"] + " (addressed by the last fix, not re-reviewed)",
+                    }
+                    for b in blocking
+                ]
 
         diff = self.write_diff()
         counts_md = self.work / "counts.md"
         counts_md.write_text(counts_block(self.corpus_summary(), classified))
         remaining = (
-            [f"- {b['file']}:{b.get('line')}: {b['problem']}" for b in blocking]
+            ([f"- {self.stopped}"] if self.stopped else [])
+            + [f"- {b['file']}:{b.get('line')}: {b['problem']}" for b in blocking]
             + [
                 f"- Possible miss, not flagged: {m['charm']}/{m['path']}:{m['line']}: {m['reason']}"
                 for m in self.misses
@@ -615,6 +661,7 @@ class Pipeline:
                 misses=self.misses,
                 deferred=self.deferred,
                 labels=count_labels(classified),
+                stopped=self.stopped,
             )
             return 0
 
@@ -635,6 +682,8 @@ class Pipeline:
         # The change has passed everything by now, and the PR text has a
         # fallback, so running out of budget or time here doesn't discard it.
         try:
+            if self.stopped:
+                raise BudgetExceeded("the run has already stopped")
             self.pi(
                 "07-pr",
                 self.config.pr_model,
@@ -658,6 +707,7 @@ class Pipeline:
             log("PR stage wrote no pr.md; using the counts alone")
             pr_md.write_text(
                 f"Adds the rule planned in #{self.task['issue']}.\n\n{counts_md.read_text()}\n"
+                + ("\nStill open:\n\n" + "\n".join(remaining) + "\n" if remaining else "")
             )
         self.restore(before, "the PR stage")
         existing = set(
@@ -676,6 +726,7 @@ class Pipeline:
             misses=self.misses,
             deferred=self.deferred,
             labels=count_labels(classified),
+            stopped=self.stopped,
         )
         return 0
 
@@ -1004,10 +1055,7 @@ class Pipeline:
             )
         )
         blocking = deterministic_review(self.own_diff(), self.repo, self.start_sha)
-        for focus, checklist in (
-            ("correctness", "checklist-correctness"),
-            ("tests and conventions", "checklist-conventions"),
-        ):
+        for focus, checklist in REVIEW_FOCUSES.items():
             out = self.work / stage / f"review-{checklist.split('-')[1]}.json"
             out.parent.mkdir(parents=True, exist_ok=True)
             before = self.state()
@@ -1202,6 +1250,34 @@ class Pipeline:
         git(self.repo, "read-tree", "--reset", "-u", tree)
         git(self.repo, "clean", "-fdq")
 
+    def checkpoint(self, classified: list[dict]) -> dict:
+        """The change and its corpus results now, for ``roll_back`` to return to."""
+        return {
+            "state": self.state(),
+            "classified": classified,
+            "cand_findings": self.cand_findings,
+            "crashes": self.crashes,
+            "misses": self.misses,
+            "files": {
+                name: (self.work / name).read_bytes()
+                for name in CHECKPOINT_FILES
+                if (self.work / name).exists()
+            },
+        }
+
+    def roll_back(self, checkpoint: dict) -> list[dict]:
+        """Return to CHECKPOINT, dropping a fix whose corpus results aren't all in; its labels."""
+        self.restore(checkpoint["state"], "the stopped stage")
+        for name in CHECKPOINT_FILES:
+            if name in checkpoint["files"]:
+                (self.work / name).write_bytes(checkpoint["files"][name])
+            else:
+                (self.work / name).unlink(missing_ok=True)
+        self.cand_findings = checkpoint["cand_findings"]
+        self.crashes = checkpoint["crashes"]
+        self.misses = checkpoint["misses"]
+        return checkpoint["classified"]
+
     def snapshot(self) -> str:
         """A tree object for the current working state, to diff a fix against."""
         git(self.repo, "add", "-A")
@@ -1267,6 +1343,10 @@ class Pipeline:
             **fields,
         }
         (self.work / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+
+
+# The corpus results the PR's counts and the review read, which a checkpoint keeps.
+CHECKPOINT_FILES = ("findings.jsonl", "findings.summary.json", "classified.jsonl")
 
 
 # --- pure helpers --------------------------------------------------------------

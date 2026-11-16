@@ -109,8 +109,9 @@ ignore = [
 ]
 ".github/agent/tests/**" = [
     "assert",  # S101
-    # Stand-ins for the gh and git helpers take their signatures.
+    # Stand-ins for the gh and git helpers and the pipeline's stages take their signatures.
     "unused-function-argument",  # ARG001
+    "unused-method-argument",  # ARG002
     "unused-lambda-argument",  # ARG005
     "missing-return-type-undocumented-public-function",  # ANN201
 ]
