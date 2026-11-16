@@ -209,7 +209,12 @@ def fenced(text: str, info: str = "") -> str:
 
 
 def apply(repo: pathlib.Path, agent: pathlib.Path, trigger: dict, message: str) -> bool:
-    """Commit the agent's change on top of the trigger's start commit. False if it's empty."""
+    """Commit the agent's change and push it. False if it's empty.
+
+    The change is applied and checked on the trigger's start commit, which is what
+    the agent worked from. A new branch is then rebased onto the default branch as
+    it is now; a revision stays on its PR's branch.
+    """
     start, branch, new = trigger["start_sha"], trigger["branch"], trigger["mode"] != "revise"
     if not re.fullmatch(r"[0-9a-f]{40}", start):
         raise RuntimeError(f"unexpected start commit {start!r}")
@@ -250,6 +255,26 @@ def apply(repo: pathlib.Path, agent: pathlib.Path, trigger: dict, message: str) 
         "GIT_COMMITTER_EMAIL": BOT_EMAIL,
     }
     subprocess.run(["git", "commit", "--quiet", "-m", message], cwd=repo, env=env, check=True)
+    if new:
+        # GitHub checks a new branch against the default branch, so one based on
+        # an older commit looks like it reverts any workflow change made since,
+        # which the bot's token can't push. The default branch moves during a
+        # run (Dependabot bumps workflow pins), so build on where it is now.
+        rebase = subprocess.run(
+            ["git", "rebase", "--quiet", f"origin/{DEFAULT_BRANCH}"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if rebase.returncode:
+            subprocess.run(["git", "rebase", "--abort"], cwd=repo, check=False)
+            raise RuntimeError(
+                f"the change conflicts with {DEFAULT_BRANCH}, which moved while the agent "
+                f"was working. Label the issue `{LABEL}` again to start from the new "
+                f"{DEFAULT_BRANCH}.\n\n{rebase.stdout}{rebase.stderr}"
+            )
     git(repo, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
     return True
 
