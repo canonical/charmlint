@@ -319,3 +319,50 @@ def test_a_branch_that_moved_during_the_run_is_refused(tmp_path: pathlib.Path) -
     trig = {"start_sha": start, "branch": "agent/issue-1", "mode": "revise"}
     with pytest.raises(RuntimeError, match="the branch moved"):
         publish.apply(repo, agent, trig, "msg")
+
+
+def moved_default(tmp_path: pathlib.Path, later: str) -> tuple[pathlib.Path, pathlib.Path, str]:
+    """An origin whose main moved on (writing to LATER) after the run's start commit."""
+    origin, repo = tmp_path / "origin.git", tmp_path / "repo"
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    git(tmp_path, "clone", "-q", str(origin), str(repo))
+    git(repo, "checkout", "-qb", "main")
+    (repo / "tests").mkdir()
+    (repo / "tests/test_b.py").write_text("B = 1\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "start")
+    start = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "push", "-q", "origin", "main")
+    (repo / later).write_text("moved\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "main moved on")
+    git(repo, "push", "-q", "origin", "main")
+    git(repo, "checkout", "-q", start)
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    return repo, agent, start
+
+
+def test_a_new_branch_is_built_on_the_default_branch_as_it_is_now(tmp_path: pathlib.Path) -> None:
+    repo, agent, start = moved_default(tmp_path, "c.txt")
+    (agent / "publish.diff").write_text(
+        "--- /dev/null\n+++ b/tests/test_new.py\n@@ -0,0 +1 @@\n+X = 1\n"
+    )
+    trig = {"start_sha": start, "branch": "agent/issue-1", "mode": "full"}
+    assert publish.apply(repo, agent, trig, "feat: x")
+    main = git(repo, "rev-parse", "origin/main").strip()
+    pushed = git(repo, "rev-parse", "origin/agent/issue-1^").strip()
+    assert pushed == main
+    assert git(repo, "show", "origin/agent/issue-1:c.txt") == "moved\n"
+
+
+def test_a_new_branch_that_conflicts_with_the_moved_default_is_refused(
+    tmp_path: pathlib.Path,
+) -> None:
+    repo, agent, start = moved_default(tmp_path, "tests/test_b.py")
+    (agent / "publish.diff").write_text(
+        "--- a/tests/test_b.py\n+++ b/tests/test_b.py\n@@ -1 +1 @@\n-B = 1\n+B = 2\n"
+    )
+    trig = {"start_sha": start, "branch": "agent/issue-1", "mode": "full"}
+    with pytest.raises(RuntimeError, match="conflicts with main"):
+        publish.apply(repo, agent, trig, "feat: x")
