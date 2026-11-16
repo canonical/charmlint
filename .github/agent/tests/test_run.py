@@ -426,7 +426,7 @@ class Stopping(run.Pipeline):
         self, stage: str, previous: list[dict], response: str, before_fix: str
     ) -> list[dict]:
         self.stage(stage)
-        return [{"file": "rule.py", "line": 2, "problem": "Still wrong."}]
+        return [{"file": "rule.py", "line": None, "problem": "Still wrong."}]
 
 
 def git_out(repo: pathlib.Path, *args: str) -> str:
@@ -483,8 +483,11 @@ def test_a_run_that_stops_before_a_fix_is_classified_leaves_the_fix_out(
     assert git_out(pipeline.repo, "show", "HEAD:rule.py") == "fix = 1"
     assert '"charms": 11' in (pipeline.work / "findings.summary.json").read_text()
     body = (pipeline.work / "pr.md").read_text()
-    assert "while the agent was addressing the review, so that fix is left out" in body
-    assert "rule.py:2: Still wrong." in body
+    assert (
+        "The run stopped before the agent finished addressing the review (spent $8.55 before classify-2)."
+        in body
+    )
+    assert "- rule.py: Still wrong." in body
 
 
 def test_a_run_that_stops_before_the_review_says_it_wasnt_reviewed(
