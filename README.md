@@ -39,7 +39,7 @@ uvx charmlint --ignore no-readme --strict .
 `--format github` prints each finding as a workflow command, so it shows up as an annotation on the pull request's diff:
 
 ```yaml
-- uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+- uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 - run: uvx charmlint --format github --strict .
 ```
 
@@ -47,7 +47,7 @@ GitHub shows at most 10 error and 10 warning annotations per step. To keep every
 
 ```yaml
 - run: uvx charmlint --format sarif . > charmlint.sarif
-- uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
+- uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
   if: always()
   with:
     sarif_file: charmlint.sarif
