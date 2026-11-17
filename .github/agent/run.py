@@ -247,6 +247,24 @@ class OutOfTime(BudgetExceeded):
     """The run's deadline passed, or the unit it runs in is being stopped."""
 
 
+def out_of_credit(errors: list[str]) -> str:
+    """Why a stage's model calls were refused for money, or "" if they weren't.
+
+    Both the key proxy and OpenRouter answer 402. OpenRouter's message
+    names the key's settings page, so it isn't passed on.
+    """
+    for error in errors:
+        if re.match(r"\s*402\b", error):
+            if "openrouter_key_limit" in error or "more credits" in error:
+                return "the OpenRouter key is out of credit"
+            return "the key proxy refused a request over the run's budget"
+    return ""
+
+
+class OutOfCredit(BudgetExceeded):
+    """The models' calls were refused for money: the key's limit, or the proxy's."""
+
+
 def stopped(signum: int, _frame: object) -> None:
     raise OutOfTime(f"stopped by signal {signum}")
 
@@ -424,6 +442,10 @@ class Pipeline:
             + (" TIMEOUT" if timed_out else "")
             + (f" errors={errors[:1]}" if errors else "")
         )
+        if reason := out_of_credit(errors):
+            # Every later stage would fail the same way, and carrying on would
+            # publish their silence as an empty review.
+            raise OutOfCredit(f"{reason}, during {stage}")
         return text
 
     def prompt(self, name: str, **values: object) -> str:
@@ -440,6 +462,10 @@ class Pipeline:
         except OutOfTime as e:
             log(f"out of time: {e}")
             self.write_meta(outcome="out-of-time")
+            return 1
+        except OutOfCredit as e:
+            log(f"out of credit: {e}")
+            self.write_meta(outcome="out-of-credit")
             return 1
         except BudgetExceeded as e:
             log(f"budget exceeded: {e}")

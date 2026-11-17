@@ -547,3 +547,22 @@ def test_a_missed_import_in_a_reported_file_is_ok(text: str) -> None:
 )
 def test_other_recall_labels_stand(row: dict, flagged: list[dict]) -> None:
     assert run.overrule_import_miss(row, flagged) == row
+
+
+@pytest.mark.parametrize(
+    ("errors", "reason"),
+    [
+        ([], ""),
+        (["429: rate limited"], ""),
+        (["Request timed out"], ""),
+        (
+            [
+                '402: {"message":"This request requires more credits, or fewer max_tokens. To increase, visit https://openrouter.ai/workspaces/w/keys/abc","code":402,"metadata":{"limit_source":"openrouter_key_limit"}}'
+            ],
+            "the OpenRouter key is out of credit",
+        ),
+        (["402 budget of $12.00 spent"], "the key proxy refused a request over the run's budget"),
+    ],
+)
+def test_out_of_credit(errors: list[str], reason: str) -> None:
+    assert run.out_of_credit(errors) == reason
