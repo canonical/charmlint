@@ -26,7 +26,9 @@ def _report(charm_dir: pathlib.Path, *diagnostics: models.Diagnostic) -> models.
 class TestGitHub:
     """Tests for the GitHub Actions annotations format."""
 
-    def test_severity_maps_to_command(self, tmp_path: pathlib.Path, monkeypatch):
+    def test_severity_maps_to_command(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
         monkeypatch.chdir(tmp_path)
         report = _report(
             tmp_path,
@@ -40,7 +42,9 @@ class TestGitHub:
             "::notice file=a.py,line=3,title=A-003::i",
         ]
 
-    def test_path_is_relative_to_current_directory(self, tmp_path: pathlib.Path, monkeypatch):
+    def test_path_is_relative_to_current_directory(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
         monkeypatch.chdir(tmp_path)
         charm_dir = tmp_path / "charms" / "foo"
         report = _report(
@@ -51,7 +55,9 @@ class TestGitHub:
             "::error file=charms/foo/src/charm.py,line=4,title=A-001::m"
         )
 
-    def test_path_outside_current_directory_is_absolute(self, tmp_path: pathlib.Path, monkeypatch):
+    def test_path_outside_current_directory_is_absolute(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
         (tmp_path / "elsewhere").mkdir()
         monkeypatch.chdir(tmp_path / "elsewhere")
         charm_dir = tmp_path / "charm"
@@ -62,7 +68,9 @@ class TestGitHub:
             f"::error file={_escaped(charm_dir / 'x.py')},title=A-001::m"
         )
 
-    def test_path_is_relative_to_github_workspace(self, tmp_path: pathlib.Path, monkeypatch):
+    def test_path_is_relative_to_github_workspace(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
         # A step with ``working-directory: charms/foo`` still annotates the
         # repository path.
         charm_dir = tmp_path / "charms" / "foo"
@@ -77,7 +85,9 @@ class TestGitHub:
             "::error file=charms/foo/src/charm.py,line=4,title=A-001::m"
         )
 
-    def test_github_workspace_through_a_symlink(self, tmp_path: pathlib.Path, monkeypatch):
+    def test_github_workspace_through_a_symlink(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
         repo = tmp_path / "repo"
         charm_dir = repo / "charms" / "foo"
         charm_dir.mkdir(parents=True)
@@ -107,7 +117,7 @@ class TestGitHub:
             "::error title=A-001::m%0AFix: do this%0ASee https://example.com"
         )
 
-    def test_escaping(self, tmp_path: pathlib.Path, monkeypatch):
+    def test_escaping(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.chdir(tmp_path)
         report = _report(
             tmp_path,
@@ -119,7 +129,12 @@ class TestGitHub:
             "::error file=a%2Cb%3Ac.py,title=A-001::100%25 done%0D%0Aok: yes, no"
         )
 
-    def test_cli_annotations_and_clean_run(self, tmp_charm: pathlib.Path, monkeypatch, capsys):
+    def test_cli_annotations_and_clean_run(
+        self,
+        tmp_charm: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         monkeypatch.chdir(tmp_charm.parent)
         assert main([tmp_charm.name, "--format", "github", "--select", "METADATA-001"]) == 1
@@ -138,7 +153,12 @@ class TestSarif:
     """Tests for the SARIF format."""
 
     @pytest.fixture
-    def log(self, tmp_charm: pathlib.Path, monkeypatch, capsys) -> dict:
+    def log(
+        self,
+        tmp_charm: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> dict:
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         monkeypatch.chdir(tmp_charm.parent)
         assert main([tmp_charm.name, "--format", "sarif"]) == 1
@@ -200,7 +220,9 @@ class TestSarif:
         for result in log["runs"][0]["results"]:
             assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
 
-    def test_pathless_finding_has_no_region(self, tmp_path: pathlib.Path, monkeypatch):
+    def test_pathless_finding_has_no_region(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
         monkeypatch.chdir(tmp_path)
         (tmp_path / "metadata.yaml").write_text("name: x\n")
         report = _report(
@@ -213,7 +235,7 @@ class TestSarif:
         assert "ruleIndex" not in result
 
     def test_path_outside_current_directory_is_a_file_uri(
-        self, tmp_path: pathlib.Path, monkeypatch
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
     ):
         charm_dir = tmp_path / "my charm"
         charm_dir.mkdir()
@@ -228,7 +250,9 @@ class TestSarif:
             "artifactLocation": {"uri": (charm_dir / "a.py").as_uri()}
         }
 
-    def test_path_is_relative_to_github_workspace(self, tmp_path: pathlib.Path, monkeypatch):
+    def test_path_is_relative_to_github_workspace(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
         charm_dir = tmp_path / "charms" / "foo"
         charm_dir.mkdir(parents=True)
         monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
@@ -247,7 +271,10 @@ class TestSarif:
         assert "locations" not in result
 
     def test_pathless_finding_in_a_monorepo_says_which_charm(
-        self, tmp_path: pathlib.Path, monkeypatch, capsys
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
     ):
         for name in ("foo", "bar"):
             charm_dir = tmp_path / "charms" / name
