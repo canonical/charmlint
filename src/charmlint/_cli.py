@@ -134,12 +134,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=["text", "json", "github", "sarif"],
+        choices=["text", "json", "github", "sarif", "junit"],
         default="text",
         dest="output_format",
         help=(
             "Output format (default: text). 'github' prints GitHub Actions annotations; "
-            "'sarif' prints SARIF 2.1.0 for GitHub code scanning."
+            "'sarif' prints SARIF 2.1.0 for GitHub code scanning; "
+            "'junit' prints JUnit XML, with a test case per rule, for Test Observer."
         ),
     )
     parser.add_argument(
@@ -262,6 +263,8 @@ def main(argv: list[str] | None = None) -> int:
             print(_formats.format_github(report))
     elif args.output_format == "sarif":
         print(_formats.format_sarif(report))
+    elif args.output_format == "junit":
+        print(_formats.format_junit(report, strict=args.strict))
     else:
         any_diag = False
         for diagnostic in report:

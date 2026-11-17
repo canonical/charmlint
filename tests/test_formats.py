@@ -4,10 +4,11 @@ import json
 import pathlib
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 
 import pytest
 
-from charmlint import _formats
+from charmlint import _formats, _rules
 from charmlint import _models as models
 from charmlint._cli import main
 from tests.conftest import write_charmcraft_yaml
@@ -302,3 +303,254 @@ class TestSarif:
         results = json.loads(capsys.readouterr().out)["runs"][0]["results"]
         uris = {r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for r in results}
         assert uris == {"charms/foo/charmcraft.yaml", "charms/bar/charmcraft.yaml"}
+
+
+class TestJunit:
+    """Tests for the JUnit format."""
+
+    @staticmethod
+    def _run(capsys: pytest.CaptureFixture[str], *args: str) -> tuple[int, ET.Element]:
+        code = main([*args, "--format", "junit"])
+        return code, ET.fromstring(capsys.readouterr().out)
+
+    @staticmethod
+    def _case(root: ET.Element, rule_id: str) -> ET.Element:
+        [case] = [c for c in root.iter("testcase") if c.get("name") == f"charmlint/{rule_id}"]
+        return case
+
+    @pytest.fixture
+    def charm(self, tmp_charm: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> str:
+        # No name, summary or description (errors), no README (a warning)
+        # and no licence (info).
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        monkeypatch.chdir(tmp_charm.parent)
+        return tmp_charm.name
+
+    def test_a_test_case_per_registered_rule(self, charm: str, capsys: pytest.CaptureFixture[str]):
+        _, root = self._run(capsys, charm)
+        [suite] = root.iter("testsuite")
+        names = [case.get("name") for case in suite.iter("testcase")]
+        assert names == ["charmlint/FATAL"] + [
+            f"charmlint/{rule_id}" for rule_id in sorted(_rules.get_all_rules())
+        ]
+        assert {case.get("classname") for case in suite.iter("testcase")} == {"charmlint"}
+
+    def test_counts(self, charm: str, capsys: pytest.CaptureFixture[str]):
+        _, root = self._run(capsys, charm, "--ignore", "TESTING")
+        [suite] = root.iter("testsuite")
+        cases = list(suite.iter("testcase"))
+        for element in (root, suite):
+            assert element.get("tests") == str(len(cases))
+            for attribute, outcome in (
+                ("failures", "failure"),
+                ("errors", "error"),
+                ("skipped", "skipped"),
+            ):
+                expected = sum(case.find(outcome) is not None for case in cases)
+                assert element.get(attribute) == str(expected)
+        assert suite.get("failures") == "3"
+        assert suite.get("skipped") == str(
+            sum(r.startswith("TESTING") for r in _rules.get_all_rules())
+        )
+
+    def test_suite_says_which_charm_and_version(
+        self, charm: str, capsys: pytest.CaptureFixture[str]
+    ):
+        _, root = self._run(capsys, charm)
+        [suite] = root.iter("testsuite")
+        properties = {p.get("name"): p.get("value") for p in suite.iter("property")}
+        assert properties["charmlint.path"] == "."
+        assert properties["charmlint.version"]
+
+    def test_error_fails_its_test_case(self, charm: str, capsys: pytest.CaptureFixture[str]):
+        code, root = self._run(capsys, charm)
+        assert code == 1
+        failure = self._case(root, "METADATA-001").find("failure")
+        assert failure is not None
+        assert failure.get("message") == "1 error"
+        assert failure.get("type") == "error"
+
+    def test_findings_are_in_system_out(self, charm: str, capsys: pytest.CaptureFixture[str]):
+        _, root = self._run(capsys, charm)
+        output = self._case(root, "METADATA-001").findtext("system-out")
+        assert output is not None
+        assert output.startswith("test-charm/charmcraft.yaml: error: Empty or missing 'name'")
+        assert "\n    See https://" in output
+
+    def test_warning_fails_only_with_strict(self, charm: str, capsys: pytest.CaptureFixture[str]):
+        _, root = self._run(capsys, charm)
+        case = self._case(root, "DOCUMENTATION-001")
+        assert case.find("failure") is None
+        assert case.findtext("system-out") == "warning: No README file found"
+
+        _, root = self._run(capsys, charm, "--strict")
+        failure = self._case(root, "DOCUMENTATION-001").find("failure")
+        assert failure is not None
+        assert failure.get("message") == "1 warning"
+        assert failure.get("type") == "warning"
+
+    def test_info_passes_with_its_finding_in_system_out(
+        self, charm: str, capsys: pytest.CaptureFixture[str]
+    ):
+        _, root = self._run(capsys, charm, "--strict")
+        case = self._case(root, "STRUCTURE-001")
+        assert [child.tag for child in case] == ["system-out"]
+
+    def test_clean_rule_has_no_children(self, charm: str, capsys: pytest.CaptureFixture[str]):
+        _, root = self._run(capsys, charm)
+        assert list(self._case(root, "SECURITY-001")) == []
+        assert list(self._case(root, "FATAL")) == []
+
+    def test_rule_that_did_not_run_is_skipped(
+        self, charm: str, capsys: pytest.CaptureFixture[str]
+    ):
+        _, root = self._run(capsys, charm, "--select", "METADATA")
+        skipped = self._case(root, "SECURITY-001").find("skipped")
+        assert skipped is not None
+        assert skipped.get("message") == "not selected"
+        assert self._case(root, "METADATA-001").find("skipped") is None
+
+    def test_rule_below_the_minimum_severity_passes(
+        self, charm: str, capsys: pytest.CaptureFixture[str]
+    ):
+        _, root = self._run(capsys, charm, "--min-severity", "error")
+        assert list(self._case(root, "STRUCTURE-001")) == []
+
+    def test_suppressed_finding_passes(
+        self,
+        tmp_charm: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "# charmlint: file-ignore[METADATA-001]\nsummary: no name\n"
+        )
+        monkeypatch.chdir(tmp_charm.parent)
+        _, root = self._run(capsys, tmp_charm.name)
+        assert list(self._case(root, "METADATA-001")) == []
+
+    def test_charm_that_does_not_load(
+        self,
+        tmp_charm: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        (tmp_charm / "charmcraft.yaml").write_text("name: [unclosed\n")
+        monkeypatch.chdir(tmp_charm.parent)
+        code, root = self._run(capsys, tmp_charm.name)
+        assert code == 1
+        error = self._case(root, "FATAL").find("error")
+        assert error is not None
+        assert error.get("message", "").startswith("Could not load charmcraft.yaml")
+        cases = [c for c in root.iter("testcase") if c.get("name") != "charmlint/FATAL"]
+        messages = {s.get("message") for c in cases for s in c.findall("skipped")}
+        assert messages == {"the charm could not be loaded"}
+        assert all(len(c.findall("skipped")) == 1 for c in cases)
+
+    def test_no_charm_found(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        monkeypatch.chdir(tmp_path)
+        code, root = self._run(capsys, ".")
+        assert code == 1
+        assert self._case(root, "FATAL").find("error") is not None
+
+    def test_a_suite_per_charm_in_a_monorepo(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        for name in ("foo", "bar"):
+            charm_dir = tmp_path / "charms" / name
+            charm_dir.mkdir(parents=True)
+            write_charmcraft_yaml(charm_dir, {"summary": "no name"})
+        monkeypatch.chdir(tmp_path)
+        _, root = self._run(capsys, ".", "--select", "METADATA-001")
+        suites = list(root.iter("testsuite"))
+        assert [s.get("name") for s in suites] == ["charmlint", "charmlint"]
+        for suite, name in zip(suites, ("bar", "foo"), strict=True):
+            [path] = [
+                p.get("value") for p in suite.iter("property") if p.get("name") == "charmlint.path"
+            ]
+            assert path == f"charms/{name}"
+            output = self._case(suite, "METADATA-001").findtext("system-out") or ""
+            assert output.startswith(f"charms/{name}/charmcraft.yaml: error:")
+
+    def test_characters_xml_cannot_hold_are_replaced(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        finding = models.Diagnostic(
+            "METADATA-001", models.Severity.ERROR, "bad \x01 byte, café", path="a\x02.yaml"
+        )
+        report = models.LintReport.from_runs(
+            tmp_path,
+            [
+                models.CharmRun(
+                    ".", loaded=True, rules_run=frozenset({"METADATA-001"}), diagnostics=(finding,)
+                )
+            ],
+        )
+        text = _formats.format_junit(report)
+        assert text.isascii()
+        output = self._case(ET.fromstring(text), "METADATA-001").findtext("system-out")
+        assert output == "a\ufffd.yaml: error: bad \ufffd byte, café"
+
+    def test_same_charm_gives_the_same_output(
+        self, charm: str, capsys: pytest.CaptureFixture[str]
+    ):
+        main([charm, "--format", "junit"])
+        first = capsys.readouterr().out
+        main([charm, "--format", "junit"])
+        assert capsys.readouterr().out == first
+
+    def test_test_observer_results(self, charm: str, capsys: pytest.CaptureFixture[str]):
+        # What canonical/charm-integration-testing's post-results action
+        # sends to Test Observer, for the cases that matter.
+        _, root = self._run(capsys, charm, "--select", "METADATA,DOCUMENTATION")
+        results = {r["name"]: r for r in _test_observer_results(root)}
+        assert results["charmlint/METADATA-001"] == {
+            "name": "charmlint/METADATA-001",
+            "status": "FAILED",
+            "template_id": "charmlint",
+            "category": "charmlint",
+            "comment": "1 error",
+            "io_log": results["charmlint/METADATA-001"]["io_log"],
+        }
+        assert "missing 'name'" in results["charmlint/METADATA-001"]["io_log"]
+        assert results["charmlint/DOCUMENTATION-001"]["status"] == "PASSED"
+        assert results["charmlint/DOCUMENTATION-001"]["io_log"] == "warning: No README file found"
+        assert results["charmlint/SECURITY-001"]["status"] == "SKIPPED"
+        assert results["charmlint/SECURITY-001"]["comment"] == "not selected"
+        assert results["charmlint/FATAL"]["status"] == "PASSED"
+
+
+def _test_observer_results(root: ET.Element) -> list[dict[str, str]]:
+    """Map JUnit onto Test Observer results as its charm upload action does.
+
+    A transcription of the yq and jq in canonical/charm-integration-testing's
+    ``.github/actions/test-observer/post-results/action.yaml``.
+    """
+    results: list[dict[str, str]] = []
+    for suite in root.iter("testsuite"):
+        for case in suite.iter("testcase"):
+            outcomes = case.findall("error") + case.findall("failure") + case.findall("skipped")
+            if case.findall("error") or case.findall("failure"):
+                status = "FAILED"
+            elif case.findall("skipped"):
+                status = "SKIPPED"
+            else:
+                status = "PASSED"
+            results.append({
+                "name": case.get("name", ""),
+                "status": status,
+                "template_id": case.get("classname", ""),
+                "category": suite.get("name", ""),
+                "comment": ", ".join(o.get("message", "") for o in outcomes),
+                "io_log": "\n".join(o.text or "" for o in case.findall("system-out")),
+            })
+    return results

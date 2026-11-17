@@ -62,6 +62,18 @@ Uploading needs the `security-events: write` permission. A private repository al
 
 Both formats name files relative to the repository root, whichever directory you lint and whatever the step's `working-directory`. Outside GitHub Actions, they're relative to the current directory.
 
+### In Test Observer
+
+`--format junit` prints JUnit XML for uploading to [Test Observer](https://github.com/canonical/test_observer), with a test case for each rule:
+
+```yaml
+- run: uvx charmlint --format junit . > charmlint.xml
+```
+
+Each charm is a test suite named `charmlint`. It has a test case for every rule, named `charmlint/` and the rule ID, and one named `charmlint/FATAL`. A rule's test case fails when the rule finds something that fails the run: an error, or a warning with `--strict`. All the rule's findings are in its `system-out`. A rule that didn't run is skipped. A suppressed finding doesn't count. If charmlint can't load the charm, `charmlint/FATAL` is an error and every rule is skipped. Files are named relative to the repository root, as in the GitHub formats.
+
+A failing run fails the charmlint step, so give the step that uploads the file `if: always()`.
+
 ## Configuration
 
 Configure under `[tool.charmlint]` in `pyproject.toml`:
