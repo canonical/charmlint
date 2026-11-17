@@ -60,7 +60,7 @@ An error makes the charmlint step fail. To make code scanning the only signal, s
 
 Uploading needs the `security-events: write` permission. A private repository also needs the `contents: read` permission and GitHub Advanced Security.
 
-Both formats name files relative to the current directory, which in a workflow is the repository root. Run charmlint from there, and pass the charm's path if it isn't at the root.
+Both formats name files relative to the repository root, whichever directory you lint and whatever the step's `working-directory`. Outside GitHub Actions, they're relative to the current directory.
 
 ## Configuration
 

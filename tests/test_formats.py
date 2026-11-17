@@ -13,6 +13,12 @@ from charmlint._cli import main
 from tests.conftest import write_charmcraft_yaml
 
 
+@pytest.fixture(autouse=True)
+def _no_github_workspace(monkeypatch: pytest.MonkeyPatch):
+    # CI sets it, which would change the root the other tests' paths are relative to.
+    monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+
+
 def _report(charm_dir: pathlib.Path, *diagnostics: models.Diagnostic) -> models.LintReport:
     return models.LintReport.from_diagnostics(charm_dir, list(diagnostics))
 
@@ -55,6 +61,32 @@ class TestGitHub:
         assert _formats.format_github(report) == (
             f"::error file={_escaped(charm_dir / 'x.py')},title=A-001::m"
         )
+
+    def test_path_is_relative_to_github_workspace(self, tmp_path: pathlib.Path, monkeypatch):
+        # A step with ``working-directory: charms/foo`` still annotates the
+        # repository path.
+        charm_dir = tmp_path / "charms" / "foo"
+        charm_dir.mkdir(parents=True)
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+        monkeypatch.chdir(charm_dir)
+        report = _report(
+            charm_dir,
+            models.Diagnostic("A-001", models.Severity.ERROR, "m", path="src/charm.py", line=4),
+        )
+        assert _formats.format_github(report) == (
+            "::error file=charms/foo/src/charm.py,line=4,title=A-001::m"
+        )
+
+    def test_github_workspace_through_a_symlink(self, tmp_path: pathlib.Path, monkeypatch):
+        repo = tmp_path / "repo"
+        charm_dir = repo / "charms" / "foo"
+        charm_dir.mkdir(parents=True)
+        (tmp_path / "link").symlink_to(repo)
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path / "link"))
+        report = _report(
+            charm_dir, models.Diagnostic("A-001", models.Severity.ERROR, "m", path="x.py")
+        )
+        assert _formats.format_github(report) == "::error file=charms/foo/x.py,title=A-001::m"
 
     def test_no_path_or_line(self, tmp_path: pathlib.Path):
         report = _report(tmp_path, models.Diagnostic("A-001", models.Severity.WARNING, "m"))
@@ -194,6 +226,19 @@ class TestSarif:
         result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
         assert result["locations"][0]["physicalLocation"] == {
             "artifactLocation": {"uri": (charm_dir / "a.py").as_uri()}
+        }
+
+    def test_path_is_relative_to_github_workspace(self, tmp_path: pathlib.Path, monkeypatch):
+        charm_dir = tmp_path / "charms" / "foo"
+        charm_dir.mkdir(parents=True)
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+        monkeypatch.chdir(charm_dir)
+        report = _report(
+            charm_dir, models.Diagnostic("A-001", models.Severity.WARNING, "m", path="a.py")
+        )
+        result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
+        assert result["locations"][0]["physicalLocation"] == {
+            "artifactLocation": {"uri": "charms/foo/a.py"}
         }
 
     def test_pathless_finding_without_metadata_has_no_location(self, tmp_path: pathlib.Path):

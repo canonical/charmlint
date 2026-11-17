@@ -1,10 +1,11 @@
 """Machine-readable output formats for CI: GitHub annotations and SARIF.
 
-Both formats name files relative to the current directory rather than to
-the linted directory. In GitHub Actions the current directory is the
-repository checkout, and annotations and code-scanning alerts are anchored
-to repository paths, so ``charmlint charms/foo`` has to report
-``charms/foo/src/charm.py`` rather than ``src/charm.py``.
+Both formats name files relative to the repository root rather than to
+the linted directory. Annotations and code-scanning alerts are anchored to
+repository paths, so ``charmlint charms/foo`` has to report
+``charms/foo/src/charm.py`` rather than ``src/charm.py``. In GitHub Actions
+the root is ``$GITHUB_WORKSPACE``, which also covers a step run with a
+``working-directory``. Elsewhere it's the current directory.
 """
 
 import json
@@ -112,16 +113,18 @@ def _escape_data(value: str) -> str:
 
 
 def _repo_path(charm_dir: pathlib.Path, path: str) -> str:
-    """Return *path* (relative to *charm_dir*) relative to the current directory.
+    """Return *path* (relative to *charm_dir*) relative to the repository root.
 
-    A path outside the current directory stays absolute, as there is no
+    The root is ``$GITHUB_WORKSPACE`` if it's set, and the current directory
+    if not. A path outside the root stays absolute, as there is no
     repository-relative form to give.
     """
     full = charm_dir / path
-    cwd = pathlib.Path.cwd()
-    if not full.is_relative_to(cwd):
+    # Resolved because charm_dir is, and is_relative_to doesn't follow symlinks.
+    root = pathlib.Path(os.environ.get("GITHUB_WORKSPACE") or pathlib.Path.cwd()).resolve()
+    if not full.is_relative_to(root):
         return full.as_posix()
-    return pathlib.PurePath(os.path.relpath(full, cwd)).as_posix()
+    return pathlib.PurePath(os.path.relpath(full, root)).as_posix()
 
 
 def _sarif_uri(charm_dir: pathlib.Path, path: str) -> str:
