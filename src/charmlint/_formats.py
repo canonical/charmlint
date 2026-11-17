@@ -46,7 +46,8 @@ def format_github(report: models.LintReport) -> str:
             properties.append(f"file={_escape_property(_repo_path(report.charm_dir, d.path))}")
         if d.line is not None:
             properties.append(f"line={d.line}")
-        properties.append(f"title={_escape_property(d.rule_id)}")
+        # Named, so it stands apart from other tools' annotations, such as ruff's.
+        properties.append(f"title={_escape_property(f'charmlint ({d.rule_id})')}")
         command = _GITHUB_COMMANDS[d.severity]
         lines.append(f"::{command} {','.join(properties)}::{_escape_data(_full_message(d))}")
     return "\n".join(lines)
@@ -134,13 +135,13 @@ def _sarif_uri(charm_dir: pathlib.Path, path: str) -> str:
 
 
 def _full_message(d: models.Diagnostic) -> str:
-    """The message, followed by the fix hint and reference URL when there are any."""
+    """The message, then the fix hint and reference URL as paragraphs of their own."""
     parts = [d.message]
     if d.fix_hint:
-        parts.append(f"Fix: {d.fix_hint}")
+        parts.append(d.fix_hint)
     if d.reference_url:
         parts.append(f"See {d.reference_url}")
-    return "\n".join(parts)
+    return "\n\n".join(parts)
 
 
 def _sarif_rule(rule: _rules.Rule) -> dict[str, object]:

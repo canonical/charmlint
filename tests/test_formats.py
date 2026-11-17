@@ -37,9 +37,9 @@ class TestGitHub:
             models.Diagnostic("A-003", models.Severity.INFO, "i", path="a.py", line=3),
         )
         assert _formats.format_github(report).splitlines() == [
-            "::error file=a.py,line=1,title=A-001::e",
-            "::warning file=a.py,line=2,title=A-002::w",
-            "::notice file=a.py,line=3,title=A-003::i",
+            "::error file=a.py,line=1,title=charmlint (A-001)::e",
+            "::warning file=a.py,line=2,title=charmlint (A-002)::w",
+            "::notice file=a.py,line=3,title=charmlint (A-003)::i",
         ]
 
     def test_path_is_relative_to_current_directory(
@@ -52,7 +52,7 @@ class TestGitHub:
             models.Diagnostic("A-001", models.Severity.ERROR, "m", path="src/charm.py", line=4),
         )
         assert _formats.format_github(report) == (
-            "::error file=charms/foo/src/charm.py,line=4,title=A-001::m"
+            "::error file=charms/foo/src/charm.py,line=4,title=charmlint (A-001)::m"
         )
 
     def test_path_outside_current_directory_is_absolute(
@@ -65,7 +65,7 @@ class TestGitHub:
             charm_dir, models.Diagnostic("A-001", models.Severity.ERROR, "m", path="x.py")
         )
         assert _formats.format_github(report) == (
-            f"::error file={_escaped(charm_dir / 'x.py')},title=A-001::m"
+            f"::error file={_escaped(charm_dir / 'x.py')},title=charmlint (A-001)::m"
         )
 
     def test_path_is_relative_to_github_workspace(
@@ -82,7 +82,7 @@ class TestGitHub:
             models.Diagnostic("A-001", models.Severity.ERROR, "m", path="src/charm.py", line=4),
         )
         assert _formats.format_github(report) == (
-            "::error file=charms/foo/src/charm.py,line=4,title=A-001::m"
+            "::error file=charms/foo/src/charm.py,line=4,title=charmlint (A-001)::m"
         )
 
     def test_github_workspace_through_a_symlink(
@@ -96,11 +96,14 @@ class TestGitHub:
         report = _report(
             charm_dir, models.Diagnostic("A-001", models.Severity.ERROR, "m", path="x.py")
         )
-        assert _formats.format_github(report) == "::error file=charms/foo/x.py,title=A-001::m"
+        assert (
+            _formats.format_github(report)
+            == "::error file=charms/foo/x.py,title=charmlint (A-001)::m"
+        )
 
     def test_no_path_or_line(self, tmp_path: pathlib.Path):
         report = _report(tmp_path, models.Diagnostic("A-001", models.Severity.WARNING, "m"))
-        assert _formats.format_github(report) == "::warning title=A-001::m"
+        assert _formats.format_github(report) == "::warning title=charmlint (A-001)::m"
 
     def test_hint_and_reference_on_following_lines(self, tmp_path: pathlib.Path):
         report = _report(
@@ -114,7 +117,7 @@ class TestGitHub:
             ),
         )
         assert _formats.format_github(report) == (
-            "::error title=A-001::m%0AFix: do this%0ASee https://example.com"
+            "::error title=charmlint (A-001)::m%0A%0Ado this%0A%0ASee https://example.com"
         )
 
     def test_escaping(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch):
@@ -126,7 +129,7 @@ class TestGitHub:
             ),
         )
         assert _formats.format_github(report) == (
-            "::error file=a%2Cb%3Ac.py,title=A-001::100%25 done%0D%0Aok: yes, no"
+            "::error file=a%2Cb%3Ac.py,title=charmlint (A-001)::100%25 done%0D%0Aok: yes, no"
         )
 
     def test_cli_annotations_and_clean_run(
@@ -140,7 +143,7 @@ class TestGitHub:
         assert main([tmp_charm.name, "--format", "github", "--select", "METADATA-001"]) == 1
         out = capsys.readouterr().out
         assert out.startswith("::error file=test-charm/charmcraft.yaml,")
-        assert "title=METADATA-001::" in out
+        assert "title=charmlint (METADATA-001)::" in out
         assert main([tmp_charm.name, "--format", "github", "--select", "SECURITY-001"]) == 0
         assert capsys.readouterr().out == ""
 
@@ -264,6 +267,20 @@ class TestSarif:
         assert result["locations"][0]["physicalLocation"] == {
             "artifactLocation": {"uri": "charms/foo/a.py"}
         }
+
+    def test_fix_hint_and_reference_url(self, tmp_path: pathlib.Path):
+        report = _report(
+            tmp_path,
+            models.Diagnostic(
+                "A-001",
+                models.Severity.ERROR,
+                "m",
+                fix_hint="do this",
+                reference_url="https://example.com",
+            ),
+        )
+        result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
+        assert result["message"] == {"text": "m\n\ndo this\n\nSee https://example.com"}
 
     def test_pathless_finding_without_metadata_has_no_location(self, tmp_path: pathlib.Path):
         report = _report(tmp_path, models.Diagnostic("FATAL", models.Severity.ERROR, "m"))
