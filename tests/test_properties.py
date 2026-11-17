@@ -38,11 +38,14 @@ from charmlint._models import Diagnostic, Severity
 # In this file that reuse is deliberate: each property body overwrites
 # ``tmp_charm/charmcraft.yaml`` and touches no other state, so a shared
 # directory is equivalent to a fresh one per example. Suppress the
-# health check globally for the module. ``max_examples`` inherits from
-# the profile registered in ``tests/unit/conftest.py`` (100 for dev,
-# 500 for CI).
+# health check globally for the module.
+#
+# No deadline: each example lints a whole charm with every rule, so how
+# long it takes depends on the machine and grows with each new rule. With
+# the default 200 ms deadline, the tests fail at random on a slower runner.
 _charm_settings = settings(
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
+    deadline=None,
 )
 
 # ---------------------------------------------------------------------------
