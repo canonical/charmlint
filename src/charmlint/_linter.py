@@ -212,15 +212,16 @@ def _effective_severity(rule: _rules.Rule, config: _config.LintConfig) -> models
     return None
 
 
-def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[models.Diagnostic]:
+def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> models.CharmRun:
     """Run the enabled rules against one charm, and apply its ``noqa`` directives.
 
-    Diagnostic paths are relative to *charm_dir*, as a rule reports them.
+    Diagnostic paths are relative to *charm_dir*, as a rule reports them,
+    and the run's own path is ".".
     """
     try:
         context = build_context(charm_dir)
     except _yaml.FileLoadError as exc:
-        return [
+        return _failed_to_load(
             models.Diagnostic(
                 rule_id="FATAL",
                 severity=models.Severity.ERROR,
@@ -229,23 +230,25 @@ def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[mod
                 if exc.path.is_relative_to(charm_dir)
                 else str(exc.path),
             )
-        ]
+        )
 
     if not context.metadata:
-        return [
+        return _failed_to_load(
             models.Diagnostic(
                 rule_id="FATAL",
                 severity=models.Severity.ERROR,
                 message="No charmcraft.yaml or metadata.yaml found — is this a charm directory?",
             )
-        ]
+        )
 
     all_diagnostics: list[models.Diagnostic] = []
+    rules_run: set[str] = set()
 
     for rule in _rules.get_all_rules().values():
         if not _should_run_rule(rule, config):
             continue
 
+        rules_run.add(rule.id)
         diagnostics = rule.check(context)
 
         # Apply severity overrides.
@@ -267,7 +270,17 @@ def _lint_charm(charm_dir: pathlib.Path, config: _config.LintConfig) -> list[mod
 
         all_diagnostics.extend(diagnostics)
 
-    return _apply_noqa(charm_dir, all_diagnostics)
+    return models.CharmRun(
+        path=".",
+        loaded=True,
+        rules_run=frozenset(rules_run),
+        diagnostics=tuple(_apply_noqa(charm_dir, all_diagnostics)),
+    )
+
+
+def _failed_to_load(fatal: models.Diagnostic) -> models.CharmRun:
+    """Return the run of a charm that couldn't be loaded, so no rule ran."""
+    return models.CharmRun(path=".", loaded=False, diagnostics=(fatal,))
 
 
 def _prefixed(
@@ -306,29 +319,36 @@ def lint(
     charm_dirs = _discovery.discover_charms(path)
 
     if not charm_dirs:
-        return models.LintReport.from_diagnostics(
+        return models.LintReport.from_runs(
             charm_dir=path,
-            diagnostics=[
-                models.Diagnostic(
-                    rule_id="FATAL",
-                    severity=models.Severity.ERROR,
-                    message=(
-                        "No charmcraft.yaml or metadata.yaml found here or in any "
-                        "directory below — is this a charm directory?"
-                    ),
+            runs=[
+                _failed_to_load(
+                    models.Diagnostic(
+                        rule_id="FATAL",
+                        severity=models.Severity.ERROR,
+                        message=(
+                            "No charmcraft.yaml or metadata.yaml found here or in any "
+                            "directory below — is this a charm directory?"
+                        ),
+                    )
                 )
             ],
         )
 
     if charm_dirs == [path]:
-        return models.LintReport.from_diagnostics(
-            charm_dir=path, diagnostics=_lint_charm(path, config)
-        )
+        return models.LintReport.from_runs(charm_dir=path, runs=[_lint_charm(path, config)])
 
-    diagnostics: list[models.Diagnostic] = []
+    runs: list[models.CharmRun] = []
     for charm_dir in charm_dirs:
-        diagnostics.extend(_prefixed(d, charm_dir, path) for d in _lint_charm(charm_dir, config))
-    return models.LintReport.from_diagnostics(charm_dir=path, diagnostics=diagnostics)
+        run = _lint_charm(charm_dir, config)
+        runs.append(
+            dataclasses.replace(
+                run,
+                path=charm_dir.relative_to(path).as_posix(),
+                diagnostics=tuple(_prefixed(d, charm_dir, path) for d in run.diagnostics),
+            )
+        )
+    return models.LintReport.from_runs(charm_dir=path, runs=runs)
 
 
 # The files scanned for suppression comments. The bare ``noqa`` forms

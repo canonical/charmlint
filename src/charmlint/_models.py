@@ -286,6 +286,26 @@ class CharmContext:
         return self.modules(Scope.SRC, Scope.OWNED_LIB)
 
 
+@dataclasses.dataclass(frozen=True)
+class CharmRun:
+    """One charm's part of a report: which rules ran on it, and what they found.
+
+    A diagnostic alone can't say whether a rule that found nothing passed
+    or never ran, and a format that reports a verdict per rule needs to
+    know. ``loaded`` is false when the charm couldn't be loaded at all,
+    in which case no rule ran and ``diagnostics`` holds the ``FATAL``
+    finding that says why.
+    """
+
+    # Relative to the report's ``charm_dir``: "." for a single charm, and
+    # the charm's directory in a run over several.
+    path: str
+    loaded: bool
+    rules_run: frozenset[str] = frozenset()
+    # Paths are relative to the report's ``charm_dir``, as in the report.
+    diagnostics: tuple[Diagnostic, ...] = ()
+
+
 @dataclasses.dataclass
 class LintReport:
     """Aggregated lint results, bucketed by severity for O(1) counts."""
@@ -294,6 +314,9 @@ class LintReport:
     by_severity: dict[Severity, list[Diagnostic]] = dataclasses.field(
         default_factory=lambda: {s: [] for s in Severity}
     )
+    # One entry per charm linted. Empty for a report built from bare
+    # diagnostics, which records no verdict per rule.
+    charms: list[CharmRun] = dataclasses.field(default_factory=list)
 
     @classmethod
     def from_diagnostics(
@@ -303,6 +326,13 @@ class LintReport:
         report = cls(charm_dir=charm_dir)
         for d in diagnostics:
             report.by_severity[d.severity].append(d)
+        return report
+
+    @classmethod
+    def from_runs(cls, charm_dir: pathlib.Path, runs: list[CharmRun]) -> "LintReport":
+        """Build a report from each charm's run."""
+        report = cls.from_diagnostics(charm_dir, [d for run in runs for d in run.diagnostics])
+        report.charms = list(runs)
         return report
 
     def __iter__(self):

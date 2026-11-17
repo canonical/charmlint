@@ -282,3 +282,54 @@ class TestLintMultiCharm:
         )
         fired = {d.path for d in lint(repo) if d.rule_id == "METADATA-001"}
         assert fired == {"charms/beta/charmcraft.yaml"}
+
+
+class TestCharmRuns:
+    """The report's record of which rules ran on each charm."""
+
+    def test_records_the_rules_that_ran(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"name": "test"})
+        report = lint(tmp_charm, LintConfig(select=["METADATA"], ignore=["METADATA-002"]))
+        [run] = report.charms
+        assert run.path == "."
+        assert run.loaded
+        assert "METADATA-001" in run.rules_run
+        assert "METADATA-002" not in run.rules_run
+        assert not any(rule_id.startswith("SECURITY") for rule_id in run.rules_run)
+
+    def test_run_holds_the_charm_findings(self, tmp_charm: pathlib.Path):
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        report = lint(tmp_charm)
+        [run] = report.charms
+        assert len(run.diagnostics) == len(report)
+        assert set(run.diagnostics) == set(report)
+
+    def test_a_suppressed_finding_is_not_in_the_run(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text(
+            "# charmlint: file-ignore[METADATA-001]\nsummary: no name\n"
+        )
+        [run] = lint(tmp_charm).charms
+        assert "METADATA-001" in run.rules_run
+        assert all(d.rule_id != "METADATA-001" for d in run.diagnostics)
+
+    def test_a_charm_that_does_not_load_ran_no_rules(self, tmp_charm: pathlib.Path):
+        (tmp_charm / "charmcraft.yaml").write_text("name: [unclosed\n")
+        [run] = lint(tmp_charm).charms
+        assert not run.loaded
+        assert run.rules_run == frozenset()
+        assert [d.rule_id for d in run.diagnostics] == ["FATAL"]
+
+    def test_no_charm_found_is_a_run_that_did_not_load(self, tmp_path: pathlib.Path):
+        [run] = lint(tmp_path).charms
+        assert not run.loaded
+        assert [d.rule_id for d in run.diagnostics] == ["FATAL"]
+
+    def test_a_run_per_charm_in_a_monorepo(self, tmp_path: pathlib.Path):
+        for name in ("alpha", "beta"):
+            charm_dir = tmp_path / "charms" / name
+            charm_dir.mkdir(parents=True)
+            write_charmcraft_yaml(charm_dir, {"summary": "no name"})
+        report = lint(tmp_path, LintConfig(select=["METADATA-001"]))
+        assert [run.path for run in report.charms] == ["charms/alpha", "charms/beta"]
+        for run in report.charms:
+            assert [d.path for d in run.diagnostics] == [f"{run.path}/charmcraft.yaml"]
