@@ -70,7 +70,9 @@ Both formats name files relative to the repository root, whichever directory you
 - run: uvx charmlint --format junit . > charmlint.xml
 ```
 
-Each charm is a test suite named `charmlint`. It has a test case for every rule, named `charmlint/` and the rule ID, and one named `charmlint/FATAL`. A rule's test case fails when the rule finds something that fails the run: an error, or a warning with `--strict`. All the rule's findings are in its `system-out`. A rule that didn't run is skipped. A suppressed finding doesn't count. If charmlint can't load the charm, `charmlint/FATAL` is an error and every rule is skipped. Files are named relative to the repository root, as in the GitHub formats.
+Each charm is a test suite named `charmlint`. It has a test case for every rule, named `charmlint/` and the rule ID, and one named `charmlint/FATAL`. A rule's test case fails when the rule finds something that fails the run: an error, or a warning with `--strict`. All the rule's findings are in its `system-out`. A rule that didn't run is skipped. A suppressed finding doesn't count. If charmlint can't load the charm, `charmlint/FATAL` is an error and every rule is skipped. Files are named relative to the repository root, as in the GitHub formats, and so is the charm directory in the suite's `charmlint.path` property.
+
+Test Observer finds a test by its name alone, and every charm's test cases have the same names. In a repository with more than one charm, run charmlint on each charm separately, for example `uvx charmlint --format junit charms/foo > charmlint-foo.xml`, and upload each file to that charm's own test execution.
 
 A failing run fails the charmlint step, so give the step that uploads the file `if: always()`.
 

@@ -215,7 +215,12 @@ def _junit_suite(
     suite = ET.Element("testsuite", name=_JUNIT_NAME)
     properties = ET.SubElement(suite, "properties")
     ET.SubElement(properties, "property", name="charmlint.version", value=version)
-    ET.SubElement(properties, "property", name="charmlint.path", value=_xml_text(run.path))
+    ET.SubElement(
+        properties,
+        "property",
+        name="charmlint.path",
+        value=_xml_text(_repo_path(charm_dir, run.path)),
+    )
 
     findings: dict[str, list[models.Diagnostic]] = collections.defaultdict(list)
     for d in run.diagnostics:

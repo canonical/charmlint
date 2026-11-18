@@ -359,7 +359,7 @@ class TestJunit:
         _, root = self._run(capsys, charm)
         [suite] = root.iter("testsuite")
         properties = {p.get("name"): p.get("value") for p in suite.iter("property")}
-        assert properties["charmlint.path"] == "."
+        assert properties["charmlint.path"] == charm
         assert properties["charmlint.version"]
 
     def test_error_fails_its_test_case(self, charm: str, capsys: pytest.CaptureFixture[str]):
@@ -479,6 +479,29 @@ class TestJunit:
             assert path == f"charms/{name}"
             output = self._case(suite, "METADATA-001").findtext("system-out") or ""
             assert output.startswith(f"charms/{name}/charmcraft.yaml: error:")
+
+    @pytest.mark.parametrize(
+        ("target", "expected"),
+        [("charms/foo", ["charms/foo"]), ("charms", ["charms/bar", "charms/foo"])],
+    )
+    def test_charm_path_is_relative_to_the_repository_root(
+        self,
+        target: str,
+        expected: list[str],
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        for name in ("foo", "bar"):
+            charm_dir = tmp_path / "charms" / name
+            charm_dir.mkdir(parents=True)
+            write_charmcraft_yaml(charm_dir, {"summary": "no name"})
+        monkeypatch.chdir(tmp_path)
+        _, root = self._run(capsys, target, "--select", "METADATA-001")
+        paths = [
+            p.get("value") for p in root.iter("property") if p.get("name") == "charmlint.path"
+        ]
+        assert paths == expected
 
     def test_characters_xml_cannot_hold_are_replaced(
         self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
