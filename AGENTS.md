@@ -48,33 +48,17 @@ Label a finding by whether the reason for the rule holds in that charm, not by w
 
 ## Writing a rule
 
-- Cover every way charms write the problem. Before writing the matcher, search
-  the hyrum cache for the problem and its variants: a keyword argument as well
-  as a dict key, the `ops` enum as well as the string, a constructor such as
-  `CheckDict(...)` as well as a literal. `_ast.call_target()` and `_ast.Imports`
-  already resolve calls through imports and aliases, and `_ast.keyword()` finds
-  a keyword argument. Only leave a variant for later if it needs a change
-  outside the rule modules, `_ast.py`, `_yaml.py` and `_toml.py`, or another
-  issue covers it. Say which in the PR.
-- Find the existing rule closest in shape and keep the new rule about its size,
-  using its code and tests as the measure. Write a positive and a negative test
-  for each case the docstring names, not one per spelling of it.
-- Report a finding on the line a suppression comment for it would go on. For
-  YAML, that is the `line` of the most specific node at fault, such as the list
-  element that is wrong rather than the key that holds the list. `_yaml.load()`
-  already records it.
+- Cover every way charms write the problem. Before writing the matcher, search the hyrum cache for the problem and its variants: a keyword argument as well as a dict key, the `ops` enum as well as the string, a constructor such as `CheckDict(...)` as well as a literal. `_ast.call_target()` and `_ast.Imports` already resolve calls through imports and aliases, and `_ast.keyword()` finds a keyword argument. Only leave a variant for later if it needs a change outside the rule modules, `_ast.py`, `_yaml.py` and `_toml.py`, or another issue covers it. Say which in the PR.
+- Find the existing rule closest in shape and keep the new rule about its size, using its code and tests as the measure. Write a positive and a negative test for each case the docstring names, not one per spelling of it.
+- Report a finding on the line a suppression comment for it would go on. For YAML, that is the `line` of the most specific node at fault, such as the list element that is wrong rather than the key that holds the list. `_yaml.load()` already records it.
 
 ### Module layout
 
-Rule modules are read far more often in review than they are written, so lay one
-out top-down and let the reader follow the call graph without scrolling back:
+Rule modules are read far more often in review than they are written, so lay one out top-down and let the reader follow the call graph without scrolling back:
 
 - Rule classes first, in rule-ID order.
-- Then the helpers, in the order they are first called: a helper is defined below
-  its caller, and two helpers appear in the order the caller reaches them.
-- A helper used by one rule module stays private to it. A concern shared across
-  rule modules belongs in `_ast.py`, `_yaml.py` or `_toml.py` instead — check
-  there before writing a new walker or parser.
+- Then the helpers, in the order they are first called: a helper is defined below its caller, and two helpers appear in the order the caller reaches them.
+- A helper used by one rule module stays private to it. A concern shared across rule modules belongs in `_ast.py`, `_yaml.py` or `_toml.py` instead — check there before writing a new walker or parser.
 
 ## Security
 
