@@ -34,6 +34,48 @@ uvx charmlint --ignore no-readme --strict .
 
 `charmlint --help` lists the rest. Errors cause charmlint to exit with code 1. With `--strict`, warnings cause charmlint to exit with code 2.
 
+### In GitHub Actions
+
+`--format github` prints each finding as a workflow command, so it shows up as an annotation on the pull request's diff:
+
+```yaml
+- uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+- run: uvx charmlint --format github --strict .
+```
+
+GitHub shows at most 10 error and 10 warning annotations per step. To keep every finding, and track them over time, use `--format sarif` and upload the result to code scanning:
+
+```yaml
+- run: uvx charmlint --format sarif . > charmlint.sarif
+- uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
+  if: always()
+  with:
+    sarif_file: charmlint.sarif
+    category: charmlint
+```
+
+If you run charmlint separately for each charm, for example in a matrix, give each upload its own `category`.
+
+An error makes the charmlint step fail. To make code scanning the only signal, set `continue-on-error: true` on that step.
+
+Uploading needs the `security-events: write` permission. A private repository also needs the `contents: read` permission and GitHub Advanced Security.
+
+Both formats name files relative to the repository root, whichever directory you lint and whatever the step's `working-directory`. Outside GitHub Actions, they're relative to the current directory.
+
+### In Test Observer
+
+`--format junit` prints JUnit XML for uploading to [Test Observer](https://github.com/canonical/test_observer), with a test case for each rule:
+
+```yaml
+- run: uvx charmlint --format junit . > charmlint.xml
+```
+
+Each charm is a test suite named `charmlint`. It has a test case for every rule, named `charmlint/` and the rule ID, and one named `charmlint/FATAL`. A rule's test case fails when the rule finds something that fails the run: an error, or a warning with `--strict`. All the rule's findings are in its `system-out`. A rule that didn't run is skipped. A suppressed finding doesn't count. If charmlint can't load the charm, `charmlint/FATAL` is an error and every rule is skipped. Files are named relative to the repository root, as in the GitHub formats, and so is the charm directory in the suite's `charmlint.path` property.
+
+Test Observer finds a test by its name alone, and every charm's test cases have the same names. In a repository with more than one charm, run charmlint on each charm separately, for example `uvx charmlint --format junit charms/foo > charmlint-foo.xml`, and upload each file to that charm's own test execution.
+
+A failing run fails the charmlint step, so give the step that uploads the file `if: always()`.
+
 ## Configuration
 
 Configure under `[tool.charmlint]` in `pyproject.toml`:
