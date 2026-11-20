@@ -1,0 +1,304 @@
+"""Tests for charmlint._formats."""
+
+import json
+import pathlib
+import subprocess
+import sys
+
+import pytest
+
+from charmlint import _formats
+from charmlint import _models as models
+from charmlint._cli import main
+from tests.conftest import write_charmcraft_yaml
+
+
+@pytest.fixture(autouse=True)
+def _no_github_workspace(monkeypatch: pytest.MonkeyPatch):
+    # CI sets it, which would change the root the other tests' paths are relative to.
+    monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+
+
+def _report(charm_dir: pathlib.Path, *diagnostics: models.Diagnostic) -> models.LintReport:
+    return models.LintReport.from_diagnostics(charm_dir, list(diagnostics))
+
+
+class TestGitHub:
+    """Tests for the GitHub Actions annotations format."""
+
+    def test_severity_maps_to_command(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        report = _report(
+            tmp_path,
+            models.Diagnostic("A-001", models.Severity.ERROR, "e", path="a.py", line=1),
+            models.Diagnostic("A-002", models.Severity.WARNING, "w", path="a.py", line=2),
+            models.Diagnostic("A-003", models.Severity.INFO, "i", path="a.py", line=3),
+        )
+        assert _formats.format_github(report).splitlines() == [
+            "::error file=a.py,line=1,title=charmlint (A-001)::e",
+            "::warning file=a.py,line=2,title=charmlint (A-002)::w",
+            "::notice file=a.py,line=3,title=charmlint (A-003)::i",
+        ]
+
+    def test_path_is_relative_to_current_directory(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        charm_dir = tmp_path / "charms" / "foo"
+        report = _report(
+            charm_dir,
+            models.Diagnostic("A-001", models.Severity.ERROR, "m", path="src/charm.py", line=4),
+        )
+        assert _formats.format_github(report) == (
+            "::error file=charms/foo/src/charm.py,line=4,title=charmlint (A-001)::m"
+        )
+
+    def test_path_outside_current_directory_is_absolute(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        (tmp_path / "elsewhere").mkdir()
+        monkeypatch.chdir(tmp_path / "elsewhere")
+        charm_dir = tmp_path / "charm"
+        report = _report(
+            charm_dir, models.Diagnostic("A-001", models.Severity.ERROR, "m", path="x.py")
+        )
+        assert _formats.format_github(report) == (
+            f"::error file={_escaped(charm_dir / 'x.py')},title=charmlint (A-001)::m"
+        )
+
+    def test_path_is_relative_to_github_workspace(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        # A step with ``working-directory: charms/foo`` still annotates the
+        # repository path.
+        charm_dir = tmp_path / "charms" / "foo"
+        charm_dir.mkdir(parents=True)
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+        monkeypatch.chdir(charm_dir)
+        report = _report(
+            charm_dir,
+            models.Diagnostic("A-001", models.Severity.ERROR, "m", path="src/charm.py", line=4),
+        )
+        assert _formats.format_github(report) == (
+            "::error file=charms/foo/src/charm.py,line=4,title=charmlint (A-001)::m"
+        )
+
+    def test_github_workspace_through_a_symlink(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        repo = tmp_path / "repo"
+        charm_dir = repo / "charms" / "foo"
+        charm_dir.mkdir(parents=True)
+        (tmp_path / "link").symlink_to(repo)
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path / "link"))
+        report = _report(
+            charm_dir, models.Diagnostic("A-001", models.Severity.ERROR, "m", path="x.py")
+        )
+        assert (
+            _formats.format_github(report)
+            == "::error file=charms/foo/x.py,title=charmlint (A-001)::m"
+        )
+
+    def test_no_path_or_line(self, tmp_path: pathlib.Path):
+        report = _report(tmp_path, models.Diagnostic("A-001", models.Severity.WARNING, "m"))
+        assert _formats.format_github(report) == "::warning title=charmlint (A-001)::m"
+
+    def test_hint_and_reference_on_following_lines(self, tmp_path: pathlib.Path):
+        report = _report(
+            tmp_path,
+            models.Diagnostic(
+                "A-001",
+                models.Severity.ERROR,
+                "m",
+                fix_hint="do this",
+                reference_url="https://example.com",
+            ),
+        )
+        assert _formats.format_github(report) == (
+            "::error title=charmlint (A-001)::m%0A%0Ado this%0A%0ASee https://example.com"
+        )
+
+    def test_escaping(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
+        report = _report(
+            tmp_path,
+            models.Diagnostic(
+                "A-001", models.Severity.ERROR, "100% done\r\nok: yes, no", path="a,b:c.py"
+            ),
+        )
+        assert _formats.format_github(report) == (
+            "::error file=a%2Cb%3Ac.py,title=charmlint (A-001)::100%25 done%0D%0Aok: yes, no"
+        )
+
+    def test_cli_annotations_and_clean_run(
+        self,
+        tmp_charm: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        monkeypatch.chdir(tmp_charm.parent)
+        assert main([tmp_charm.name, "--format", "github", "--select", "METADATA-001"]) == 1
+        out = capsys.readouterr().out
+        assert out.startswith("::error file=test-charm/charmcraft.yaml,")
+        assert "title=charmlint (METADATA-001)::" in out
+        assert main([tmp_charm.name, "--format", "github", "--select", "SECURITY-001"]) == 0
+        assert capsys.readouterr().out == ""
+
+
+def _escaped(path: pathlib.Path) -> str:
+    return path.as_posix().replace(":", "%3A").replace(",", "%2C")
+
+
+class TestSarif:
+    """Tests for the SARIF format."""
+
+    @pytest.fixture
+    def log(
+        self,
+        tmp_charm: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> dict:
+        write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
+        monkeypatch.chdir(tmp_charm.parent)
+        assert main([tmp_charm.name, "--format", "sarif"]) == 1
+        return json.loads(capsys.readouterr().out)
+
+    def test_envelope(self, log: dict):
+        assert log["version"] == "2.1.0"
+        driver = log["runs"][0]["tool"]["driver"]
+        assert driver["name"] == "charmlint"
+        assert driver["version"]
+
+    @pytest.mark.network
+    def test_output_matches_the_sarif_schema(self, log: dict, tmp_path: pathlib.Path):
+        sarif = tmp_path / "charmlint.sarif"
+        sarif.write_text(json.dumps(log))
+        result = subprocess.run(  # ruff: ignore[S603]
+            [
+                sys.executable,
+                "-m",
+                "check_jsonschema",
+                "--schemafile",
+                log["$schema"],
+                str(sarif),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_rules_describe_every_registered_rule(self, log: dict):
+        from charmlint._rules import get_all_rules
+
+        rules = log["runs"][0]["tool"]["driver"]["rules"]
+        assert [r["id"] for r in rules] == sorted(get_all_rules())
+        for rule in rules:
+            assert rule["shortDescription"]["text"]
+            assert rule["fullDescription"]["text"]
+            assert rule["help"]["text"]
+            assert rule["defaultConfiguration"]["level"] in {"error", "warning", "note"}
+
+    def test_results_reference_their_rule(self, log: dict):
+        run = log["runs"][0]
+        rules = run["tool"]["driver"]["rules"]
+        results = run["results"]
+        assert results
+        for result in results:
+            assert rules[result["ruleIndex"]]["id"] == result["ruleId"]
+
+    def test_result_location_is_relative_to_current_directory(self, log: dict):
+        result = next(r for r in log["runs"][0]["results"] if r["ruleId"] == "METADATA-001")
+        location = result["locations"][0]["physicalLocation"]
+        assert location["artifactLocation"]["uri"] == "test-charm/charmcraft.yaml"
+        assert result["level"] == "error"
+
+    def test_every_result_has_a_location(self, log: dict):
+        # Code scanning drops results without one, so findings about the
+        # charm as a whole are anchored to its metadata file.
+        for result in log["runs"][0]["results"]:
+            assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+
+    def test_pathless_finding_has_no_region(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "metadata.yaml").write_text("name: x\n")
+        report = _report(
+            tmp_path, models.Diagnostic("A-001", models.Severity.WARNING, "m", line=3)
+        )
+        result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
+        assert result["locations"][0]["physicalLocation"] == {
+            "artifactLocation": {"uri": "metadata.yaml"}
+        }
+        assert "ruleIndex" not in result
+
+    def test_path_outside_current_directory_is_a_file_uri(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        charm_dir = tmp_path / "my charm"
+        charm_dir.mkdir()
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        report = _report(
+            charm_dir, models.Diagnostic("A-001", models.Severity.WARNING, "m", path="a.py")
+        )
+        result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
+        assert result["locations"][0]["physicalLocation"] == {
+            "artifactLocation": {"uri": (charm_dir / "a.py").as_uri()}
+        }
+
+    def test_path_is_relative_to_github_workspace(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        charm_dir = tmp_path / "charms" / "foo"
+        charm_dir.mkdir(parents=True)
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+        monkeypatch.chdir(charm_dir)
+        report = _report(
+            charm_dir, models.Diagnostic("A-001", models.Severity.WARNING, "m", path="a.py")
+        )
+        result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
+        assert result["locations"][0]["physicalLocation"] == {
+            "artifactLocation": {"uri": "charms/foo/a.py"}
+        }
+
+    def test_fix_hint_and_reference_url(self, tmp_path: pathlib.Path):
+        report = _report(
+            tmp_path,
+            models.Diagnostic(
+                "A-001",
+                models.Severity.ERROR,
+                "m",
+                fix_hint="do this",
+                reference_url="https://example.com",
+            ),
+        )
+        result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
+        assert result["message"] == {"text": "m\n\ndo this\n\nSee https://example.com"}
+
+    def test_pathless_finding_without_metadata_has_no_location(self, tmp_path: pathlib.Path):
+        report = _report(tmp_path, models.Diagnostic("FATAL", models.Severity.ERROR, "m"))
+        result = json.loads(_formats.format_sarif(report))["runs"][0]["results"][0]
+        assert "locations" not in result
+
+    def test_pathless_finding_in_a_monorepo_says_which_charm(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        for name in ("foo", "bar"):
+            charm_dir = tmp_path / "charms" / name
+            charm_dir.mkdir(parents=True)
+            write_charmcraft_yaml(charm_dir, {"name": name})
+        monkeypatch.chdir(tmp_path)
+        main([".", "--format", "sarif", "--select", "STRUCTURE-001"])
+        results = json.loads(capsys.readouterr().out)["runs"][0]["results"]
+        uris = {r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for r in results}
+        assert uris == {"charms/foo/charmcraft.yaml", "charms/bar/charmcraft.yaml"}
