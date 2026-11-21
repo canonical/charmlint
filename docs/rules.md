@@ -845,6 +845,14 @@ Pebble.
 
 Detect non-string literals in a Pebble layer's service `environment`.
 
+Pebble accepts non-string values (`None` becomes `""`, `True` becomes
+`"true"`), but `ops.pebble.Layer` keeps the Python value, so the layer
+never equals the plan Pebble returns and a charm that compares them
+replans on every hook. `None` is a warning rather than info: the
+variable ends up set but empty rather than absent, so a workload that
+checks whether it is set, or falls back to a default when it isn't,
+behaves differently from what the charm meant.
+
 Only constant values are flagged. A value built by `str(...)`, an
 f-string, or any other expression is left alone: the rule can't tell
 what it evaluates to, and the common cases are already strings.
