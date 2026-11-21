@@ -62,6 +62,9 @@ packages = ["src/charmlint"]
 [tool.ruff]
 line-length = 99
 target-version = "py312"
+# Sphinx Stack's helper scripts, kept as the stack ships them so that its update
+# script can replace them.
+extend-exclude = ["docs/_dev"]
 
 [tool.ruff.format]
 preview = true
