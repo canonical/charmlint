@@ -26,7 +26,7 @@ jobs:
       - name: ty
         run: uv run --group dev ty check
       - name: Rule reference up to date
-        run: make docs-check
+        run: make rules-doc-check
 
   pip-audit:
     runs-on: ubuntu-latest
