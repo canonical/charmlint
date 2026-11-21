@@ -6,4 +6,10 @@ myst:
 
 # Tutorial
 
-There's no tutorial yet.
+This tutorial takes you through running charmlint on a small charm, fixing a finding, and configuring which rules run.
+
+```{toctree}
+:maxdepth: 1
+
+Getting started with charmlint <getting-started>
+```

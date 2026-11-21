@@ -28,6 +28,7 @@ uvx charmlint /path/to/charm
 
 ## In this documentation
 
+- [Tutorial: Getting started with charmlint](tutorial/getting-started)
 - [Rules](reference/rules): every rule and what it checks for
 - [Configuration](reference/configuration): settings and inline suppression
 - [Command-line interface](reference/cli): options and exit codes

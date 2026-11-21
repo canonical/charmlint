@@ -24,6 +24,7 @@ stderr
 stdout
 systemd
 unparenthesised
+uv
 vendored
 viewBox
 
