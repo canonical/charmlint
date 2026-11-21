@@ -22,7 +22,7 @@ uv add --dev charmlint
 uv run charmlint
 ```
 
-charmlint doesn't follow SemVer: a minor release can add or tighten rules, so an upgrade may turn a clean run into a failing one. If you set version bounds, see [docs/versioning.md](docs/versioning.md#pinning-charmlint) for how to pin.
+charmlint doesn't follow SemVer: a minor release can add or tighten rules, so an upgrade may turn a clean run into a failing one. If you set version bounds, see [Versioning](docs/explanation/versioning.md#pinning-charmlint) for how to pin.
 
 Common options:
 
@@ -46,14 +46,14 @@ ignore = ["METADATA-002"]
 
 You can also use a standalone `charmlint.toml` or `.charmlint.toml` file, with the same keys at the top level (no `[tool.charmlint]` header).
 
-Individual findings can be suppressed inline with `# charmlint: ignore[SECURITY-001]`. See [docs/configuration.md](docs/configuration.md) for all settings and suppression directives.
+Individual findings can be suppressed inline with `# charmlint: ignore[SECURITY-001]`. See [Configuration](docs/reference/configuration.md) for all settings and suppression directives.
 
 ## Documentation
 
-- [docs/rules.md](docs/rules.md) — every rule and what it checks for
-- [docs/id-scheme.md](docs/id-scheme.md) — rule IDs and the category catalogue
-- [docs/configuration.md](docs/configuration.md) — configuration and inline suppression
-- [docs/versioning.md](docs/versioning.md) — versioning and compatibility policy
+- [Rules](docs/reference/rules.md) — every rule and what it checks for
+- [Rule ID scheme](docs/reference/id-scheme.md) — rule IDs and the category catalogue
+- [Configuration](docs/reference/configuration.md) — configuration and inline suppression
+- [Versioning](docs/explanation/versioning.md) — versioning and compatibility policy
 - [SECURITY.md](SECURITY.md) — reporting vulnerabilities
 
 ## Community and support
