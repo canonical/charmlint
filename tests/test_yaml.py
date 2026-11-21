@@ -247,3 +247,29 @@ class TestYamlNode:
     def test_getitem_raises_for_a_missing_key(self, node: Yaml):
         with pytest.raises(KeyError):
             node["nope"]
+
+
+class TestPartPlugin:
+    """The plugin a parts entry builds with."""
+
+    def _part(self, tmp_path: pathlib.Path, part: str) -> Yaml:
+        loaded = _yaml.load(_write(tmp_path, "charmcraft.yaml", f"parts:\n  {part}\n"))
+        ((_, value),) = loaded.get("parts").items()
+        return value
+
+    def test_named_plugin(self, tmp_path: pathlib.Path):
+        assert (
+            _yaml.part_plugin("my-charm", self._part(tmp_path, "my-charm: {plugin: uv}")) == "uv"
+        )
+
+    @pytest.mark.parametrize("part", ["uv: {}", "uv: {plugin: null}", "uv: {plugin: ''}"])
+    def test_empty_plugin_falls_back_to_the_part_name(self, tmp_path: pathlib.Path, part: str):
+        assert _yaml.part_plugin("uv", self._part(tmp_path, part)) == "uv"
+
+    @pytest.mark.parametrize("part", ["charm: {plugin: [uv]}", "charm: {plugin: {a: b}}"])
+    def test_non_string_plugin_is_none(self, tmp_path: pathlib.Path, part: str):
+        assert _yaml.part_plugin("charm", self._part(tmp_path, part)) is None
+
+    def test_non_string_part_name_is_none(self, tmp_path: pathlib.Path):
+        # An unquoted ``on:`` key is the boolean ``True`` under YAML 1.1.
+        assert _yaml.part_plugin(True, self._part(tmp_path, "on: {}")) is None
