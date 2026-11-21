@@ -32,7 +32,7 @@ uvx charmlint --select SECURITY,METADATA-001 .
 uvx charmlint --ignore no-readme --strict .
 ```
 
-`charmlint --help` lists the rest. Errors cause charmlint to exit with code 1. With `--strict`, warnings cause charmlint to exit with code 2.
+`charmlint --help` lists the rest. charmlint exits 1 when it finds errors, or warnings too with `--strict`; to see or fail on errors only, use `--min-severity error`. Exit code 2 means charmlint could not run (for example, a bad path or configuration).
 
 ## Configuration
 
