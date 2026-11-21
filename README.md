@@ -50,9 +50,12 @@ Individual findings can be suppressed inline with `# charmlint: ignore[SECURITY-
 
 ## Documentation
 
+<!-- Link to the published documentation here once its Read the Docs project exists. -->
+
 - [Rules](docs/reference/rules.md) — every rule and what it checks for
 - [Rule ID scheme](docs/reference/id-scheme.md) — rule IDs and the category catalogue
 - [Configuration](docs/reference/configuration.md) — configuration and inline suppression
+- [Command-line interface](docs/reference/cli.md) — options and exit codes
 - [Versioning](docs/explanation/versioning.md) — versioning and compatibility policy
 - [SECURITY.md](SECURITY.md) — reporting vulnerabilities
 

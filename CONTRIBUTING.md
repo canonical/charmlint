@@ -29,6 +29,8 @@ A new or changed rule needs measurements over the charm corpus before review - s
 
 [docs/reference/rules.md](docs/reference/rules.md) is generated from the rule registry (CI fails if it's stale). After adding or changing a rule, regenerate it with `make rules-doc`. Don't edit the page by hand; improve the rule docstrings instead.
 
+The documentation site is built with [Sphinx Stack](https://github.com/canonical/sphinx-stack). To build it locally, run `make docs-site`. The other checks, such as `make spelling` and `make linkcheck`, run from the `docs` directory.
+
 # Develop in a workshop
 
 [Workshop](https://ubuntu.com/workshop) definitions live in `.workshop/`. The `dev` workshop is a container with `uv`, `make`, and charmlint's development dependencies, so you don't need to install any of them on the host:
