@@ -18,13 +18,13 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
       - name: uv lock --check
-        run: uv lock --check
+        run: make lock-check
       - name: ruff check
-        run: uv run --group dev ruff check
+        run: make ruff-check
       - name: ruff format
-        run: uv run --group dev ruff format --check
+        run: make ruff-format-check
       - name: ty
-        run: uv run --group dev ty check
+        run: make typecheck
       - name: Rule reference up to date
         run: make docs-check
 
@@ -56,7 +56,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Unit tests
-        run: uv run --group dev pytest --cov=charmlint --cov-report=term-missing
+        run: make test
 
   reference-urls:
     runs-on: ubuntu-latest
@@ -68,4 +68,4 @@ jobs:
       # The tests that fetch every rule's reference_url. They're deselected
       # by default so the suite runs offline and quickly.
       - name: Reference URLs resolve
-        run: uv run --group dev pytest -m network
+        run: make test-network
