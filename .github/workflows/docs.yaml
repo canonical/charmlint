@@ -1,0 +1,62 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".readthedocs.yaml"
+      - ".github/workflows/docs.yaml"
+      # The CLI reference is built from the argument parser.
+      - "src/charmlint/_cli.py"
+  workflow_dispatch:
+
+env:
+  DOCS_DIR: "docs"
+  # charmlint needs 3.12 or later, and the build imports it for the CLI reference.
+  PYTHON_VERSION: "3.12"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: ${{ matrix.check.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          # Read the Docs builds with warnings as errors, so check that here too.
+          - name: Build check
+            target: html
+          - name: Spelling check
+            target: spelling
+          - name: Link check
+            target: linkcheck
+          - name: Inclusive language check
+            target: woke
+    defaults:
+      run:
+        working-directory: ${{ env.DOCS_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: ${{ env.DOCS_DIR }}/requirements.txt
+
+      - name: Run check
+        run: make ${{ matrix.check.target }}

@@ -12,7 +12,7 @@ from .. import _models as models
 
 _RULES: dict[str, "Rule"] = {}
 
-# The category catalogue, mirroring the table in docs/id-scheme.md. A rule
+# The category catalogue, mirroring the table in docs/reference/id-scheme.md. A rule
 # may only use a category from this list, and configuration may only name
 # one from this list, so a typo in either is caught rather than silently
 # matching nothing. A category with no rules yet names nothing, so a config
@@ -88,7 +88,7 @@ class Rule(abc.ABC):
         if not isinstance(category, str) or category not in CATEGORIES:
             raise ValueError(
                 f"{cls.__name__}.category must be one of the categories in "
-                f"docs/id-scheme.md, got {category!r}"
+                f"docs/reference/id-scheme.md, got {category!r}"
             )
         number = cls.number
         if not isinstance(number, int) or number <= 0:

@@ -57,5 +57,5 @@ different things. All three are enforced when the rule class is
 registered.
 
 Names are part of the public interface, so renaming one is a breaking
-change under [versioning.md](versioning.md), the same as renumbering an
+change under the [versioning policy](../explanation/versioning.md), the same as renumbering an
 ID.

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-charmlint is in the `0.x` series, and only the latest release is supported. Security fixes go into a new release on [PyPI](https://pypi.org/project/charmlint/) and are not backported to earlier versions, so upgrade to the latest release to get them. See [docs/versioning.md](docs/versioning.md) for what a version bump means.
+charmlint is in the `0.x` series, and only the latest release is supported. Security fixes go into a new release on [PyPI](https://pypi.org/project/charmlint/) and are not backported to earlier versions, so upgrade to the latest release to get them. See [Versioning](docs/explanation/versioning.md) for what a version bump means.
 
 ## Reporting a vulnerability
 
