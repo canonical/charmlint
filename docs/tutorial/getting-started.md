@@ -223,7 +223,7 @@ Every rule ran except the two we ignored. The rest of the findings are a to-do l
 
 ## Next steps
 
-You've now learned the basics of charmlint! To learn more:
+That's the basics of charmlint. To learn more:
 
 - Look up what each rule checks for in [Rules](../reference/rules).
 - See [Configuration](../reference/configuration) for the other settings and the other ways to suppress findings.
