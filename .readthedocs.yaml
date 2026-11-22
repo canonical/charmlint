@@ -19,7 +19,7 @@ build:
     # This is a special exit code on Read the Docs that will cancel the build immediately.
     # https://docs.readthedocs.io/en/stable/build-customization.html#cancel-build-based-on-a-condition
     - |
-      if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- 'docs/' '.readthedocs.yaml' 'src/charmlint/_cli.py' 'src/charmlint/_config.py';
+      if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- 'docs/' '.readthedocs.yaml' 'src/charmlint/_cli.py' 'src/charmlint/_config.py' 'src/charmlint/_models.py';
       then
         exit 183;
       fi

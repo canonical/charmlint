@@ -10,9 +10,10 @@ on:
       - ".readthedocs.yaml"
       - ".github/workflows/docs.yaml"
       # The CLI reference is built from the argument parser, and its help text
-      # uses names from the config module.
+      # uses names from the config module and the severities from the models.
       - "src/charmlint/_cli.py"
       - "src/charmlint/_config.py"
+      - "src/charmlint/_models.py"
   workflow_dispatch:
 
 env:
