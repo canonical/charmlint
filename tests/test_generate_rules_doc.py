@@ -47,6 +47,10 @@ def test_markdown(text: str, expected: str):
             "Config option's default value contradicts its type",
             "Config option's default value contradicts its type",
         ),
+        ("The charm's 'name' field", "The charm's `name` field"),
+        ("The charm's and the units' names", "The charm's and the units' names"),
+        ("Missing 'name doesn't parse", "Missing 'name doesn't parse"),
+        ("An empty '' default", "An empty '' default"),
     ],
 )
 def test_description(text: str, expected: str):

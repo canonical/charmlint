@@ -162,7 +162,7 @@ def description(text: str) -> str:
     it up. On this page those become code spans, which leaves an apostrophe,
     as in ``charm's``, alone.
     """
-    return re.sub(r"(?<![\w'])'([^'\s][^']*?)'(?!\w)", r"`\1`", text)
+    return re.sub(r"(?<!\w)'([^']+)'(?!\w)", r"`\1`", text)
 
 
 def cell(text: str) -> str:
