@@ -8,7 +8,7 @@ hyrum
 liveness
 misconfigured
 [Mm]onorepo
-Pyright
+pyright
 reimplementation
 systemd
 vendored
