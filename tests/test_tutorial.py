@@ -71,8 +71,6 @@ def test_tutorial_outputs_match(
             if body == "$ mkdir -p my-charm/src\n$ cd my-charm\n":
                 (charm / "src").mkdir(parents=True)
                 monkeypatch.chdir(charm)
-            elif body == "$ chmod +x src/charm.py\n":
-                (charm / "src" / "charm.py").chmod(0o755)
             elif command == "$ uvx charmlint":
                 capsys.readouterr()
                 exit_code = main([])

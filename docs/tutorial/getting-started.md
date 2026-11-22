@@ -88,12 +88,6 @@ if __name__ == "__main__":
     ops.main(MyCharm)
 ```
 
-Make `src/charm.py` executable, as Charmcraft would:
-
-```text
-$ chmod +x src/charm.py
-```
-
 ## Run charmlint
 
 In the `my-charm` directory, run charmlint:
