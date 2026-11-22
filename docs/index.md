@@ -28,11 +28,24 @@ uvx charmlint /path/to/charm
 
 ## In this documentation
 
-- [Rules](reference/rules): every rule and what it checks for
-- [Configuration](reference/configuration): settings and inline suppression
-- [Command-line interface](reference/cli): options and exit codes
-- [Rule ID scheme](reference/id-scheme): rule IDs, names, and the category catalogue
-- [Versioning](explanation/versioning): what a version bump means, and how to pin charmlint
+````{domain}
+```{slice} Command line
+{doc}`Reference <reference/cli>` slice
+```
+
+```{slice} Rules
+{doc}`All rules <reference/rules>`
+{doc}`ID scheme <reference/id-scheme>`
+```
+
+```{slice} Configuration
+{doc}`Reference <reference/configuration>` slice
+```
+
+```{slice} Releases
+{doc}`Versioning <explanation/versioning>`
+```
+````
 
 This documentation uses the [Diátaxis documentation structure](https://diataxis.fr/).
 
