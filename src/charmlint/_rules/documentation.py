@@ -13,7 +13,7 @@ class NoReadme(Rule):
     ``README`` with a ``.md``, ``.txt`` or ``.rst`` extension satisfies
     the rule, in any case combination, and it has to sit at the charm
     root: a README one directory down documents that directory, not the
-    charm. An extensionless ``README`` is reported, since nothing
+    charm. A ``README`` with no extension is reported, since nothing
     renders it.
     """
 

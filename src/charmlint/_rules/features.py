@@ -216,7 +216,7 @@ class NoSetWorkloadVersion(Rule):
     library the charm publishes), matched on the called name alone so that
     every receiver spelling counts: ``self.unit``, ``self.model.unit``, and
     a local the charm bound earlier all resolve. A reactive charm that
-    reports its version through charmhelpers' ``application_version_set``
+    reports its version through ``charmhelpers``' ``application_version_set``
     satisfies the rule too: it is the same Juju field by the other
     framework's name. Charms that delegate the
     workload to a framework which sets the version for them are recognised

@@ -18,7 +18,7 @@ explanation/index
 
 charmlint is a linter for [Juju](https://canonical.com/juju) charms. It checks charm source code against Canonical's charm best practices: observability, security, testing, metadata, configuration, and more.
 
-charmlint is for charm authors and reviewers who want best-practice gaps caught before review rather than during it. Run it locally or in CI. It complements general-purpose tools such as ruff and pyright. A rule belongs in charmlint only if it needs knowledge of charms, Juju, or Canonical practice.
+charmlint is for charm authors and reviewers who want best-practice gaps caught before review rather than during it. Run it locally or in CI. It complements general-purpose tools such as Ruff and Pyright. A rule belongs in charmlint only if it needs knowledge of charms, Juju, or Canonical practice.
 
 charmlint requires Python 3.12 or later. Run it from PyPI with `uvx`, with no install needed:
 

@@ -89,9 +89,9 @@ class NamingConventions(Rule):
 class Entrypoint(Rule):
     """Check that a hand-written ``dispatch`` runs a real entrypoint.
 
-    charmcraft generates ``dispatch`` at pack time, so most charm repos
-    have none and the rule says nothing about them. A ``dispatch``
-    committed to the repo is the charm author's own, and a mistake in
+    charmcraft generates ``dispatch`` at pack time, so most charm
+    repositories have none and the rule says nothing about them. A ``dispatch``
+    committed to the repository is the charm author's own, and a mistake in
     it kills every hook: the entrypoint it names may not exist, may not
     be a regular file, or — when dispatch runs it directly rather than
     handing it to an interpreter — may not carry the executable bit.

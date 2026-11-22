@@ -1,29 +1,15 @@
 # Leave a blank line at the end of this file to support concatenation
-additionalProperties
-boolean
-[Cc]harmlint
-charmhelpers
+charmlint
 configurators
-cookiecutter
-craftctl
+Cookiecutter
 [Dd]eduplicated
-else's
-env
-extensionless
 hardcoded
 hyrum
 liveness
 misconfigured
-misspelt
 [Mm]onorepo
-pyright
+Pyright
 reimplementation
-repos?
-ruleset
-stderr
-stdout
 systemd
-unparenthesised
 vendored
-viewBox
 

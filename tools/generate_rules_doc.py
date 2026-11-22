@@ -141,7 +141,7 @@ def summary(by_category: dict[str, list[Rule]]) -> str:
     ]
     lines.extend(
         f"| [{rule.id}](#{anchor(rule)}) | `{rule.name}` "
-        f"| {_SEVERITY_LABELS[rule.default_severity]} | {cell(rule.description)} |"
+        f"| {_SEVERITY_LABELS[rule.default_severity]} | {cell(description(rule.description))} |"
         for rules in by_category.values()
         for rule in rules
     )
@@ -152,6 +152,17 @@ def summary(by_category: dict[str, list[Rule]]) -> str:
 def anchor(rule: Rule) -> str:
     """Return the in-page anchor for *rule*'s heading, GitHub-style."""
     return f"{rule.id}-{rule.name}".lower()
+
+
+def description(text: str) -> str:
+    """Return a rule's one-line description with its quoted names as code.
+
+    A description is plain text, as the command line prints it, so it quotes
+    a key or command such as ``'additionalProperties'`` rather than marking
+    it up. On this page those become code spans, which leaves an apostrophe,
+    as in ``charm's``, alone.
+    """
+    return re.sub(r"(?<![\w'])'([^'\s][^']*?)'(?!\w)", r"`\1`", text)
 
 
 def cell(text: str) -> str:
@@ -181,7 +192,7 @@ def entry(rule: Rule) -> str:
     lines = [
         f"### {rule.id} {rule.name}",
         "",
-        f"**{_SEVERITY_LABELS[rule.default_severity]}** — {markdown(rule.description)}",
+        f"**{_SEVERITY_LABELS[rule.default_severity]}** — {markdown(description(rule.description))}",
         "",
     ]
     body = explanation(rule)

@@ -28,3 +28,26 @@ _spec.loader.exec_module(generate_rules_doc)
 )
 def test_markdown(text: str, expected: str):
     assert generate_rules_doc.markdown(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Missing 'name' field", "Missing `name` field"),
+        (
+            "Empty or missing 'display-name'/'title' field",
+            "Empty or missing `display-name`/`title` field",
+        ),
+        ("runs 'craftctl default' for", "runs `craftctl default` for"),
+        (
+            "'website' link points to the charm's own page",
+            "`website` link points to the charm's own page",
+        ),
+        (
+            "Config option's default value contradicts its type",
+            "Config option's default value contradicts its type",
+        ),
+    ],
+)
+def test_description(text: str, expected: str):
+    assert generate_rules_doc.description(text) == expected
