@@ -30,7 +30,7 @@ class DeprecatedSeries(Rule):
     name = "deprecated-series"
     description = "Deprecated 'series' attribute in metadata"
     default_severity = models.Severity.WARNING
-    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/platforms/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         series = context.metadata.get("series")
@@ -711,7 +711,7 @@ class LegacyBases(Rule):
     name = "legacy-bases"
     description = "Legacy 'bases' block instead of 'base' and 'platforms'"
     default_severity = models.Severity.INFO
-    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms"
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/platforms/"
 
     def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
         bases = context.metadata.get("bases")
