@@ -721,7 +721,7 @@ class SnapcraftInOverride(Rule):
             return []
         diagnostics: list[models.Diagnostic] = []
         for part_name, part in parts.items():
-            # An unquoted ``on:`` key is the boolean ``True`` under YAML 1.1.
+            # An unquoted ``on:`` key is the Boolean ``True`` under YAML 1.1.
             described = f"the '{part_name}' part" if isinstance(part_name, str) else "a part"
             for key in _OVERRIDE_KEYS:
                 field = part.get(key)
