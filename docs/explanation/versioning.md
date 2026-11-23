@@ -87,4 +87,4 @@ When a rule, configuration option, or CLI flag is to be removed, it's first **de
 
 ## Pre-1.0
 
-charmlint is in the `0.x` series and under active development. This scheme applies throughout `0.x`. Minor (`0.x`) bumps may break you, and patch (`0.x.y`) bumps should not. As with ruff, reaching `1.0.0` won't change the meaning of the minor and patch versions. It signals that the tool and its default rule set have stabilised.
+charmlint is in the `0.x` series and under active development. This scheme applies throughout `0.x`. Minor (`0.x`) bumps may break you, and patch (`0.x.y`) bumps should not. As with ruff, reaching `1.0.0` won't change the meaning of the minor and patch versions. It'll signal that the tool and its default rule set have stabilised.
