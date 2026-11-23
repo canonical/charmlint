@@ -1477,8 +1477,8 @@ class TestOverrideBuildSkipsDefault:
         assert not _diags(lint(tmp_charm), "CHARMCRAFT-010")
 
 
-class TestSnapcraftScriptlet:
-    """Tests for CHARMCRAFT-011 — snapcraft spellings in part scriptlets."""
+class TestSnapcraftInOverride:
+    """Tests for CHARMCRAFT-011 — snapcraft spellings in part override scripts."""
 
     def _lint(self, charm: pathlib.Path, parts: dict) -> list[Diagnostic]:
         write_charmcraft_yaml(charm, {"name": "test", "parts": parts})
@@ -1495,10 +1495,10 @@ class TestSnapcraftScriptlet:
         assert "'snapcraftctl'" in diags[0].message
         assert "override-build for the 'charm' part" in diags[0].message
 
-    @pytest.mark.parametrize("scriptlet", ["override-pull", "override-stage", "override-prime"])
-    def test_snapcraft_variable_is_flagged(self, tmp_charm: pathlib.Path, scriptlet: str):
+    @pytest.mark.parametrize("key", ["override-pull", "override-stage", "override-prime"])
+    def test_snapcraft_variable_is_flagged(self, tmp_charm: pathlib.Path, key: str):
         diags = self._lint(
-            tmp_charm, {"x": {"plugin": "nil", scriptlet: "cp a $SNAPCRAFT_PART_INSTALL/a"}}
+            tmp_charm, {"x": {"plugin": "nil", key: "cp a $SNAPCRAFT_PART_INSTALL/a"}}
         )
         assert len(diags) == 1
         assert "'$SNAPCRAFT_PART_INSTALL'" in diags[0].message
@@ -1511,7 +1511,7 @@ class TestSnapcraftScriptlet:
         assert len(diags) == 1
         assert "'${SNAPCRAFT_PROJECT_DIR}'" in diags[0].message
 
-    def test_one_finding_per_scriptlet(self, tmp_charm: pathlib.Path):
+    def test_one_finding_per_override(self, tmp_charm: pathlib.Path):
         script = "snapcraftctl pull\ncp a $SNAPCRAFT_PART_INSTALL\n"
         diags = self._lint(
             tmp_charm,

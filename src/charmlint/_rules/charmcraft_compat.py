@@ -691,30 +691,28 @@ class OverrideBuildSkipsDefault(Rule):
 
 
 # No corpus charm has this, as expected for something that breaks packing.
-class SnapcraftScriptlet(Rule):
-    """Flag ``snapcraftctl`` and ``$SNAPCRAFT_*`` in a part scriptlet.
+class SnapcraftInOverride(Rule):
+    """Flag ``snapcraftctl`` and ``$SNAPCRAFT_*`` in a part's override script.
 
-    Charmcraft part scriptlets (``override-pull``, ``override-build``,
+    Charmcraft part override scripts (``override-pull``, ``override-build``,
     ``override-stage`` and ``override-prime``) run under craft-parts, where
     the control tool is ``craftctl`` and the variables are ``$CRAFT_*``.
     ``snapcraftctl`` and ``$SNAPCRAFT_*`` are the spellings snapcraft used
-    up to core22, and Charmcraft has neither. A scriptlet copied from an
-    old snap either fails with "command not found" partway through
+    up to core22, and Charmcraft has neither. An override script copied
+    from an old snap either fails with "command not found" partway through
     ``charmcraft pack``, or expands an unset ``$SNAPCRAFT_PART_INSTALL`` to
     an empty string and copies files somewhere other than the part's
     install directory. Naming it here saves finding out minutes into a
     pack.
 
-    Comments are ignored, so a scriptlet that mentions ``snapcraftctl`` in
-    a comment isn't flagged.
+    Comments are ignored, so an override script that mentions
+    ``snapcraftctl`` in a comment isn't flagged.
     """
 
     category = "CHARMCRAFT"
     number = 11
-    name = "snapcraft-scriptlet"
-    description = (
-        "Part scriptlet uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_*"
-    )
+    name = "snapcraft-in-override"
+    description = "Part override uses snapcraftctl or $SNAPCRAFT_* instead of craftctl or $CRAFT_*"
     default_severity = models.Severity.ERROR
     reference_url = "https://canonical.com/juju/docs/charmcraft/stable/common/craft-parts/reference/part_properties/#override-build"
 
@@ -726,8 +724,8 @@ class SnapcraftScriptlet(Rule):
         for part_name, part in parts.items():
             # An unquoted ``on:`` key is the boolean ``True`` under YAML 1.1.
             described = f"the '{part_name}' part" if isinstance(part_name, str) else "a part"
-            for scriptlet in _SCRIPTLETS:
-                field = part.get(scriptlet)
+            for key in _OVERRIDE_KEYS:
+                field = part.get(key)
                 if not isinstance(field.value, str):
                     continue
                 script = _strip_shell_comments(field.value)
@@ -736,7 +734,7 @@ class SnapcraftScriptlet(Rule):
                     continue
                 diagnostics.append(
                     self.diagnostic(
-                        f"{scriptlet} for {described} uses '{match.group()}', "
+                        f"{key} for {described} uses '{match.group()}', "
                         f"which Charmcraft doesn't have",
                         path=field.source,
                         line=field.line,
@@ -1025,8 +1023,8 @@ _SNAPCRAFTCTL = re.compile(r"\bsnapcraftctl\b")
 # One pattern, so ``search`` finds whichever snapcraft spelling comes first.
 _SNAPCRAFT_SPELLING = re.compile(r"\bsnapcraftctl\b|\$(?:\{SNAPCRAFT_\w+\}|SNAPCRAFT_\w+)")
 
-#: The part scriptlets craft-parts runs, each of which holds shell code.
-_SCRIPTLETS = ("override-pull", "override-build", "override-stage", "override-prime")
+#: The part override scripts craft-parts runs, each of which holds shell code.
+_OVERRIDE_KEYS = ("override-pull", "override-build", "override-stage", "override-prime")
 
 
 def _runs_default(script: str) -> bool:
