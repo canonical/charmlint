@@ -335,7 +335,7 @@ class InvalidStorage(Rule):
                         f"Storage '{storage_name}' is not a mapping, so Juju can't read it",
                         path=storage.source,
                         line=storage.line,
-                        fix_hint="Write it as a mapping, e.g. 'type: filesystem'",
+                        fix_hint="Write it as a mapping, for example: 'type: filesystem'",
                     )
                 )
                 continue
