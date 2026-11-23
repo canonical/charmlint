@@ -154,7 +154,7 @@ Presence is the whole test: an empty `series:` is flagged like
 any other, because the key itself is the finding rather than what
 it says.
 
-Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms>
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/platforms/>
 
 ### CHARMCRAFT-002 naming-conventions
 
@@ -251,7 +251,7 @@ accepted for bases supported before 2024-01-01, so a charm that names
 builds fine and has only migration ahead of it. Reported as a warning
 in the first case and info in the second.
 
-Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-platforms>
+Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/platforms/>
 
 ### CHARMCRAFT-008 charm-user
 
