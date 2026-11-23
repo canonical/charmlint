@@ -31,14 +31,14 @@ class LoggingInLoop(Rule):
     """Check for logging calls inside a loop over relations or units.
 
     Under Juju, ops sends each log record to the controller by running the
-    ``juju-log`` hook tool, which is a subprocess. A loop that logs on every
+    ``juju-log`` hook tool, which is a ``subprocess``. A loop that logs on every
     iteration therefore starts a process per iteration. That's cheap for a
     handful of items, but a loop over relations or units grows with the
     deployment, and a charm at the centre of a large one (an aggregator
     with hundreds of relations, say) can spend most of a hook in
     ``juju-log``.
 
-    The rule looks at ``for`` loops whose iterable names a relation or
+    The rule looks at ``for`` loops whose ``iterable`` names a relation or
     units (``self.model.relations[...]``, ``relation.units``,
     ``self._peer_relations()``, ``relation_ids``, ...). Loops over other
     collections, ``while`` loops, and retry loops usually run a few times,
