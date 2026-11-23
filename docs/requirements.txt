@@ -30,5 +30,7 @@ vale==3.13.0.0
 # [BEYOND SPHINX STACK]
 # Build the CLI reference from charmlint's argument parser
 sphinxcontrib-autoprogram~=0.1.9
+# The accessible "In this documentation" index on the home page
+sphinx-structured-toc~=0.2
 # charmlint's own runtime dependency, needed to import its argument parser
 pyyaml>=6.0

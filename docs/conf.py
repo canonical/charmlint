@@ -200,6 +200,9 @@ extensions = [
     "sphinx_sitemap",
     # [BEYOND SPHINX STACK] Build the CLI reference from charmlint's argument parser.
     "sphinxcontrib.autoprogram",
+    # [BEYOND SPHINX STACK] The accessible "In this documentation" index on the home page,
+    # as in Pebble's docs.
+    "sphinx_structured_toc",
 ]
 
 # Excludes files or directories from processing
@@ -286,5 +289,36 @@ def _set_logo_path(
         context["logo_img_URL"] = context["pathto"](logo, 1)
 
 
+def _flatten_structured_toc(app: Any, doctree: Any, docname: str) -> None:
+    """Write the home page index as a plain list in the Markdown for llms.txt.
+
+    sphinx-structured-toc only has HTML and LaTeX writers, so the Markdown sub-build
+    would otherwise drop the index. Each slice becomes a list item: its name, then its
+    links separated by ``|``, as the HTML page shows it.
+    """
+    del docname
+    if app.builder.name != "llms-markdown":
+        return
+    # Imported here, as these are only installed in the docs venv.
+    from docutils import nodes  # ty: ignore[unresolved-import]
+    from sphinx_structured_toc.nodes import (  # ty: ignore[unresolved-import]
+        Domain,
+        Slice,
+        SliceItem,
+    )
+
+    for domain in list(doctree.findall(Domain)):
+        items = nodes.bullet_list()
+        for slice_ in domain.findall(Slice):
+            para = nodes.paragraph()
+            para += nodes.strong(text=f"{slice_['name']}:")
+            for i, item in enumerate(slice_.findall(SliceItem)):
+                para += nodes.Text(" | " if i else " ")
+                para.extend(child.deepcopy() for child in item.children)
+            items += nodes.list_item("", para)
+        domain.replace_self(items)
+
+
 def setup(app: Any) -> None:  # Any, as Sphinx is only installed in the docs venv.
     app.connect("html-page-context", _set_logo_path)
+    app.connect("doctree-resolved", _flatten_structured_toc)
