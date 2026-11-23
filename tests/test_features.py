@@ -5,7 +5,7 @@ import textwrap
 from typing import Any
 
 from charmlint._linter import lint
-from charmlint._models import Severity
+from charmlint._models import Diagnostic, Severity
 from tests.conftest import write_charm_source, write_charmcraft_yaml
 
 RULE_ID = "FEATURES-004"
@@ -800,7 +800,7 @@ class TestCharmObservesNoEvents:
     """Tests for FEATURES-008 — charm class that observes no events."""
 
     @staticmethod
-    def _hits(charm_dir: pathlib.Path, source: str):
+    def _hits(charm_dir: pathlib.Path, source: str) -> list[Diagnostic]:
         write_charmcraft_yaml(charm_dir, {"name": "test"})
         write_charm_source(charm_dir, textwrap.dedent(source))
         return [d for d in lint(charm_dir) if d.rule_id == "FEATURES-008"]
