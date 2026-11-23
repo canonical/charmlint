@@ -36,7 +36,7 @@ class TestCLI:
         exit_code = main([str(tmp_charm)])
         assert exit_code == 0
 
-    def test_json_output(self, tmp_charm: pathlib.Path, capsys):
+    def test_json_output(self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json"])
         captured = capsys.readouterr()
@@ -51,7 +51,9 @@ class TestCLI:
         # no diagnostics → exit 0.
         assert exit_code == 0
 
-    def test_select_overrides_config_ignore(self, tmp_charm: pathlib.Path, capsys):
+    def test_select_overrides_config_ignore(
+        self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         (tmp_charm / "pyproject.toml").write_text('[tool.charmlint]\nignore = ["METADATA-001"]\n')
         main([str(tmp_charm), "--format", "json"])
@@ -61,12 +63,16 @@ class TestCLI:
         data = json.loads(capsys.readouterr().out)
         assert [d for d in data["diagnostics"] if d["rule_id"] == "METADATA-001"]
 
-    def test_select_and_ignore_contradict_on_command_line(self, tmp_charm: pathlib.Path, capsys):
+    def test_select_and_ignore_contradict_on_command_line(
+        self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
         exit_code = main([str(tmp_charm), "--select", "METADATA-001", "--ignore", "METADATA-001"])
         assert exit_code == 2
         assert "select and ignore both cover: METADATA-001" in capsys.readouterr().err
 
-    def test_ignore_beats_a_category_select(self, tmp_charm: pathlib.Path, capsys):
+    def test_ignore_beats_a_category_select(
+        self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         argv = [str(tmp_charm), "--format", "json", "--select", "METADATA"]
         main([*argv, "--ignore", "METADATA-001"])
@@ -74,7 +80,9 @@ class TestCLI:
         assert "METADATA-001" not in rule_ids
         assert "METADATA-002" in rule_ids
 
-    def test_ignore_mutes_a_config_select(self, tmp_charm: pathlib.Path, capsys):
+    def test_ignore_mutes_a_config_select(
+        self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         (tmp_charm / "pyproject.toml").write_text(
             '[tool.charmlint]\nselect = ["METADATA-001", "METADATA-002"]\n'
@@ -86,7 +94,7 @@ class TestCLI:
         assert "METADATA-001" not in rule_ids
         assert "METADATA-002" in rule_ids
 
-    def test_ignore_filter(self, tmp_charm: pathlib.Path, capsys):
+    def test_ignore_filter(self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json", "--ignore", "METADATA-001"])
         captured = capsys.readouterr()
@@ -94,7 +102,7 @@ class TestCLI:
         meta_diags = [d for d in data["diagnostics"] if d["rule_id"] == "METADATA-001"]
         assert not meta_diags
 
-    def test_severity_filter(self, tmp_charm: pathlib.Path, capsys):
+    def test_severity_filter(self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json", "--min-severity", "error"])
         captured = capsys.readouterr()
@@ -109,7 +117,7 @@ class TestCLI:
         exit_code_strict = main([str(tmp_charm), "--strict"])
         assert exit_code_strict in (0, 2)
 
-    def test_version(self, capsys):
+    def test_version(self, capsys: pytest.CaptureFixture[str]):
         with pytest.raises(SystemExit) as exc_info:
             main(["--version"])
         assert exc_info.value.code == 0

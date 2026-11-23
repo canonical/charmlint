@@ -30,7 +30,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from charmlint._linter import lint
-from charmlint._models import Severity
+from charmlint._models import Diagnostic, Severity
 
 # Hypothesis warns when a @given test uses a function-scoped pytest
 # fixture because the fixture is created once and then reused across
@@ -38,11 +38,14 @@ from charmlint._models import Severity
 # In this file that reuse is deliberate: each property body overwrites
 # ``tmp_charm/charmcraft.yaml`` and touches no other state, so a shared
 # directory is equivalent to a fresh one per example. Suppress the
-# health check globally for the module. ``max_examples`` inherits from
-# the profile registered in ``tests/unit/conftest.py`` (100 for dev,
-# 500 for CI).
+# health check globally for the module.
+#
+# No deadline: each example lints a whole charm with every rule, so how
+# long it takes depends on the machine and grows with each new rule. With
+# the default 200 ms deadline, the tests fail at random on a slower runner.
 _charm_settings = settings(
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
+    deadline=None,
 )
 
 # ---------------------------------------------------------------------------
@@ -141,7 +144,7 @@ def _write_and_lint(tmp_charm: pathlib.Path, metadata: dict):
     return lint(tmp_charm)
 
 
-def _diagnostic_key(d) -> tuple:
+def _diagnostic_key(d: Diagnostic) -> tuple:
     """Stable equality key for a Diagnostic — drops nothing."""
     return (d.rule_id, d.severity, d.message, d.path, d.line, d.fix_hint)
 
