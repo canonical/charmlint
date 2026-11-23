@@ -8,7 +8,7 @@ charmlint rule IDs follow the form `CATEGORY-###`, such as `SECURITY-001` and `M
 
 **Use full-word categories in uppercase.** Full words are unambiguous and split cleanly into `CATEGORY` and `###` with `id.rsplit("-", 1)`. This also makes charmlint IDs visually distinct from ruff's `PREFIX###` format, so there is no confusion about which tool reported `SEC001` versus `SECURITY-001`.
 
-**Always use the full `CATEGORY-###` form.** Numbers are only unique within a category, so a bare `001` could mean any of several rules. charmlint rejects it in the configuration, such as in `ignore = ["001"]`.
+**Always use the full `CATEGORY-###` form.** Numbers are only unique within a category, so a bare `001` could mean any of several rules. charmlint rejects it in the configuration and on the command line, such as in `ignore = ["001"]` or `--ignore 001`.
 
 ## Category catalogue
 
