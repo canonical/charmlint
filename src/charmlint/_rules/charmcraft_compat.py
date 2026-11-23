@@ -690,7 +690,6 @@ class OverrideBuildSkipsDefault(Rule):
         return diagnostics
 
 
-# No corpus charm has this, as expected for something that breaks packing.
 class SnapcraftInOverride(Rule):
     """Flag ``snapcraftctl`` and ``$SNAPCRAFT_*`` in a part's override script.
 
