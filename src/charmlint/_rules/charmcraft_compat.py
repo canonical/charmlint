@@ -1022,7 +1022,7 @@ _SNAPCRAFTCTL = re.compile(r"\bsnapcraftctl\b")
 # One pattern, so ``search`` finds whichever snapcraft spelling comes first.
 _SNAPCRAFT_SPELLING = re.compile(r"\bsnapcraftctl\b|\$(?:\{SNAPCRAFT_\w+\}|SNAPCRAFT_\w+)")
 
-#: The part override scripts craft-parts runs, each of which holds shell code.
+# The part override scripts craft-parts runs, each of which holds shell code.
 _OVERRIDE_KEYS = ("override-pull", "override-build", "override-stage", "override-prime")
 
 
