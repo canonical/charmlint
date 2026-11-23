@@ -38,23 +38,27 @@ uv run ty check
 
 A new or changed rule needs a TP/FP table over the hyrum cache (`~/.cache/hyrum/charms`) before review. Enumerate charms and report results as described in [docs/corpus.md](docs/corpus.md) — the cache contains build trees and mirrored repos, so an ad-hoc `rglob` gives a different denominator every time (~1970 directories vs 655 charms).
 
+Label a finding by whether the reason for the rule holds in that charm, not by whether the code matches what the rule was written to find: a finding can match the pattern exactly and still be a false positive. For example, STATUS-001 exists because a handler observed only for a non-repeating event such as `install` never runs again, so `BlockedStatus` set there can't clear. The rule skips a handler that is also observed for `config-changed`, but it only sees the observe calls in the module that defines the handler. If `src/base.py` observes `install` for `_on_setup` and `charm.py` also observes `config_changed` for it, STATUS-001 reports `_on_setup`, and the code in `src/base.py` does match what the rule looks for. Label it a false positive anyway: `config-changed` runs the handler again, so the reason for the rule doesn't hold. The rule isn't wrong to report it; the label is what records that this finding doesn't matter.
+
 ## Conventions
 
 - Commits and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/); PR-title types enforced by `.github/workflows/validate-pr-title.yaml` (see [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) for the list).
 - Rule IDs follow `CATEGORY-###` (`SECURITY-001`, `METADATA-003`) — see [docs/id-scheme.md](docs/id-scheme.md) for the category catalogue.
 - Runtime dependencies are kept minimal (PyYAML only); the `_pypi_attest.py` helper is stdlib-only by design.
 
-## Rule module layout
+## Writing a rule
 
-Rule modules are read far more often in review than they are written, so lay one
-out top-down and let the reader follow the call graph without scrolling back:
+- Cover every way charms write the problem. Before writing the matcher, search the hyrum cache for the problem and its variants: a keyword argument as well as a dict key, the `ops` enum as well as the string, a constructor such as `CheckDict(...)` as well as a literal. `_ast.call_target()` and `_ast.Imports` already resolve calls through imports and aliases, and `_ast.keyword()` finds a keyword argument. Only leave a variant for later if it needs a change outside the rule modules, `_ast.py`, `_yaml.py` and `_toml.py`, or another issue covers it. Say which in the PR.
+- Find the existing rule closest in shape and keep the new rule about its size, using its code and tests as the measure. Write a positive and a negative test for each case the docstring names, not one per spelling of it.
+- Report a finding on the line a suppression comment for it would go on. For YAML, that is the `line` of the most specific node at fault, such as the list element that is wrong rather than the key that holds the list. `_yaml.load()` already records it.
+
+### Module layout
+
+Rule modules are read far more often in review than they are written, so lay one out top-down and let the reader follow the call graph without scrolling back:
 
 - Rule classes first, in rule-ID order.
-- Then the helpers, in the order they are first called: a helper is defined below
-  its caller, and two helpers appear in the order the caller reaches them.
-- A helper used by one rule module stays private to it. A concern shared across
-  rule modules belongs in `_ast.py` or `_yaml.py` instead — check there before
-  writing a new walker or parser.
+- Then the helpers, in the order they are first called: a helper is defined below its caller, and two helpers appear in the order the caller reaches them.
+- A helper used by one rule module stays private to it. A concern shared across rule modules belongs in `_ast.py`, `_yaml.py` or `_toml.py` instead — check there before writing a new walker or parser.
 
 ## What a rule may look at
 
