@@ -3,6 +3,7 @@
 import pathlib
 import shutil
 import subprocess
+from collections.abc import Callable
 
 import pytest
 
@@ -355,7 +356,9 @@ class TestEntrypoint:
             ),
         ],
     )
-    def test_hook_charms_skipped(self, tmp_charm: pathlib.Path, setup):
+    def test_hook_charms_skipped(
+        self, tmp_charm: pathlib.Path, setup: Callable[[pathlib.Path], object]
+    ):
         write_charmcraft_yaml(tmp_charm, {"name": "test"})
         setup(tmp_charm)
         assert self._ids(tmp_charm) == []
