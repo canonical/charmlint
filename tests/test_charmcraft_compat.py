@@ -1481,7 +1481,9 @@ class TestRedeclaredExtensionRelation:
     """Tests for CHARMCRAFT-013 — relation re-declared over a framework extension."""
 
     @staticmethod
-    def _lint(charm_dir: pathlib.Path, body: str, extension: str = "flask-framework"):
+    def _lint(
+        charm_dir: pathlib.Path, body: str, extension: str = "flask-framework"
+    ) -> list[Diagnostic]:
         (charm_dir / "charmcraft.yaml").write_text(
             f"name: test\nextensions:\n  - {extension}\n{body}"
         )
