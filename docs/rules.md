@@ -66,6 +66,7 @@ config file overrides it per rule.
 | [METADATA-010](#metadata-010-circular-website-link) | `circular-website-link` | Info | 'website' link points to the charm's own Charmhub page |
 | [PEBBLE-005](#pebble-005-pebble-env-non-string) | `pebble-env-non-string` | Info | Pebble layer environment value is not a string |
 | [PEBBLE-006](#pebble-006-pebble-check-level-alive) | `pebble-check-level-alive` | Info | Pebble check uses level 'alive', which drives the Kubernetes liveness probe |
+| [PERFORMANCE-001](#performance-001-logging-in-loop) | `logging-in-loop` | Info | Logging inside a loop over relations or units runs juju-log at least once per iteration |
 | [SECURITY-001](#security-001-secret-in-plain-config) | `secret-in-plain-config` | Error | Secret-like config option found — use Juju secrets instead |
 | [STATUS-001](#status-001-blocked-status-in-non-repeating-handler) | `blocked-status-in-non-repeating-handler` | Warning | BlockedStatus set in an install/start/stop/remove handler |
 | [STRUCTURE-001](#structure-001-no-licence) | `no-licence` | Info | No LICENSE/LICENCE file found |
@@ -875,6 +876,45 @@ workload whose author really does want Kubernetes to restart the
 container can suppress the rule on that line.
 
 Reference: <https://canonical.com/juju/docs/ops/latest/howto/manage-containers/manage-pebble-health-checks/>
+
+## PERFORMANCE
+
+Performance.
+
+### PERFORMANCE-001 logging-in-loop
+
+**Info** — Logging inside a loop over relations or units runs juju-log at least once per iteration
+
+Check for logging calls inside a loop over relations or units.
+
+Under Juju, ops sends each log record to the controller by running the
+`juju-log` hook tool, which is a subprocess. A loop that logs on every
+iteration therefore starts a process per iteration. That's cheap for a
+handful of items, but a loop over relations or units grows with the
+deployment, and a charm at the centre of a large one (an aggregator
+with hundreds of relations, say) can spend most of a hook in
+`juju-log`.
+
+The rule looks at `for` loops whose iterable names a relation or
+units (`self.model.relations[...]`, `relation.units`,
+`self._peer_relations()`, `relation_ids`, ...). Loops over other
+collections, `while` loops, and retry loops usually run a few times,
+so they aren't reported. It reports once per outermost such loop, at
+the first logging call in its body, and says how many calls there are.
+It recognises calls on a receiver named like a logger (`logger`,
+`log`, `logging`, `self._logger`, ...) using the standard level
+methods; a call on an inline `logging.getLogger(...)` isn't
+recognised. Calls in a nested function, class or lambda defined in the
+loop are not counted, because they don't necessarily run once per
+iteration, and nor are calls in an `except` handler, since logging a
+failure for one relation is the unusual path. A comprehension isn't
+treated as a loop, so one over relations isn't reported on its own, and
+the `else` clause of a loop isn't examined.
+
+Move the logging out of the loop (log a summary afterwards), or limit it
+to the exceptional case.
+
+Reference: <https://canonical.com/juju/docs/juju-cli/latest/reference/hook-command/list-of-hook-commands/juju-log/>
 
 ## SECURITY
 
