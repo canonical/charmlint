@@ -62,15 +62,10 @@ Rule modules are read far more often in review than they are written, so lay one
 
 ## What a rule may look at
 
-A lint should give the same answer for the same charm, so keep what a rule reads
-close to the charm:
+A lint should give the same answer for the same charm, so keep what a rule reads close to the charm:
 
-- The charm directory, and upwards to the root of the git repository that holds
-  it (a monorepo's shared docs or rocks), but no further. Outside a repository,
-  only the charm directory.
-- git, for tracked state that ends up in the packed charm, such as a file's
-  recorded mode. Fall back to the filesystem when there's no repository or no
-  `git`.
+- The charm directory, and upwards to the root of the git repository that holds it (a monorepo's shared docs or rocks), but no further. Outside a repository, only the charm directory.
+- git, for tracked state that ends up in the packed charm, such as a file's recorded mode. Fall back to the filesystem when there's no repository or no `git`.
 - Never the network, and nothing outside the repository.
 
 ## Security
