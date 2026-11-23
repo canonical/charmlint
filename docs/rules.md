@@ -337,6 +337,13 @@ a definition that isn't a mapping, one with a missing `type` or a
 `range`. A key Juju doesn't know is reported by CHARMCRAFT-014
 instead.
 
+`shared` is in Juju's storage schema, but Juju has never implemented
+shared storage. Juju 3 refuses to deploy a charm with `shared: true`
+storage, and Juju 4 refuses unless the storage is optional (and then
+never shares it), so that is an error. `shared: false` is reported
+as information: it's what Juju assumes anyway, so the key does
+nothing.
+
 Reference: <https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-storage>
 
 ### CHARMCRAFT-014 unknown-storage-field

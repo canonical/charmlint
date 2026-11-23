@@ -317,6 +317,13 @@ class InvalidStorage(Rule):
     ``block`` storage, and a ``multiple`` that isn't a mapping with a
     ``range``. A key Juju doesn't know is reported by CHARMCRAFT-014
     instead.
+
+    ``shared`` is in Juju's storage schema, but Juju has never implemented
+    shared storage. Juju 3 refuses to deploy a charm with ``shared: true``
+    storage, and Juju 4 refuses unless the storage is optional (and then
+    never shares it), so that is an error. ``shared: false`` is reported
+    as information: it's what Juju assumes anyway, so the key does
+    nothing.
     """
 
     category = "CHARMCRAFT"
@@ -377,6 +384,29 @@ class InvalidStorage(Rule):
                         line=multiple.line,
                         # Juju's storage schema accepts m, m-n, m+ and m-.
                         fix_hint="Write it as 'multiple: {range: 1-3}' (or '1', '1+', '1-')",
+                    )
+                )
+            shared = storage.get("shared")
+            if shared.present and shared.value is True:
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Storage '{storage_name}' sets 'shared: true', but Juju doesn't implement "
+                        "shared storage, so it won't deploy the charm (Juju 4 only allows it "
+                        "for optional storage, and never shares it)",
+                        path=shared.source,
+                        line=shared.line,
+                        fix_hint="Remove 'shared'",
+                    )
+                )
+            elif shared.present:
+                diagnostics.append(
+                    self.diagnostic(
+                        f"Storage '{storage_name}' sets 'shared', which does nothing: storage is "
+                        "never shared in Juju",
+                        severity=models.Severity.INFO,
+                        path=shared.source,
+                        line=shared.line,
+                        fix_hint="Remove 'shared'",
                     )
                 )
         return diagnostics
@@ -990,8 +1020,9 @@ _KNOWN_RESOURCE_FIELDS: frozenset[str] = frozenset({
 
 # Storage types Juju accepts, and the keys recognised inside ``storage.<name>``.
 _STORAGE_TYPES: frozenset[str] = frozenset({"filesystem", "block"})
-# Follows Juju's storage schema, not the charmcraft reference page, which
-# leaves out ``shared``.
+# Follows Juju's storage schema. The charmcraft reference page leaves out
+# ``shared`` because Juju never implemented it; CHARMCRAFT-012 reports it
+# rather than CHARMCRAFT-014 calling it unknown.
 _KNOWN_STORAGE_FIELDS: frozenset[str] = frozenset({
     "type",
     "description",

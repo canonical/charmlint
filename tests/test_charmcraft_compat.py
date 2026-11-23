@@ -1542,6 +1542,19 @@ class TestInvalidStorage:
         )
         assert "CHARMCRAFT-012" not in {d.rule_id for d in list(lint(tmp_charm))}
 
+    def test_shared_true_is_an_error(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "shared": True}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.ERROR
+        assert "shared" in diags[0].message
+        assert diags[0].fix_hint == "Remove 'shared'"
+
+    def test_shared_false_is_info(self, tmp_charm: pathlib.Path):
+        diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "shared": False}})
+        assert len(diags) == 1
+        assert diags[0].severity == Severity.INFO
+        assert "does nothing" in diags[0].message
+
 
 class TestUnknownStorageField:
     """Tests for CHARMCRAFT-014 — unrecognised keys in a storage definition."""
@@ -1553,9 +1566,13 @@ class TestUnknownStorageField:
     def test_known_keys_are_clean(self, tmp_charm: pathlib.Path):
         storage = {
             "data": {"type": "filesystem", "location": "/data", "minimum-size": "1G"},
-            "disk": {"type": "block", "multiple": {"range": "1-3"}, "shared": False},
+            "disk": {"type": "block", "multiple": {"range": "1-3"}, "read-only": True},
         }
         assert self._diags(tmp_charm, storage) == []
+
+    def test_shared_is_not_unknown(self, tmp_charm: pathlib.Path):
+        # CHARMCRAFT-012 reports 'shared'; CHARMCRAFT-014 doesn't add a second finding.
+        assert self._diags(tmp_charm, {"data": {"type": "filesystem", "shared": False}}) == []
 
     def test_directory_key_suggests_location(self, tmp_charm: pathlib.Path):
         diags = self._diags(tmp_charm, {"data": {"type": "filesystem", "directory": "/d"}})
