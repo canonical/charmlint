@@ -175,7 +175,7 @@ class TestParse:
         ),
     ],
 )
-def test_parse_legacy_codes(raw, codes):
+def test_parse_legacy_codes(raw: str | None, codes: frozenset[str] | None):
     assert _noqa._parse_legacy_codes(raw) == codes
 
 
