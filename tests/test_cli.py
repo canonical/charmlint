@@ -36,7 +36,7 @@ class TestCLI:
         exit_code = main([str(tmp_charm)])
         assert exit_code == 0
 
-    def test_json_output(self, tmp_charm: pathlib.Path, capsys):
+    def test_json_output(self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json"])
         captured = capsys.readouterr()
@@ -51,7 +51,7 @@ class TestCLI:
         # no diagnostics → exit 0.
         assert exit_code == 0
 
-    def test_ignore_filter(self, tmp_charm: pathlib.Path, capsys):
+    def test_ignore_filter(self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json", "--ignore", "METADATA-001"])
         captured = capsys.readouterr()
@@ -59,7 +59,7 @@ class TestCLI:
         meta_diags = [d for d in data["diagnostics"] if d["rule_id"] == "METADATA-001"]
         assert not meta_diags
 
-    def test_severity_filter(self, tmp_charm: pathlib.Path, capsys):
+    def test_severity_filter(self, tmp_charm: pathlib.Path, capsys: pytest.CaptureFixture[str]):
         write_charmcraft_yaml(tmp_charm, {"display-name": "X"})
         main([str(tmp_charm), "--format", "json", "--min-severity", "error"])
         captured = capsys.readouterr()
@@ -74,7 +74,7 @@ class TestCLI:
         exit_code_strict = main([str(tmp_charm), "--strict"])
         assert exit_code_strict in (0, 2)
 
-    def test_version(self, capsys):
+    def test_version(self, capsys: pytest.CaptureFixture[str]):
         with pytest.raises(SystemExit) as exc_info:
             main(["--version"])
         assert exc_info.value.code == 0
