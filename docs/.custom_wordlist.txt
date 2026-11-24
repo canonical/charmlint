@@ -3,6 +3,7 @@ charmlint
 configurators
 Cookiecutter
 [Dd]eduplicated
+Dependabot
 hardcoded
 hyrum
 liveness
@@ -10,6 +11,7 @@ misconfigured
 [Mm]onorepo
 pyright
 reimplementation
+Sigstore
 systemd
 vendored
 
