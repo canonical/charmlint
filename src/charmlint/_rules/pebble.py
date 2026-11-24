@@ -110,8 +110,8 @@ class PebbleEnvNonString(Rule):
                 literal = str(value.value)
                 message = (
                     f"Pebble layer environment value for {described} is a bool "
-                    f"— Pebble turns it into '{literal.lower()}', where workloads "
-                    f"often expect '{int(value.value)}', and {_PLAN_MISMATCH}"
+                    f"— Pebble turns it into '{literal.lower()}', though some workloads "
+                    f"expect '{int(value.value)}', and {_PLAN_MISMATCH}"
                 )
                 fix_hint = (
                     f"Write the value the workload expects, "
