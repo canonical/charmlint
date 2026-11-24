@@ -16,7 +16,7 @@ myst:
 | Code | Meaning |
 |---|---|
 | 0 | No errors were found. With `--strict`, no errors or warnings were found. |
-| 1 | At least one error was found. |
-| 2 | With `--strict`, at least one warning and no errors were found. Also used when charmlint can't run: the path isn't a directory, the configuration is invalid, a rule named in `select` or `ignore` doesn't exist, or the command-line options are invalid. |
+| 1 | At least one error was found. With `--strict`, at least one error or warning was found. |
+| 2 | charmlint couldn't run: the path isn't a directory, the configuration is invalid, a rule named in `select` or `ignore` doesn't exist, or the command-line options are invalid. |
 
 Findings at the `info` severity never change the exit code.
