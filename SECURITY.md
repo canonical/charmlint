@@ -27,9 +27,8 @@ The [Ubuntu Security disclosure and embargo policy](https://ubuntu.com/security/
 contains more information about what you can expect when you contact
 us, and what we expect from you.
 
-To stay informed about vulnerabilities, watch:
+Known vulnerabilities are published as [GitHub Security Advisories for `canonical/charmlint`](https://github.com/canonical/charmlint/security/advisories).
 
-- The [GitHub Security Advisories for `canonical/charmlint`](https://github.com/canonical/charmlint/security/advisories).
-- The project's release history.
-- Relevant [Ubuntu Security Notices](https://ubuntu.com/security/notices) when a vulnerability
-  also affects an Ubuntu-packaged component.
+## Security model
+
+See [Security](docs/explanation/security.md) for information about charmlint's architecture, the risks of relying on it, and how to operate charmlint with security in mind.
