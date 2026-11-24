@@ -42,8 +42,9 @@ uvx charmlint /path/to/charm
 {doc}`Reference <reference/configuration>` slice
 ```
 
-```{slice} Releases
+```{slice} Releases and security
 {doc}`Versioning <explanation/versioning>`
+{doc}`Security <explanation/security>`
 ```
 ````
 
