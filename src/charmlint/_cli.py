@@ -228,10 +228,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose and config.source_path is not None:
         print(f"Loaded config from {config.source_path}", file=sys.stderr)
 
-    if args.select:
-        config.select = [s.strip() for s in args.select.split(",")]
-    if args.ignore:
-        config.ignore.extend(s.strip() for s in args.ignore.split(","))
+    cli_select = [s.strip() for s in args.select.split(",")] if args.select else []
+    cli_ignore = [s.strip() for s in args.ignore.split(",")] if args.ignore else []
+    if cli_select:
+        _config.apply_cli_select(config, cli_select)
+    # Added after apply_cli_select, so --select doesn't drop it.
+    config.ignore.extend(cli_ignore)
     if args.min_severity:
         config.min_severity = models.Severity(args.min_severity)
 
@@ -243,6 +245,12 @@ def main(argv: list[str] | None = None) -> int:
             f"error: not a known rule ID, rule name or category: {', '.join(unknown)}",
             file=sys.stderr,
         )
+        return 2
+    # The config file's own contradictions were caught when it loaded. Only
+    # the command line contradicting itself is an error here: an --ignore of
+    # a rule the config selects just mutes it, as in ruff.
+    if overlap := _config.contradictions(cli_select, cli_ignore):
+        print(f"error: select and ignore both cover: {', '.join(overlap)}", file=sys.stderr)
         return 2
 
     if args.verbose:

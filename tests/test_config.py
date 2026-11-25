@@ -5,7 +5,8 @@ import textwrap
 
 import pytest
 
-from charmlint._config import ConfigError, LintConfig, load_config
+from charmlint import _selectors
+from charmlint._config import ConfigError, LintConfig, contradictions, load_config
 from charmlint._models import Severity
 
 
@@ -140,6 +141,15 @@ class TestLoadConfig:
         config_file.write_text('select = ["SECURITY"]\nignore = ["SECURITY"]\n')
         with pytest.raises(ConfigError, match="select and ignore both cover"):
             load_config(tmp_path)
+
+    def test_contradictions_cover_both_specificities(self):
+        tokens = ["METADATA-001", "CHARMCRAFT"]
+        assert len(_selectors.resolve("CHARMCRAFT")) > 1
+        expected = {"METADATA-001", *_selectors.resolve("CHARMCRAFT")}
+        assert contradictions(tokens, tokens) == sorted(expected)
+
+    def test_rule_and_its_category_do_not_contradict(self):
+        assert contradictions(["METADATA-001"], ["METADATA"]) == []
 
     def test_malformed_explicit_config_raises(self, tmp_path: pathlib.Path):
         config_file = tmp_path / "custom.toml"
