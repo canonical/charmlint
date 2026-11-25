@@ -34,6 +34,34 @@ uvx charmlint --ignore no-readme --strict .
 
 `charmlint --help` lists the rest. charmlint exits 1 when it finds errors, or warnings too with `--strict`. Exit code 2 means charmlint could not run (for example, a bad path or configuration). To report errors only, hiding warnings and info, use `--min-severity error`.
 
+### In GitHub Actions
+
+`--format github` prints each finding as a workflow command, so it shows up as an annotation on the pull request's diff:
+
+```yaml
+- uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+- run: uvx charmlint --format github --strict .
+```
+
+GitHub shows at most 10 error and 10 warning annotations per step. To keep every finding, and track them over time, use `--format sarif` and upload the result to code scanning:
+
+```yaml
+- run: uvx charmlint --format sarif . > charmlint.sarif
+- uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
+  if: always()
+  with:
+    sarif_file: charmlint.sarif
+    category: charmlint
+```
+
+If you run charmlint separately for each charm, for example in a matrix, give each upload its own `category`.
+
+An error makes the charmlint step fail. To make code scanning the only signal, set `continue-on-error: true` on that step.
+
+Uploading needs the `security-events: write` permission. A private repository also needs the `contents: read` permission and GitHub Advanced Security.
+
+Both formats name files relative to the repository root, whichever directory you lint and whatever the step's `working-directory`. Outside GitHub Actions, they're relative to the current directory.
+
 ## Configuration
 
 Configure under `[tool.charmlint]` in `pyproject.toml`:
