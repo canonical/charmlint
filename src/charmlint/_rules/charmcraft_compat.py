@@ -578,7 +578,55 @@ class ContainerRunsAsRoot(Rule):
         return None
 
 
-# --- Helpers ---------------------------------------------------------------
+class RedeclaredExtensionRelation(Rule):
+    """Flag a 12-factor charm that re-declares a relation its extension provides.
+
+    The ``*-framework`` extensions declare ``ingress`` and ``logging`` in
+    ``requires``, and ``metrics-endpoint`` and ``grafana-dashboard`` in
+    ``provides``. charmcraft refuses to pack a ``charmcraft.yaml`` that
+    declares any of them again, whatever the value, because the
+    extension's ``requires`` and ``provides`` may not overlap the charm's.
+    Reporting it here names the problem before a pack rather than partway
+    through one.
+    """
+
+    category = "CHARMCRAFT"
+    number = 13
+    name = "redeclared-extension-relation"
+    description = "12-factor charm re-declares a relation its extension already provides"
+    default_severity = models.Severity.ERROR
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/extensions/"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        extension = next(
+            (
+                element.value
+                for element in context.metadata.get("extensions").elements or ()
+                if isinstance(element.value, str) and element.value in _FRAMEWORK_EXTENSIONS
+            ),
+            None,
+        )
+        if extension is None:
+            return []
+        diagnostics: list[models.Diagnostic] = []
+        for section, names in _EXTENSION_RELATIONS.items():
+            declared = context.metadata.get(section)
+            for name in sorted(names):
+                relation = declared.get(name)
+                if not relation.present or relation.source != "charmcraft.yaml":
+                    continue
+                diagnostics.append(
+                    self.diagnostic(
+                        f"{section}.{name} is already declared by the {extension} "
+                        'extension, so charmcraft pack will fail with "overlapping keys '
+                        f"{{'{name}'}} in {section} of charmcraft.yaml which conflict with "
+                        f'the {extension} extension"',
+                        path=relation.source,
+                        line=relation.line,
+                        fix_hint=f"Remove '{name}' from '{section}'",
+                    )
+                )
+        return diagnostics
 
 
 class LegacyBases(Rule):
@@ -690,6 +738,9 @@ class OverrideBuildSkipsDefault(Rule):
         return diagnostics
 
 
+# --- Helpers ---------------------------------------------------------------
+
+
 def _entrypoint(context: models.CharmContext) -> str:
     """Return the charm-relative path of the entrypoint charmcraft will use.
 
@@ -703,6 +754,22 @@ def _entrypoint(context: models.CharmContext) -> str:
         configured = "src/charm.py"
     return pathlib.PurePosixPath(configured).as_posix()
 
+
+_FRAMEWORK_EXTENSIONS: frozenset[str] = frozenset({
+    "flask-framework",
+    "django-framework",
+    "fastapi-framework",
+    "go-framework",
+    "expressjs-framework",
+    "spring-boot-framework",
+})
+
+# The relations the framework extensions declare (charmcraft's
+# ``extensions/app.py``). Update this when the extensions change.
+_EXTENSION_RELATIONS: dict[str, frozenset[str]] = {
+    "requires": frozenset({"ingress", "logging"}),
+    "provides": frozenset({"metrics-endpoint", "grafana-dashboard"}),
+}
 
 _VALID_CHARM_USERS: frozenset[str] = frozenset({"root", "sudoer", "non-root"})
 
