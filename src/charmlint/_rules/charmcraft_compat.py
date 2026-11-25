@@ -6,7 +6,7 @@ import pathlib
 import re
 from collections.abc import Iterator
 
-from .. import _ast
+from .. import _ast, _yaml
 from .. import _models as models
 from ._base import Rule
 
@@ -663,9 +663,8 @@ class OverrideBuildSkipsDefault(Rule):
             return []
         diagnostics: list[models.Diagnostic] = []
         for part_name, part in parts.items():
-            # craft-parts falls back to the part name for any empty plugin.
-            plugin = part.get("plugin").value or part_name
-            if not isinstance(plugin, str) or plugin not in _PYTHON_PLUGINS:
+            plugin = _yaml.part_plugin(part_name, part)
+            if plugin not in _PYTHON_PLUGINS:
                 continue
             override = part.get("override-build")
             if not isinstance(override.value, str):
