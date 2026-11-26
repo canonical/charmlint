@@ -22,9 +22,17 @@ def write_charmcraft_yaml(charm_dir: pathlib.Path, data: dict[str, Any]) -> None
         yaml.dump(data, f)
 
 
-def write_charm_source(charm_dir: pathlib.Path, content: str, filename: str = "charm.py") -> None:
-    """Write a Python source file to the charm's src/ directory."""
-    (charm_dir / "src" / filename).write_text(content)
+def write_charm_source(
+    charm_dir: pathlib.Path, content: str, filename: str = "charm.py", *, executable: bool = True
+) -> None:
+    """Write a Python source file to the charm's src/ directory.
+
+    The file is executable by default, as an entrypoint the charm plugin's
+    generated dispatch runs directly has to be.
+    """
+    path = charm_dir / "src" / filename
+    path.write_text(content)
+    path.chmod(0o755 if executable else 0o644)
 
 
 def make_full_charm(charm_dir: pathlib.Path) -> None:

@@ -4,6 +4,7 @@ import ast
 import os
 import pathlib
 import re
+import subprocess  # ruff: ignore[S404]
 from collections.abc import Iterator
 
 from .. import _ast
@@ -98,6 +99,35 @@ class Entrypoint(Rule):
     An entrypoint passed to ``python3`` needs no such bit, and is not
     reported for lacking one.
 
+    Without a hand-written ``dispatch``, the entrypoint charmcraft's
+    generated one will run is checked instead, following how charmcraft
+    builds it:
+
+    * A ``charm`` plugin part (including the part charmcraft adds when
+      there's no ``parts``) gets a ``dispatch`` that execs
+      ``charm-entrypoint`` (default ``src/charm.py``) directly, so it
+      must exist and be executable. Inside a git repository the
+      executable bit is the mode git has recorded (``100755``), which
+      is what gets packed, rather than the working tree's.
+    * Otherwise, whatever the plugins are, charmcraft generates a
+      ``dispatch`` that runs ``src/charm.py`` with the charm's Python, so
+      only that file has to exist. charmcraft doesn't generate a
+      ``dispatch`` at all without it, so the charm deploys and no hook
+      ever runs. A part that builds from a ``source`` other than the
+      charm directory may put ``src/charm.py`` in place itself, so such
+      a charm is passed over.
+
+    A charm with ``hooks/`` or a ``layer.yaml`` (at the top or in
+    ``src/``), a part using the ``reactive`` plugin, and a bundle are
+    passed over: their hooks don't come from a generated ``dispatch``.
+    A missing entrypoint is only reported when the charm calls
+    ``ops.main()`` somewhere else, such as ``src/charm/charm.py``. Without
+    that, it's a ``charmcraft.yaml`` that only publishes libraries, or a
+    charm whose code is copied in at build time. Even then the build may
+    copy the entrypoint in, as a charm with ``k8s_charm.py`` and
+    ``machine_charm.py`` does, so a missing entrypoint for a generated
+    ``dispatch`` is a warning rather than an error.
+
     Anything the script does not spell out statically is left alone: a
     command built from a shell variable, a path leading outside the
     charm, or a ``dispatch`` whose last statement does not run a
@@ -120,7 +150,7 @@ class Entrypoint(Rule):
         # not have one. Only a hand-written dispatch is worth checking.
         dispatch = context.charm_dir / "dispatch"
         if not dispatch.is_file():
-            return []
+            return self._check_generated_dispatch(context)
         try:
             # Decoding never fails (errors="replace"), so this is only the
             # environmental cases — unreadable mode, I/O error — where the
@@ -158,6 +188,55 @@ class Entrypoint(Rule):
                     f"Entrypoint '{entrypoint_rel}' is not executable",
                     path=entrypoint_rel,
                     fix_hint=f"Run: chmod +x {entrypoint_rel}",
+                )
+            ]
+        return []
+
+    def _check_generated_dispatch(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        """Check the entrypoint that charmcraft's generated ``dispatch`` will run."""
+        resolved = _generated_entrypoint(context)
+        if resolved is None:
+            return []
+        entrypoint_rel, runs_directly, setting_line = resolved
+        entrypoint = context.charm_dir / entrypoint_rel
+        if not entrypoint.exists():
+            # A charmcraft.yaml that only publishes libraries, or a charm
+            # whose source is copied in at build time, has no charm code
+            # here at all. Only a charm whose ops.main() is somewhere else
+            # has its entrypoint in the wrong place.
+            if not _calls_ops_main(context):
+                return []
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' does not exist, so the charm will "
+                    "deploy but no hook will run",
+                    # The build may copy the entrypoint in (a dual-substrate
+                    # charm picking k8s_charm.py or machine_charm.py, say),
+                    # so this is a likely problem rather than a certain one.
+                    severity=models.Severity.WARNING,
+                    path="charmcraft.yaml",
+                    line=setting_line,
+                    fix_hint=(
+                        f"Create {entrypoint_rel}, or set 'charm-entrypoint' in the charm part"
+                        if runs_directly
+                        else f"Create {entrypoint_rel}"
+                    ),
+                )
+            ]
+        if not entrypoint.is_file():
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' is not a regular file",
+                    path=entrypoint_rel,
+                )
+            ]
+        if runs_directly and not _is_executable(context.charm_dir, entrypoint_rel):
+            return [
+                self.diagnostic(
+                    f"Entrypoint '{entrypoint_rel}' is not executable, and the charm "
+                    "plugin's dispatch runs it directly, so every hook will fail",
+                    path=entrypoint_rel,
+                    fix_hint=f"Run: chmod +x {entrypoint_rel}, and commit the mode change",
                 )
             ]
         return []
@@ -688,6 +767,102 @@ class OverrideBuildSkipsDefault(Rule):
                 )
             )
         return diagnostics
+
+
+def _generated_entrypoint(context: models.CharmContext) -> tuple[str, bool, int | None] | None:
+    """Return the entrypoint a generated ``dispatch`` runs, and whether it runs it directly.
+
+    The third item is the line of an explicit ``charm-entrypoint``, so a
+    finding about a missing entrypoint can point at the setting.
+
+    ``None`` when the charm's hooks won't come from a generated
+    ``dispatch``, or charmlint can't tell what will build the charm.
+    """
+    charm_dir = context.charm_dir
+    if not (charm_dir / "charmcraft.yaml").is_file():
+        return None
+    if context.metadata.get("type").value == "bundle" or (charm_dir / "bundle.yaml").is_file():
+        return None
+    if (charm_dir / "hooks").is_dir() or any(
+        (charm_dir / layer).is_file() for layer in ("layer.yaml", "src/layer.yaml")
+    ):
+        return None
+    parts = context.metadata.get("parts")
+    if not parts:
+        # charmcraft adds a ``charm`` part when a charm has none, including
+        # an empty or null ``parts``.
+        return ("src/charm.py", True, None)
+    plugins: dict[str, models.Yaml] = {}
+    for part_name, part in parts.items():
+        # craft-parts falls back to the part name for an empty plugin.
+        plugin = part.get("plugin").value or part_name
+        if isinstance(plugin, str):
+            plugins.setdefault(plugin, part)
+    if "reactive" in plugins:
+        return None
+    if "charm" in plugins:
+        part = plugins["charm"]
+        setting = part.get("charm-entrypoint")
+        configured = setting.value
+        line = setting.line
+        if not isinstance(configured, str) or not configured:
+            configured, line = "src/charm.py", None
+        source = part.get("source").value
+        if isinstance(source, str) and source not in (".", "./"):
+            return None
+        entrypoint = pathlib.PurePosixPath(configured)
+        # As for a hand-written dispatch, a path leading outside the charm
+        # isn't something charmlint can check.
+        if entrypoint.is_absolute() or ".." in entrypoint.parts:
+            return None
+        return (entrypoint.as_posix(), True, line)
+    # Whatever the other plugins are, charmcraft generates a dispatch that
+    # runs src/charm.py from the prime directory. A part that builds from
+    # somewhere else may put it there, so the charm directory says nothing.
+    for _, part in parts.items():
+        source = part.get("source").value
+        if isinstance(source, str) and source not in (".", "./"):
+            return None
+    return ("src/charm.py", False, None)
+
+
+def _calls_ops_main(context: models.CharmContext) -> bool:
+    """Whether any of the charm's own modules calls ``ops.main()``."""
+    for module in context.charm_sources():
+        imports = _ast.Imports.of(module)
+        if any(
+            _ast.call_target(call, imports) in _ast.OPS_MAIN_TARGETS
+            for call in module.walk(ast.Call)
+        ):
+            return True
+    return False
+
+
+def _is_executable(charm_dir: pathlib.Path, relative: str) -> bool:
+    """Return whether ``relative`` is executable.
+
+    Inside a git repository the mode git has recorded (``100755``) is what
+    ends up in the packed charm, and is unaffected by ``core.fileMode=false``
+    or a filesystem without permission bits. Otherwise use the filesystem.
+    """
+    try:
+        result = subprocess.run(  # ruff: ignore[S603]
+            ["git", "ls-files", "-s", "--", relative],  # ruff: ignore[S607]
+            cwd=charm_dir,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        result = None
+    if result is not None and result.returncode == 0 and result.stdout.strip():
+        mode = result.stdout.split()[0]
+        # A symlink (120000) runs if its target does, which git doesn't
+        # record, so that falls through to the filesystem.
+        if mode != "120000":
+            return mode == "100755"
+    return os.access(charm_dir / relative, os.X_OK)
 
 
 def _entrypoint(context: models.CharmContext) -> str:
