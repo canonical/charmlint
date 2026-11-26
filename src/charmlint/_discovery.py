@@ -81,3 +81,16 @@ def discover_charms(root: pathlib.Path) -> list[pathlib.Path]:
 
     walk(root, 0)
     return found
+
+
+def repo_root(charm_dir: pathlib.Path) -> pathlib.Path:
+    """Return the root of the git repository holding the charm.
+
+    Falls back to the charm directory itself when it is not in a git
+    repository, so a search bounded by it never wanders further than the
+    charm.
+    """
+    for directory in (charm_dir, *charm_dir.parents):
+        if (directory / ".git").exists():
+            return directory
+    return charm_dir

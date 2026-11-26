@@ -7,8 +7,11 @@ level. Accepting the wrong spelling in the wrong file would silently
 paper over a real misplacement.
 """
 
+import ast
+import pathlib
 import urllib.parse
 
+from .. import _discovery
 from .. import _models as models
 from ._base import Rule
 
@@ -355,3 +358,150 @@ class CircularWebsiteLink(Rule):
                     )
                 )
         return diagnostics
+
+
+class DiscourseDocsLink(Rule):
+    """Flag a documentation link that still points at Charmhub Discourse.
+
+    Charm documentation has moved from Discourse topics to Sphinx projects
+    published on Read the Docs. When the charm or its repository has a
+    ``docs/conf.py``, the documentation link should follow it: the docs
+    pull request touches only ``docs/``, so the link is easy to leave
+    behind. When ``conf.py`` sets ``html_baseurl`` or ``ogp_site_url`` to
+    a plain string, the fix hint suggests that URL.
+
+    A docs project that exists but is not published yet is a false positive;
+    silence it with ``# noqa: METADATA-011`` on the documentation link's
+    line until it is.
+    """
+
+    category = "METADATA"
+    number = 11
+    name = "discourse-docs-link"
+    description = "Documentation link points at Discourse although the charm has a docs project"
+    default_severity = models.Severity.INFO
+    reference_url = "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/#charmcraft-yaml-key-links"
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        if _is_bundle(context):
+            return []
+        discourse: list[tuple[str, models.Yaml]] = []
+        for top_level_key, key, spelt_in in (
+            ("links", "links.documentation", "charmcraft.yaml"),
+            ("docs", "docs", "metadata.yaml"),
+        ):
+            field = context.metadata.get(top_level_key)
+            # As in METADATA-010: a charm may split its metadata across both
+            # files, so each spelling is judged against the file it came from.
+            if not field.present or field.source != spelt_in:
+                continue
+            node = _resolve(context.metadata, key)
+            # Both files accept a single URL or a list of them.
+            links = node.elements if node.elements is not None else [node]
+            discourse.extend(
+                (key, link)
+                for link in links
+                if isinstance(link.value, str) and _is_discourse_url(link.value)
+            )
+        if not discourse:
+            return []
+        conf = _find_docs_conf(context.charm_dir)
+        if conf is None:
+            return []
+        suggestion = _published_url(conf)
+        return [
+            self.diagnostic(
+                f"'{key}' still points at Discourse ({link.value}), but the charm has a "
+                "Sphinx docs project",
+                path=link.source,
+                line=link.line,
+                fix_hint=(
+                    f"Point '{key}' at the published docs: {suggestion}"
+                    if suggestion
+                    else f"Point '{key}' at the docs project's published URL"
+                ),
+            )
+            for key, link in discourse
+        ]
+
+
+def _host(url: str) -> str | None:
+    """Return *url*'s lower-cased host, without ``www.``, or ``None``."""
+    candidate = url.strip()
+    if "://" not in candidate:
+        candidate = f"//{candidate}"
+    try:
+        host = urllib.parse.urlsplit(candidate).hostname
+    except ValueError:
+        return None
+    return host.lower().removeprefix("www.") if host else None
+
+
+def _is_discourse_url(url: str) -> bool:
+    """Report whether *url* is on Charmhub's Discourse."""
+    return _host(url) == "discourse.charmhub.io"
+
+
+def _find_docs_conf(charm_dir: pathlib.Path) -> pathlib.Path | None:
+    """Find the Sphinx ``conf.py`` for the charm, or for the repository it is in.
+
+    Looks for ``docs/conf.py`` in the charm directory and then in each
+    directory above it, up to and including the repository root (the
+    first directory with a ``.git``), so a charm under ``charms/<name>/``
+    in a monorepo finds the repository's docs project. Outside a
+    repository only the charm directory is checked, so an unrelated
+    ``docs/`` higher up the file system is never picked up.
+    """
+    base = charm_dir.resolve()
+    root = _discovery.repo_root(base)
+    for directory in (base, *base.parents):
+        conf = directory / "docs" / "conf.py"
+        if conf.is_file():
+            return conf
+        if directory == root:
+            break
+    return None
+
+
+def _published_url(conf: pathlib.Path) -> str | None:
+    """Return the published URL that ``conf.py`` assigns, if it is a plain literal.
+
+    ``html_baseurl`` is tried first: ``ogp_site_url`` is often still the
+    starter pack's placeholder, or points somewhere other than the docs.
+    Only the last module-level assignment to a setting counts, as when
+    Sphinx runs the file, and only when its value is a string literal: a
+    conditional or an ``os.environ`` lookup can't be read without running
+    it, so it gives no suggestion.
+    """
+    try:
+        tree = ast.parse(conf.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
+        return None
+    values: dict[str, ast.expr | None] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets, value = [node.target], node.value
+        else:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                values[target.id] = value
+    for setting in ("html_baseurl", "ogp_site_url"):
+        value = values.get(setting)
+        if (
+            isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+            and value.value
+            and _STARTER_PACK_HOST not in value.value
+            # A Charmhub page isn't the docs; suggesting it would trade one
+            # link that isn't the docs for another (see METADATA-010).
+            and _host(value.value) != "charmhub.io"
+        ):
+            return value.value
+    return None
+
+
+# The ``ogp_site_url`` that the documentation starter pack ships with.
+_STARTER_PACK_HOST = "canonical-starter-pack.readthedocs-hosted.com"

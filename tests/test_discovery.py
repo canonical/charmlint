@@ -2,7 +2,7 @@
 
 import pathlib
 
-from charmlint._discovery import discover_charms, is_charm_dir
+from charmlint._discovery import discover_charms, is_charm_dir, repo_root
 from tests.conftest import write_charmcraft_yaml
 
 
@@ -79,3 +79,16 @@ class TestDiscoverCharms:
         real = _charm(tmp_path / "elsewhere" / "charm", "real")
         (tmp_path / "link").symlink_to(real.parent)
         assert discover_charms(tmp_path) == [real]
+
+
+class TestRepoRoot:
+    def test_finds_the_nearest_git_above(self, tmp_path: pathlib.Path):
+        charm_dir = tmp_path / "repo" / "charms" / "x"
+        charm_dir.mkdir(parents=True)
+        (tmp_path / "repo" / ".git").mkdir()
+        assert repo_root(charm_dir) == tmp_path / "repo"
+
+    def test_charm_dir_when_not_in_a_repository(self, tmp_path: pathlib.Path):
+        charm_dir = tmp_path / "x"
+        charm_dir.mkdir()
+        assert repo_root(charm_dir) == charm_dir
