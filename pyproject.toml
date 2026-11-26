@@ -99,6 +99,11 @@ ignore = [
     "missing-return-type-undocumented-public-function",  # ANN201
     "missing-return-type-private-function",  # ANN202
 ]
+# The release scripts run git, gh and uvx, with argument lists rather than a shell.
+".github/release/**" = [
+    "suspicious-subprocess-import",  # S404
+    "subprocess-without-shell-equals-true",  # S603
+]
 
 [tool.ruff.lint.flake8-annotations]
 allow-star-arg-any = true
