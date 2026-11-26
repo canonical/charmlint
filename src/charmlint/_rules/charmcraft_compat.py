@@ -240,7 +240,7 @@ class UnknownTopLevelField(Rule):
     category = "CHARMCRAFT"
     number = 4
     name = "unknown-top-level-field"
-    description = "Unrecognised top-level field in charm metadata (possible typo)"
+    description = "Unrecognised top-level field in charm metadata"
     default_severity = models.Severity.WARNING
     reference_url = (
         "https://canonical.com/juju/docs/charmcraft/stable/reference/files/charmcraft-yaml-file/"
@@ -269,10 +269,19 @@ class UnknownTopLevelField(Rule):
                 fix_hint = None
             else:
                 message = f"Unrecognised top-level field '{key}' in {source} — possible typo"
-                fix_hint = _suggest_closest(key, known)
+                fix_hint = (
+                    "Move the fields inside 'metadata' to the top level of charmcraft.yaml"
+                    if key == "metadata" and source == "charmcraft.yaml"
+                    else _suggest_closest(key, known)
+                )
+            severity = models.Severity.WARNING
+            if source == "charmcraft.yaml":
+                severity = models.Severity.ERROR
+                message = f"{message}; charmcraft pack will fail"
             diagnostics.append(
                 self.diagnostic(
                     message,
+                    severity=severity,
                     path=source,
                     line=field.line,
                     fix_hint=fix_hint,
