@@ -467,6 +467,98 @@ class NoConfigChangedObserver(Rule):
         ]
 
 
+class CharmObservesNoEvents(Rule):
+    """Flag a charm class that never observes an event.
+
+    Juju runs a hook for every event, but a charm only reacts to the ones
+    it observes. A charm whose class never calls ``framework.observe``
+    deploys cleanly, runs every hook, does nothing, and leaves the unit at
+    ``unknown`` status with no error to explain why. No real charm should
+    observe nothing.
+
+    The rule stays quiet wherever something charmlint cannot see might be
+    observing on the charm's behalf:
+
+    * An observe call could not be read statically, such as a helper that
+      observes a list of events.
+    * A charm class is built on a framework base class or a mixin, or no
+      plain ``ops.CharmBase`` subclass was found in the charm's own source.
+    * ``ops.main()`` is handed a charm class that isn't a plain one defined
+      in the charm's own source, such as one imported from a shared package.
+    * A charm class hands ``self`` to a collaborator in ``__init__``
+      (a charm library, say), which can observe the charm's events itself,
+      or reconciles unconditionally in ``__init__``.
+    """
+
+    category = "FEATURES"
+    number = 8
+    name = "charm-observes-no-events"
+    description = "Charm class never observes any event"
+    default_severity = models.Severity.WARNING
+    reference_url = (
+        "https://canonical.com/juju/docs/ops/latest/reference/ops/#ops.Framework.observe"
+    )
+
+    def check(self, context: models.CharmContext) -> list[models.Diagnostic]:
+        first_path: str | None = None
+        first_line: int | None = None
+        plain_names: set[str] = set()
+        entry_points: set[str] = set()
+        for module in context.charm_sources():
+            if _ast.observers(module) or _has_opaque_observe(module):
+                return []
+            classes = _classes(module)
+            if classes.framework or classes.holistic or classes.delegating:
+                return []
+            if classes.first_line is not None and first_path is None:
+                first_path, first_line = module.path, classes.first_line
+            plain_names |= classes.plain_names
+            entry_points |= {name.rpartition(".")[2] for name in classes.entry_points}
+        # A charm handed to ops.main() that isn't one of the plain classes,
+        # such as one imported from a shared package, is the real charm, and
+        # charmlint can't see what it observes.
+        if first_path is None or entry_points - plain_names:
+            return []
+        return [
+            self.diagnostic(
+                "Charm class never observes any event, so no hook will do anything",
+                path=first_path,
+                line=first_line,
+                fix_hint=(
+                    "Add `framework.observe(self.on.<event>, self._on_<event>)` calls in "
+                    "__init__ and matching handlers"
+                ),
+            )
+        ]
+
+
+def _passes_self(node: ast.ClassDef) -> bool:
+    """Whether *node*'s ``__init__`` passes ``self`` to anything but ``super()``.
+
+    ``TracingEndpointRequirer(self)`` and friends observe the charm's
+    events from inside the library, so the charm's own source can look
+    observer-free and still be wired up.
+    """
+    for function in node.body:
+        if not isinstance(function, ast.FunctionDef) or function.name != "__init__":
+            continue
+        for call in ast.walk(function):
+            if not isinstance(call, ast.Call):
+                continue
+            # Neither ``super().__init__(...)`` nor the ``super(C, self)``
+            # inside the two-argument form hands the charm to anyone.
+            if _called_name(call.func) == "super" or (
+                isinstance(call.func, ast.Attribute)
+                and isinstance(call.func.value, ast.Call)
+                and _called_name(call.func.value.func) == "super"
+            ):
+                continue
+            arguments = [*call.args, *(kw.value for kw in call.keywords)]
+            if any(isinstance(a, ast.Name) and a.id == "self" for a in arguments):
+                return True
+    return False
+
+
 def _mentions_config_changed(module: models.Module) -> bool:
     """Whether *module* names the ``config-changed`` event at all.
 
@@ -514,6 +606,15 @@ class _Classes:
     # A charm class that reconciles unconditionally in ``__init__``, or
     # hands a callback to a collaborator that will observe for it.
     holistic: bool = False
+    # A charm class whose ``__init__`` hands ``self`` to a collaborator,
+    # which may observe the charm's events itself.
+    delegating: bool = False
+    # The line of the first plain charm class, if there is one.
+    first_line: int | None = None
+    # The names of the plain charm classes, and of everything handed to
+    # ``ops.main()``.
+    plain_names: set[str] = dataclasses.field(default_factory=set)
+    entry_points: set[str] = dataclasses.field(default_factory=set)
 
 
 def _classes(module: models.Module) -> _Classes:
@@ -525,15 +626,19 @@ def _classes(module: models.Module) -> _Classes:
     """
     imports = _ast.Imports.of(module)
     entry_points = _main_arguments(module, imports)
-    result = _Classes()
+    result = _Classes(entry_points=entry_points)
     for node in module.walk(ast.ClassDef):
         bases = {name for name in (imports.resolve(base) for base in node.bases) if name}
         ops_bases = bases & _ast.CHARM_BASES
         if ops_bases and not bases - ops_bases:
             result.plain += 1
+            result.plain_names.add(node.name)
+            if result.first_line is None:
+                result.first_line = node.lineno
             result.holistic = (
                 result.holistic or _reconciles_in_init(node) or _delegates_to_collaborator(node)
             )
+            result.delegating = result.delegating or _passes_self(node)
         elif ops_bases or node.name in entry_points:
             # Either a mixin alongside ``ops.CharmBase``, or a charm class
             # whose base is something charmlint cannot see into.
