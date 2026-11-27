@@ -4,6 +4,8 @@ import pathlib
 import textwrap
 from typing import Any
 
+import pytest
+
 from charmlint._linter import lint
 from charmlint._models import Severity
 from tests.conftest import write_charm_source, write_charmcraft_yaml
@@ -314,6 +316,38 @@ class TestNoSetWorkloadVersion:
                     super().__init__(framework)
                     self.coordinator = Coordinator(self)
         """
+        assert len(_lint(tmp_charm, {"containers": _CONTAINERS}, source)) == 1
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            # The import alone is what counts, not subclassing.
+            "import charms_openstack.charm\n",
+            """\
+            from charms_openstack.charm import OpenStackCharm
+
+            class C(OpenStackCharm):
+                pass
+            """,
+        ],
+    )
+    def test_charms_openstack_charm_suppresses(self, tmp_charm: pathlib.Path, source: str):
+        assert _lint(tmp_charm, {"containers": _CONTAINERS}, source) == []
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            """\
+            import ops_sunbeam.charm
+
+            class C(ops_sunbeam.charm.OSBaseOperatorCharm):
+                pass
+            """,
+            # Full of workload_version names, but never sets the version.
+            "import charm_refresh\n",
+        ],
+    )
+    def test_non_setting_framework_does_not_suppress(self, tmp_charm: pathlib.Path, source: str):
         assert len(_lint(tmp_charm, {"containers": _CONTAINERS}, source)) == 1
 
     def test_charm_with_no_source_not_flagged(self, tmp_charm: pathlib.Path):
