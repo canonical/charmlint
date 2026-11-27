@@ -136,7 +136,7 @@ _VERSION_CALLS = frozenset({"set_workload_version", "application_version_set"})
 # the charm tree, so there is no call for the check above to find; importing
 # one is the evidence that the version does get set.
 #
-# The entries here are the COS worker module, whose ``Worker`` calls
+# Two entries are for the COS worker module, whose ``Worker`` calls
 # ``unit.set_workload_version(...)`` on every reconcile, under both the
 # spelling it has now and the ``cosl`` one it shipped under before it moved
 # to its own distribution. Each is deliberately the module rather than the
@@ -147,10 +147,10 @@ _VERSION_CALLS = frozenset({"set_workload_version", "application_version_set"})
 #
 # ``charms_openstack.charm`` is the base-class module for the OpenStack
 # charms: ``OpenStackCharm._assess_status()``, which ``assess_status()``
-# defers to the end of every hook, calls ``hookenv.application_version_set``. ``ops_sunbeam`` and ``charm_refresh``
-# do not set a version, so they are deliberately absent. The
-# ``from charms_openstack import charm`` spelling isn't matched, and no corpus
-# charm uses it.
+# defers to the end of every hook, calls ``hookenv.application_version_set``.
+# No charms in the corpus use ``from charms_openstack import charm``, so we
+# only match ``charms_openstack.charm``. There's no need to consider
+# ``ops_sunbeam`` or ``charm_refresh`` here, as neither sets a version.
 _WORKLOAD_VERSION_SETTERS = frozenset({
     "coordinated_workers.worker",
     "cosl.coordinated_workers.worker",
