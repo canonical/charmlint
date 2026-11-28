@@ -31,7 +31,7 @@ make format    # apply safe lint fixes, then format
 
 ## Rule reference
 
-`docs/rules.md` is generated from the rule registry — its ID, name, default severity, description, reference URL and class docstring. Run `make docs` after adding or changing a rule; CI fails if the page is stale. Never hand-edit the page: a rule's docstring is the text that appears on it, so improve it there.
+`docs/reference/rules.md` is generated from the rule registry — its ID, name, default severity, description, reference URL and class docstring. Run `make rules-doc` after adding or changing a rule; CI fails if the page is stale. Never hand-edit the page: a rule's docstring is the text that appears on it, so improve it there.
 
 ## Corpus measurements
 
@@ -42,7 +42,7 @@ Label a finding by whether the reason for the rule holds in that charm, not by w
 ## Conventions
 
 - Commits and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/); PR-title types enforced by `.github/workflows/validate-pr-title.yaml` (see [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) for the list).
-- Rule IDs follow `CATEGORY-###` (`SECURITY-001`, `METADATA-003`) — see [docs/id-scheme.md](docs/id-scheme.md) for the category catalogue.
+- Rule IDs follow `CATEGORY-###` (`SECURITY-001`, `METADATA-003`) — see [docs/reference/id-scheme.md](docs/reference/id-scheme.md) for the category catalogue.
 - Runtime dependencies are kept minimal (PyYAML only); the `_pypi_attest.py` helper is stdlib-only by design.
 
 ## Writing a rule

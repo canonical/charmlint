@@ -26,7 +26,9 @@ make format    # apply safe lint fixes, then format
 
 A new or changed rule needs measurements over the charm corpus before review - see [docs/corpus.md](docs/corpus.md).
 
-[docs/rules.md](docs/rules.md) is generated from the rule registry (CI fails if it's stale). After adding or changing a rule, regenerate it with `make docs`. Don't edit the page by hand; improve the rule docstrings instead.
+[docs/reference/rules.md](docs/reference/rules.md) is generated from the rule registry (CI fails if it's stale). After adding or changing a rule, regenerate it with `make rules-doc`. Don't edit the page by hand; improve the rule docstrings instead.
+
+The documentation site is built with [Sphinx Stack](https://github.com/canonical/sphinx-stack). To build it locally, run `make docs-site`. The other checks, such as `make spelling` and `make linkcheck`, run from the `docs` directory.
 
 # Develop in a workshop
 
@@ -38,7 +40,7 @@ workshop launch dev
 workshop run dev lint
 ```
 
-The `format`, `lint`, `test`, `docs`, and `docs-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
+The `format`, `lint`, `test`, `rules-doc`, and `rules-doc-check` actions run the `make` targets with the same names. The workshop keeps its virtual environment outside the project directory, so it doesn't share or overwrite the `.venv` on your host.
 
 The `charmlint` action runs charmlint from your checkout against the charms in `~/charms` in the workshop. That directory is a read-only mount, and it starts out empty. To lint a charm on your host, stop the workshop and point the mount at the charm:
 
@@ -84,8 +86,8 @@ A rule that prescribes a feature rather than finding a defect, or that would fir
 For a rule PR:
 
 * One rule (or one group of rules that share a factory) per PR. Helpers that several rules share land in their own PR first.
-* Rule IDs are `CATEGORY-###`, as described in [docs/id-scheme.md](docs/id-scheme.md). A number in an older issue's title (`CORR008`, say) isn't reserved: the ID is assigned when the rule is written.
-* Include the rule's tests, the `_rules/__init__.py` import if it adds a module, and the regenerated `docs/rules.md`.
+* Rule IDs are `CATEGORY-###`, as described in [docs/reference/id-scheme.md](docs/reference/id-scheme.md). A number in an older issue's title (`CORR008`, say) isn't reserved: the ID is assigned when the rule is written.
+* Include the rule's tests, the `_rules/__init__.py` import if it adds a module, and the regenerated `docs/reference/rules.md`.
 * Put the corpus measurements in the PR description, counted as [docs/corpus.md](docs/corpus.md) describes. If the false-positive rate isn't close to zero, tighten the rule and measure again.
 
 # AI
@@ -126,7 +128,7 @@ If you need to bring in the latest changes from `main` after the review has star
 
 charmlint is published to [PyPI](https://pypi.org/project/charmlint/) by `.github/workflows/publish.yaml`, with Trusted Publishing, whenever a `v*` tag is pushed.
 
-1. Work out the new version from [docs/versioning.md](docs/versioning.md): a minor bump if anything since the last release adds a rule or changes what a rule reports, and a patch bump otherwise.
+1. Work out the new version from [docs/explanation/versioning.md](docs/explanation/versioning.md): a minor bump if anything since the last release adds a rule or changes what a rule reports, and a patch bump otherwise.
 2. Open a PR that bumps the version (`uv version --bump minor` or `--bump patch` updates both `pyproject.toml` and `uv.lock`), titled like `chore: bump version to 0.3.0`, and merge it.
 3. Create a GitHub release on the merge commit, with a new `vX.Y.Z` tag that matches the version and a short summary of what changed. Creating the release pushes the tag, which starts the publish workflow.
 4. Check that the publish run succeeds. It stops before building if the tag doesn't match the version in `pyproject.toml`. If that happens, don't move the tag (the tag ruleset won't let you anyway) - bump the patch version and release again.
