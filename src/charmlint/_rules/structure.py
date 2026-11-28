@@ -53,7 +53,7 @@ class NoIcon(Rule):
     The file has to be at the charm root, named exactly ``icon.svg``,
     and non-empty — a zero-byte placeholder is reported as though it
     were missing. Nothing inside the SVG is examined: dimensions and
-    viewBox are charmcraft's business, not this rule's.
+    ``viewBox`` are charmcraft's business, not this rule's.
     """
 
     category = "STRUCTURE"
@@ -76,14 +76,14 @@ class NoTypeAnnotations(Rule):
     """Check that the charm's own source uses type annotations at all.
 
     Annotations are what let a type checker catch a wrong event type, a
-    misspelt attribute or a ``None`` that was never handled before the
+    misspelled attribute or a ``None`` that was never handled before the
     charm is deployed. A charm with none at all gets no help from one.
 
     The rule reports once per charm, not once per function. Any
     annotation passes: a return type, a parameter, or an annotated
     assignment. Only the charm's own source counts. That is ``src/`` plus
-    any library the charm publishes, but not a vendored copy of someone
-    else's library, and not the tests. A charm with no functions has
+    any library the charm publishes, but not a vendored copy of another
+    project's library, and not the tests. A charm with no functions has
     nothing to annotate and is not reported.
     """
 

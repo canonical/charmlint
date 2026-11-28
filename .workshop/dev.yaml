@@ -14,8 +14,8 @@ actions:
   format: make format
   lint: make lint
   test: make test
-  docs: make docs
-  docs-check: make docs-check
+  rules-doc: make rules-doc
+  rules-doc-check: make rules-doc-check
   # Run this checkout's charmlint, from the charms mount (see tools/sdk.yaml),
   # so that the default path and relative paths are charms rather than the
   # charmlint project.

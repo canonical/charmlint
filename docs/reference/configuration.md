@@ -24,15 +24,15 @@ In a standalone file, drop the `tool.charmlint` prefix: the keys sit at the top 
 
 A config can mix rule IDs and rule names.
 
-Case is significant. Rule IDs and categories are upper-case, rule names lower-case; `security-001` names nothing.
+Case is significant. Rule IDs and categories are upper-case, and rule names are lower-case, so `security-001` names nothing.
 
 When `select` and `ignore` disagree, the more specific spelling wins: `select = ["secret-in-plain-config"]` with `ignore = ["SECURITY"]` runs that one rule and no other security rule.
 
 ## Suppressing findings inline
 
-Individual findings can be silenced from within a charm's YAML and Python files, with ruff-style suppression comments. Codes inside a directive are the same three spellings as `select` and `ignore` accept — rule ID, rule name, or category.
+Individual findings can be silenced from within a charm's YAML and Python files, with ruff-style suppression comments. Codes inside a directive are the same three spellings as `select` and `ignore` accept: rule ID, rule name, or category.
 
-`# charmlint: ignore[...]` suppresses the listed rules on one line. At the end of a line it covers that line; on a line of its own it covers the next line that is not blank or a comment:
+`# charmlint: ignore[...]` suppresses the listed rules on one line. At the end of a line, it covers that line. On a line of its own, it covers the next line that isn't blank or a comment:
 
 ```yaml
 config:
@@ -44,7 +44,7 @@ config:
       type: string
 ```
 
-On a line of its own, the directive must come first; put any explanation after it.
+On a line of its own, the directive must come first. Put any explanation after it.
 
 `# charmlint: file-ignore[...]`, wherever it appears, suppresses the listed rules across the whole file:
 
@@ -52,7 +52,7 @@ On a line of its own, the directive must come first; put any explanation after i
 # charmlint: file-ignore[CORRECTNESS-001]
 ```
 
-Findings that anchor to a whole file rather than a line — a missing metadata field, say — can only be silenced by a file-level directive.
+Findings that anchor to a whole file rather than a line, such as a missing metadata field, can only be silenced by a file-level directive.
 
 ### Suppressing everything
 
@@ -79,5 +79,5 @@ config:
       type: string
 ```
 
-In Python files, charmlint only considers `# charmlint:` directives; `# noqa` is for ruff.
+In Python files, charmlint only considers `# charmlint:` directives. `# noqa` is for ruff.
 

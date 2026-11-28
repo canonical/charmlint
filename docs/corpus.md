@@ -10,7 +10,7 @@ The default location for the cache is `~/.cache/hyrum/charms/<owner>/<repo>/…`
 
 A **charm** is the outermost directory holding a `charmcraft.yaml`, after dropping build and vendor noise, deduplicated by the `name` it declares. This gives a stable count.
 
-- **Outermost.** A charm's own build tree can contain other charms (`.tox/`, test fixtures, cookiecutter templates). Counting every `charmcraft.yaml` in the cache gives ~1970 rather than ~655.
+- **Outermost.** A charm's own build tree can contain other charms (`.tox/`, test fixtures, Cookiecutter templates). Counting every `charmcraft.yaml` in the cache gives ~1970 rather than ~655.
 - **Excluding noise.** Skip any path containing `.tox`, `/tests/`, `/.template/`, `cookiecutter`, `/node_modules/`, `/.venv/`, `/build/`.
 - **Deduplicated by name.** `git.launchpad.net/charm-kubernetes-worker` and `charmed-kubernetes/charm-kubernetes-worker` are one charm.
 
@@ -70,7 +70,7 @@ for charm in charm_dirs():
 
 `lint` raises nothing for a broken charm: an unreadable file becomes a `FATAL` diagnostic in the report. Count those separately — they are neither true nor false positives, and they are usually pre-existing.
 
-Run the measurement on the newest Python release. `ast` parses with the grammar of the interpreter that runs it, so a charm that uses newer syntax is a `FATAL` on an older Python. For example, a charm using 3.14's unparenthesised `except A, B:` can't be parsed on 3.12. Those `FATAL`s are still real for anyone running charmlint on the oldest supported Python, and a run on the newest release doesn't count them.
+Run the measurement on the newest Python release. `ast` parses with the grammar of the interpreter that runs it, so a charm that uses newer syntax is a `FATAL` on an older Python. For example, a charm using 3.14's `except A, B:` without parentheses can't be parsed on 3.12. Those `FATAL`s are still real for anyone running charmlint on the oldest supported Python, and a run on the newest release doesn't count them.
 
 ## Reporting
 
