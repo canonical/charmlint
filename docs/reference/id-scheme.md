@@ -1,6 +1,6 @@
 # Rule ID scheme
 
-Charmlint rule IDs follow the form `CATEGORY-###`, for example `SECURITY-001`, `METADATA-003`. The category groups related rules; the three-digit numeric suffix is unique within that category.
+charmlint rule IDs follow the form `CATEGORY-###`, for example `SECURITY-001`, `METADATA-003`. The category groups related rules; the three-digit numeric suffix is unique within that category.
 
 ## Principles
 
@@ -8,7 +8,7 @@ Charmlint rule IDs follow the form `CATEGORY-###`, for example `SECURITY-001`, `
 
 **Use full-word categories in uppercase.** Full words are unambiguous and split cleanly into `CATEGORY` and `###` with `id.rsplit("-", 1)`. This also makes charmlint IDs visually distinct from ruff's `PREFIX###` format, so there is no confusion about which tool reported `SEC001` versus `SECURITY-001`.
 
-**Always use the full `CATEGORY-###` form.** Numbers are per-category, so a ruleset config of `disable: ["001"]` would be ambiguous — `001` exists in multiple categories. Configuration must use the full form.
+**Always use the full `CATEGORY-###` form.** Numbers are per-category, so `disable: ["001"]` in the configuration would be ambiguous — `001` exists in multiple categories. Configuration must use the full form.
 
 ## Category catalogue
 
@@ -57,5 +57,5 @@ different things. All three are enforced when the rule class is
 registered.
 
 Names are part of the public interface, so renaming one is a breaking
-change under [versioning.md](versioning.md), the same as renumbering an
+change under the [versioning policy](../explanation/versioning.md), the same as renumbering an
 ID.

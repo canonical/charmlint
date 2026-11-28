@@ -26,7 +26,7 @@ jobs:
       - name: ty
         run: make typecheck
       - name: Rule reference up to date
-        run: make docs-check
+        run: make rules-doc-check
 
   pip-audit:
     runs-on: ubuntu-latest

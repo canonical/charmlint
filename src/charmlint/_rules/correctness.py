@@ -88,8 +88,8 @@ class ExecResultNotConsumed(Rule):
     """Flag bare ``container.exec(...)`` calls whose result is discarded.
 
     A bare ``container.exec(...)`` starts the process but never waits for it,
-    never captures its exit code, and can stall the container if stdout or
-    stderr fills the pipe buffer. The result must either be assigned (so the
+    never captures its exit code, and can stall the container if ``stdout``
+    or ``stderr`` fills the pipe buffer. The result must either be assigned (so the
     caller can ``.wait()`` / ``.wait_output()`` later) or chained directly,
     e.g. ``container.exec(...).wait_output()``.
     """

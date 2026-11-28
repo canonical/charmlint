@@ -207,7 +207,7 @@ class ConfigDefaultTypeMismatch(Rule):
     gives the charm a string, and arithmetic on it raises a
     ``TypeError`` in the charm's own code, far from the config. YAML
     1.1 makes this commoner than it sounds: an unquoted ``yes``,
-    ``no``, ``on`` or ``off`` is a boolean, so a ``type: string``
+    ``no``, ``on`` or ``off`` is a Boolean, so a ``type: string``
     option defaulting to ``no`` never sees a string at all.
     """
 
