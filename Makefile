@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help lint ruff-check ruff-format-check typecheck format test test-network docs docs-check lock lock-check
+.PHONY: help lint ruff-check ruff-format-check typecheck format test test-network rules-doc rules-doc-check docs-site lock lock-check
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -8,7 +8,7 @@ help:  ## Show this help
 # Extra arguments for pytest, for example: make test PYTEST_ARGS="--maxfail=1 -q"
 PYTEST_ARGS ?=
 
-lint: ruff-check ruff-format-check typecheck docs-check lock-check  ## Everything CI's lint job runs: ruff, ty, and the docs and lock checks
+lint: ruff-check ruff-format-check typecheck rules-doc-check lock-check  ## Everything CI's lint job runs: ruff, ty, and the docs and lock checks
 
 ruff-check:  ## Check for lint errors with ruff
 	uv run --group dev ruff check
@@ -29,11 +29,16 @@ test:  ## Run unit tests
 test-network:  ## Run the tests that need internet access (reference URLs)
 	uv run --group dev pytest -m network
 
-docs:  ## Regenerate docs/rules.md from the rule registry
+rules-doc:  ## Regenerate docs/reference/rules.md from the rule registry
 	uv run python tools/generate_rules_doc.py
 
-docs-check:  ## Fail if docs/rules.md is out of date
+rules-doc-check:  ## Fail if docs/reference/rules.md is out of date
 	uv run python tools/generate_rules_doc.py --check
+
+# The Sphinx targets (html, spelling, linkcheck, ...) are in docs/Makefile;
+# `make docs-site` builds the site from here.
+docs-site:  ## Build the documentation site (runs `make html` in docs/)
+	$(MAKE) -C docs html
 
 lock:  ## Refresh uv.lock
 	uv lock

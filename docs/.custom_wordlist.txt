@@ -1,0 +1,17 @@
+# Leave a blank line at the end of this file to support concatenation
+charmlint
+configurators
+Cookiecutter
+[Dd]eduplicated
+Dependabot
+hardcoded
+hyrum
+liveness
+misconfigured
+[Mm]onorepo
+pyright
+reimplementation
+Sigstore
+systemd
+vendored
+
