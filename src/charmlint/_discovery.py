@@ -45,9 +45,17 @@ _MAX_DEPTH = 3
 _METADATA_FILES = ("charmcraft.yaml", "metadata.yaml")
 
 
+def metadata_file(directory: pathlib.Path) -> str | None:
+    """Return the name of the file holding *directory*'s charm metadata, if there is one."""
+    for name in _METADATA_FILES:
+        if (directory / name).is_file():
+            return name
+    return None
+
+
 def is_charm_dir(directory: pathlib.Path) -> bool:
     """Return whether *directory* holds a charm's metadata."""
-    return any((directory / name).is_file() for name in _METADATA_FILES)
+    return metadata_file(directory) is not None
 
 
 def discover_charms(root: pathlib.Path) -> list[pathlib.Path]:

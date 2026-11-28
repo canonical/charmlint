@@ -37,6 +37,7 @@ dev = [
     "ruff==0.17.2",
     "ty==0.0.91",
     "zizmor==1.31.1",
+    "check-jsonschema>=0.39.0",
 ]
 
 [project.scripts]
@@ -96,6 +97,8 @@ ignore = [
     "unused-method-argument",  # ARG002
     "assert",  # S101
     "suspicious-subprocess-import",  # S404
+    "suspicious-xml-etree-import",  # S405
+    "suspicious-xml-element-tree-usage",  # S314
     "missing-return-type-undocumented-public-function",  # ANN201
     "missing-return-type-private-function",  # ANN202
 ]
