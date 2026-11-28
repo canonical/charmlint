@@ -1,0 +1,173 @@
+name: Agent upkeep
+
+# Weekly: rebuild the charm corpus the agent measures rules against, and
+# check that the agent's credentials aren't about to run out.
+
+on:
+  schedule:
+    - cron: "41 14 * * 0"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      # Clones come from the three hosts in hyrum's charm list.
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.astral.sh:443
+            opendev.org:443
+            git.launchpad.net:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            results-receiver.actions.githubusercontent.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/agent
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+        with:
+          enable-cache: false
+      # get-charms only clones (shallow); no charm code runs.
+      - name: Clone the charms
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/charms.csv" \
+            "https://raw.githubusercontent.com/canonical/hyrum/${HYRUM_LIST_SHA}/charm-list/charms.csv"
+          uv venv --python 3.12 "$RUNNER_TEMP/hyrum"
+          uv pip install --python "$RUNNER_TEMP/hyrum" --require-hashes -r .github/agent/hyrum-requirements.txt
+          "$RUNNER_TEMP/hyrum/bin/hyrum" get-charms --source "$RUNNER_TEMP/charms.csv" --dest "$RUNNER_TEMP/charms" --workers 16
+        env:
+          # Pinned so the charm list only changes in a reviewed commit. Dependabot
+          # doesn't update it: bump it by hand when hyrum's list moves on.
+          HYRUM_LIST_SHA: 592b85093a6331a96617c707f2e2e3fe652ad262
+          # LFS objects are media the snapshot replaces with placeholders, and
+          # their host isn't allowed, so a smudge fails the whole clone.
+          GIT_LFS_SKIP_SMUDGE: "1"
+      - name: Snapshot and pack
+        run: |
+          python3 .github/agent/snapshot_corpus.py --source "$RUNNER_TEMP/charms" --dest "$RUNNER_TEMP/corpus"
+          # Clones that fail don't fail get-charms, and every agent run takes
+          # the newest snapshot, so a partial one isn't saved.
+          charms=$(uv run --no-project --python 3.12 --with pyyaml python -I -c '
+          import pathlib, sys
+          sys.path.insert(0, ".github/agent")
+          from corpus_run import charm_dirs
+          print(sum(1 for _ in charm_dirs(pathlib.Path(sys.argv[1]))))
+          ' "$RUNNER_TEMP/corpus")
+          echo "$charms charms"
+          if [ "$charms" -lt "$MIN_CHARMS" ]; then
+            echo "::error::only $charms charms, fewer than $MIN_CHARMS; not saving a partial corpus"
+            exit 1
+          fi
+          tar -C "$RUNNER_TEMP" -I 'zstd -T0 -10' -cf ~/agent-corpus.tar.zst corpus
+          ls -lh ~/agent-corpus.tar.zst
+        env:
+          MIN_CHARMS: ${{ vars.AGENT_MIN_CHARMS || '600' }}
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/agent-corpus.tar.zst
+          key: agent-corpus-${{ github.run_id }}
+
+  openrouter-key:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: agent-llm
+    permissions: {}
+    outputs:
+      remaining: ${{ steps.key.outputs.remaining }}
+      expires: ${{ steps.key.outputs.expires }}
+      weekly: ${{ steps.key.outputs.weekly }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: openrouter.ai:443
+      - id: key
+        shell: bash  # with pipefail, so a failed request fails the step
+        run: |
+          curl -fsS -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/key | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["data"]
+          print("remaining=%s" % d.get("limit_remaining"))
+          print("expires=%s" % (d.get("expires_at") or ""))
+          print("weekly=%s" % (d.get("usage_weekly") or 0))
+          ' >> "$GITHUB_OUTPUT"
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+  report:
+    needs: openrouter-key
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: agent-publish
+    # The report is posted with the workflow's own token: the bot's may be
+    # the credential that has stopped working.
+    permissions:
+      issues: write
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: api.github.com:443
+      - name: Open an issue if a credential needs attention
+        shell: bash  # with pipefail, so a rejected token isn't read as one with no expiry
+        run: |
+          pat_check=success
+          pat_expiry=$(curl -fsSI -H "Authorization: Bearer $AGENT_PAT" https://api.github.com/user \
+            | awk -F': ' 'tolower($1)=="github-authentication-token-expiration" {print $2}' | tr -d '\r') \
+            || pat_check=failure
+          PAT_CHECK="$pat_check" PAT_EXPIRY="$pat_expiry" python3 - <<'EOF' > "$RUNNER_TEMP/body.md"
+          import datetime, os
+          now = datetime.datetime.now(datetime.UTC)
+          soon = now + datetime.timedelta(days=14)
+          problems = []
+          pat = os.environ.get("PAT_EXPIRY", "")
+          if os.environ.get("PAT_CHECK") != "success":
+              problems.append("The bot's GitHub token check failed: it may have expired or been revoked.")
+          elif pat:
+              when = datetime.datetime.strptime(pat.replace(" UTC", " +0000"), "%Y-%m-%d %H:%M:%S %z")
+              if when < soon:
+                  problems.append(f"The bot's GitHub token expires on {when:%Y-%m-%d}.")
+          expires = os.environ.get("KEY_EXPIRES", "")
+          if expires and datetime.datetime.fromisoformat(expires.replace("Z", "+00:00")) < soon:
+              problems.append(f"The OpenRouter key expires on {expires[:10]}.")
+          remaining, weekly = os.environ.get("KEY_REMAINING", ""), os.environ.get("KEY_WEEKLY", "")
+          if os.environ.get("KEY_RESULT") != "success":
+              problems.append("The OpenRouter key check failed.")
+          elif remaining not in ("", "None") and float(remaining) < max(float(weekly or 0), 10.0):
+              problems.append(f"The OpenRouter key has ${float(remaining):.2f} left (${float(weekly or 0):.2f} spent this week).")
+          if problems:
+              print("\n".join(f"- {p}" for p in problems))
+          EOF
+          if [ ! -s "$RUNNER_TEMP/body.md" ]; then echo "All fine."; exit 0; fi
+          title="Agent credentials need attention"
+          number=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
+            --jq ".[] | select(.title == \"$title\" and .user.login == \"github-actions[bot]\" and .pull_request == null) | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/issues/$number/comments" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues" -f title="$title" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AGENT_PAT: ${{ secrets.AGENT_PAT }}
+          KEY_RESULT: ${{ needs.openrouter-key.result }}
+          KEY_REMAINING: ${{ needs.openrouter-key.outputs.remaining }}
+          KEY_EXPIRES: ${{ needs.openrouter-key.outputs.expires }}
+          KEY_WEEKLY: ${{ needs.openrouter-key.outputs.weekly }}

@@ -92,6 +92,8 @@ For a rule PR:
 
 You're welcome to submit pull requests that are partly or entirely generated using generative AI tools. However, you must review the code yourself before moving the PR out of draft -- by submitting the PR, you are claiming personal responsibility for its quality and suitability. If you are not capable of reviewing the PR, please do not submit it (maybe you'd like to open an issue instead). PRs that are clearly (co-)authored by tools will be closed without review unless there is a human author that claims responsibility for the PR.
 
+The project's own agent opens draft PRs as `prints-charming-bot` for issues a maintainer has approved, as [docs/agent-workflow.md](docs/agent-workflow.md) describes. The maintainer who reviews one and takes it out of draft is the human author who claims responsibility for it.
+
 Please do not use tools (such as GitHub Copilot) to provide PR reviews. The Charm Tech team also has access to these tools, and will use them when appropriate.
 
 # Pull requests
